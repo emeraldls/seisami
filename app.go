@@ -1,0 +1,497 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"math"
+	"os"
+	"os/exec"
+	"seisami/internal/actions"
+	"seisami/internal/repo"
+	"seisami/sqlc/query"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/emeraldls/portaudio"
+
+	"github.com/go-audio/audio"
+	"github.com/go-audio/wav"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+)
+
+// App struct
+type App struct {
+	ctx             context.Context
+	isRecording     bool
+	stopChan        chan bool
+	recordingPath   string
+	lastBarEmitTime time.Time
+	repository      repo.Repository
+	action          *actions.Action
+	currentBoardId  string
+}
+
+// NewApp creates a new App application struct
+func NewApp(apiKey string) *App {
+	repo := repo.NewRepo()
+	return &App{
+		stopChan:   make(chan bool),
+		repository: repo,
+	}
+}
+
+// startup is called when the app starts. The context is saved
+// so we can call the runtime methods
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	a.action = actions.NewAction(ctx, a.repository)
+	runtime.EventsOn(ctx, "board:id", func(optionalData ...interface{}) {
+		if len(optionalData) > 0 {
+			if boardId, ok := optionalData[0].(string); ok {
+				a.currentBoardId = boardId
+				fmt.Printf("Received event 'board:id' with data: %s\n", boardId)
+			}
+		} else {
+			fmt.Println("Received event 'board:id' with no data")
+		}
+	})
+	go startListener()
+	go a.handleFnKeyPress()
+}
+
+func (a *App) handleFnKeyPress() {
+	fnPressed := false
+	for {
+		if isFnPressed() {
+			if !fnPressed {
+				fnPressed = true
+				fmt.Println("FN key pressed, starting recording")
+				go a.startRecording()
+			}
+		} else {
+			if fnPressed {
+				fnPressed = false
+				fmt.Println("FN key released, stopping recording")
+				a.stopRecording()
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// Greet returns a greeting for the given name
+func (a *App) Greet(name string) string {
+	return fmt.Sprintf("Hello %s, It's show time!", name)
+}
+
+func (a *App) GetBoards(page int64, pageSize int64) ([]query.Board, error) {
+	return a.repository.GetAllBoards(page, pageSize)
+}
+
+func (a *App) CreateBoard(boardName string) (query.Board, error) {
+	return a.repository.CreateBoard(boardName)
+}
+
+func (a *App) GetBoardByID(boardId string) (query.Board, error) {
+	return a.repository.GetBoard(boardId)
+}
+
+func (a *App) UpdateBoard(boardId string, name string) (query.Board, error) {
+	return a.repository.UpdateBoard(boardId, name)
+}
+
+func (a *App) DeleteBoard(boardId string) error {
+	return a.repository.DeleteBoard(boardId)
+}
+
+func (a *App) CreateColumn(boardId string, columnName string) (query.Column, error) {
+	return a.repository.CreateColumn(boardId, columnName)
+}
+
+func (a *App) DeleteColumn(columnId string) error {
+	return a.repository.DeleteColumn(columnId)
+}
+
+func (a *App) GetColumn(columnId string) (query.Column, error) {
+	return a.repository.GetColumn(columnId)
+}
+
+func (a *App) ListColumnsByBoard(boardId string) ([]query.Column, error) {
+	return a.repository.ListColumnsByBoard(boardId)
+}
+
+func (a *App) UpdateColumn(columnId string, name string) (query.Column, error) {
+	return a.repository.UpdateColumn(columnId, name)
+}
+
+func (a *App) CreateTicket(columnId string, title string, description string, ticketType string) (query.Ticket, error) {
+	return a.repository.CreateTicket(columnId, title, description, ticketType)
+}
+
+func (a *App) DeleteTicket(ticketId string) error {
+	return a.repository.DeleteTicket(ticketId)
+}
+
+func (a *App) GetTicket(ticketId string) (query.Ticket, error) {
+	return a.repository.GetTicket(ticketId)
+}
+
+func (a *App) ListTicketsByColumn(columnId string) ([]query.Ticket, error) {
+	return a.repository.ListTicketsByColumn(columnId)
+}
+
+func (a *App) UpdateTicket(ticketId string, title string, description string) (query.Ticket, error) {
+	return a.repository.UpdateTicket(ticketId, title, description)
+}
+
+func (a *App) UpdateTicketColumn(ticketId string, columnId string) (query.Ticket, error) {
+	return a.repository.UpdateTicketColumn(ticketId, columnId)
+}
+
+// TODO: Add C API to check for microphone permissions - macOS
+func (a *App) startRecording() {
+	PlaySound()
+	if a.isRecording {
+		log.Println("Already recording.")
+		return
+	}
+
+	a.isRecording = true
+	runtime.EventsEmit(a.ctx, "recording:start", true)
+
+	err := portaudio.Initialize()
+	if err != nil {
+		log.Printf("Unable to initialize portaudio: %v\n", err)
+		a.isRecording = false
+		return
+	}
+	defer portaudio.Terminate()
+
+	inputChannels := 1
+	outputChannels := 0
+	sampleRate := 44100
+	framesPerBuffer := 64
+	buffer := make([]int16, framesPerBuffer)
+
+	stream, err := portaudio.OpenDefaultStream(inputChannels, outputChannels, float64(sampleRate), len(buffer), &buffer)
+	if err != nil {
+		log.Printf("Error opening stream: %v\n", err)
+		a.isRecording = false
+		return
+	}
+	defer stream.Close()
+
+	if err := stream.Start(); err != nil {
+		log.Printf("Error starting stream: %v\n", err)
+		a.isRecording = false
+		return
+	}
+	defer stream.Stop()
+
+	fileName := fmt.Sprintf("recording_%s.wav", time.Now().Format("20060102_150405"))
+	a.recordingPath = fileName
+	outFile, err := os.Create(fileName)
+	if err != nil {
+		log.Printf("Error creating file: %v\n", err)
+		a.isRecording = false
+		return
+	}
+	defer outFile.Close()
+
+	encoder := wav.NewEncoder(outFile, sampleRate, 16, 1, 1)
+
+	log.Println("Recording...")
+
+	for {
+		select {
+		case <-a.stopChan:
+			log.Println("Stopped recording.")
+			a.isRecording = false
+
+			payload := map[string]string{"id": a.recordingPath}
+			payloadBytes, err := json.Marshal(payload)
+			if err != nil {
+				log.Printf("Unable to serialize recording:stop payload: %v\n", err)
+			} else {
+				runtime.EventsEmit(a.ctx, "recording:stop", string(payloadBytes))
+			}
+
+			if err := encoder.Close(); err != nil {
+				log.Printf("Error closing encoder: %v\n", err)
+			}
+			go a.trancribe()
+			return
+		default:
+			if err := stream.Read(); err != nil {
+				log.Printf("Error reading from stream: %v\n", err)
+				continue
+			}
+
+			// Throttle audio bar emissions to ~20 FPS for smoother frontend experience
+			now := time.Now()
+			if now.Sub(a.lastBarEmitTime) >= 50*time.Millisecond {
+				bars := a.getAudioBarsFromBuffer(buffer, 20)
+				runtime.EventsEmit(a.ctx, "audio_bars", bars)
+				a.lastBarEmitTime = now
+			}
+
+			buf := new(audio.IntBuffer)
+			buf.Format = &audio.Format{
+				NumChannels: 1,
+				SampleRate:  sampleRate,
+			}
+			buf.Data = fromInt16(buffer)
+			if err := encoder.Write(buf); err != nil {
+				log.Printf("Error writing to WAV file: %v\n", err)
+			}
+		}
+	}
+
+}
+
+func (a *App) stopRecording() {
+	if a.isRecording {
+		a.stopChan <- true
+	}
+}
+
+func fromInt16(in []int16) []int {
+	out := make([]int, len(in))
+	for i, v := range in {
+		out[i] = int(v)
+	}
+	return out
+}
+
+func fromInt32(in []int32) []int {
+	out := make([]int, len(in))
+	for i, v := range in {
+		out[i] = int(v)
+	}
+	return out
+}
+
+func (a *App) getAudioBarsFromBuffer(buffer []int16, barsCount int) []float64 {
+	if len(buffer) == 0 {
+		return make([]float64, barsCount)
+	}
+
+	totalSamples := len(buffer)
+	blockSize := totalSamples / barsCount
+	if blockSize == 0 {
+		blockSize = 1
+	}
+
+	bars := make([]float64, barsCount)
+
+	for i := 0; i < barsCount; i++ {
+		start := i * blockSize
+		end := start + blockSize
+		if end > totalSamples {
+			end = totalSamples
+		}
+
+		sum := 0.0
+		for j := start; j < end; j++ {
+			sum += math.Abs(float64(buffer[j]))
+		}
+
+		sampleCount := end - start
+		avg := 0.0
+		if sampleCount > 0 {
+			avg = sum / float64(sampleCount)
+		}
+		bars[i] = avg
+	}
+
+	// Compute noise floor (e.g., 10th percentile)
+	sorted := append([]float64(nil), bars...)
+	sort.Float64s(sorted)
+	noiseFloor := sorted[int(float64(len(sorted))*0.1)]
+
+	// Normalize with noise floor offset
+	maxVal := 0.0
+	for _, v := range bars {
+		if v > maxVal {
+			maxVal = v
+		}
+	}
+
+	if maxVal > noiseFloor {
+		for i := range bars {
+			bars[i] = (bars[i] - noiseFloor) / (maxVal - noiseFloor)
+			if bars[i] < 0 {
+				bars[i] = 0
+			}
+		}
+	}
+
+	return bars
+}
+
+func (a *App) getAudioWaveForm(filePath string, barsCount int) ([]float64, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		fmt.Printf("Unable to load file: %v\n", err)
+		return nil, err
+	}
+
+	decoded := wav.NewDecoder(file)
+	if decoded == nil {
+		fmt.Println("couldnt create decoder")
+		return nil, err
+	}
+
+	buf, err := decoded.FullPCMBuffer()
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode wav: %v", err)
+	}
+
+	if buf == nil || buf.Data == nil {
+		return nil, err
+	}
+
+	samples := buf.Data
+
+	totalSamples := len(samples)
+	blockSize := totalSamples / barsCount
+	fmt.Println("Block size: ", blockSize)
+
+	if blockSize == 0 {
+		return nil, fmt.Errorf("numBars too high for file")
+	}
+
+	bars := make([]float64, barsCount)
+
+	for i := 0; i < barsCount; i++ {
+		start := i * blockSize
+		end := start + blockSize
+
+		if end > totalSamples {
+			end = totalSamples
+		}
+
+		sum := 0.0
+		for _, s := range samples[start:end] {
+			sum += math.Abs(float64(s))
+		}
+
+		sampleCount := end - start
+		if sampleCount == 0 {
+			bars[i] = 0
+			continue
+		}
+		avg := sum / float64(sampleCount)
+		bars[i] = avg
+	}
+
+	maxVal := 0.0
+	for _, v := range bars {
+		if v > maxVal {
+			maxVal = v
+		}
+	}
+
+	if maxVal > 0 {
+		for i := range bars {
+			bars[i] /= maxVal
+		}
+	}
+
+	return bars, nil
+}
+
+func (a *App) trancribe() {
+	file, err := os.Open(a.recordingPath)
+	if err != nil {
+		fmt.Printf("Error opening WAV file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	decoder := wav.NewDecoder(file)
+	if decoder == nil {
+		fmt.Println("Could not create decoder")
+		return
+	}
+
+	duration, err := decoder.Duration()
+	if err != nil {
+		fmt.Printf("Error getting duration: %v\n", err)
+		return
+	}
+
+	if duration < 1*time.Second {
+		fmt.Printf("Recording is too short: %v. Skipping transcription.\n", duration)
+		data := map[string]string{
+			"id": a.recordingPath,
+		}
+		dataBytes, _ := json.Marshal(data)
+		runtime.EventsEmit(a.ctx, "transcription:short", string(dataBytes))
+		return
+	}
+
+	transcription, err := a.transcribeLocally(a.recordingPath)
+	if err != nil {
+		fmt.Printf("Transcription error: %v\n", err)
+		// TODO: emit error to frontend
+		return
+	}
+
+	data := map[string]string{
+		"id":            a.recordingPath,
+		"transcription": transcription,
+	}
+
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		fmt.Printf("Unable to serialize transcription map: %v\n", err)
+		return
+	}
+
+	runtime.EventsEmit(a.ctx, "transcription", string(dataBytes))
+
+	results, err := a.action.ProcessTranscription(transcription, a.currentBoardId)
+	if err != nil {
+		fmt.Println("unable to get process transcription: %w", err)
+		return
+	}
+
+	structuredJson, err := json.MarshalIndent(results, "", " ")
+	if err != nil {
+		fmt.Println("unable to marshal json: %w", err)
+		return
+	}
+
+	fmt.Println(string(structuredJson))
+
+}
+
+func (a *App) transcribeLocally(filePath string) (string, error) {
+	cmd := exec.Command("/Users/lawrenceishim/Desktop/C/whisper.cpp/build/bin/whisper-cli", "-m", "/Users/lawrenceishim/Desktop/C/whisper.cpp/models/ggml-base.en.bin",
+		"-f", filePath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("error running whisper-cli: %v\n%s", err, string(output))
+	}
+
+	lines := strings.Split(string(output), "\n")
+	var transcriptionLines []string
+	for _, line := range lines {
+		if strings.Contains(line, "-->") {
+			parts := strings.Split(line, "]")
+			if len(parts) > 1 {
+				transcriptionLines = append(transcriptionLines, strings.TrimSpace(parts[1]))
+			}
+		}
+	}
+
+	if len(transcriptionLines) > 0 {
+		return strings.Join(transcriptionLines, " "), nil
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}

@@ -1,0 +1,7 @@
+{
+  "files.associations": {
+    "*.dbclient-js": "javascript",
+    "stdio.h": "c",
+    "pthread.h": "c"
+  }
+}
