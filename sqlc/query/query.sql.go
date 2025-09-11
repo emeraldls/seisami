@@ -109,6 +109,44 @@ func (q *Queries) CreateTicket(ctx context.Context, arg CreateTicketParams) (Tic
 	return i, err
 }
 
+const createTranscription = `-- name: CreateTranscription :one
+INSERT INTO transcriptions (id, board_id, transcription, recording_path, intent, assistant_response)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at
+`
+
+type CreateTranscriptionParams struct {
+	ID                string
+	BoardID           string
+	Transcription     string
+	RecordingPath     sql.NullString
+	Intent            sql.NullString
+	AssistantResponse sql.NullString
+}
+
+func (q *Queries) CreateTranscription(ctx context.Context, arg CreateTranscriptionParams) (Transcription, error) {
+	row := q.db.QueryRowContext(ctx, createTranscription,
+		arg.ID,
+		arg.BoardID,
+		arg.Transcription,
+		arg.RecordingPath,
+		arg.Intent,
+		arg.AssistantResponse,
+	)
+	var i Transcription
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Transcription,
+		&i.RecordingPath,
+		&i.Intent,
+		&i.AssistantResponse,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const deleteBoard = `-- name: DeleteBoard :exec
 DELETE FROM boards
 WHERE id = ?
@@ -136,6 +174,16 @@ WHERE id = ?
 
 func (q *Queries) DeleteTicket(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, deleteTicket, id)
+	return err
+}
+
+const deleteTranscription = `-- name: DeleteTranscription :exec
+DELETE FROM transcriptions
+WHERE id = ?
+`
+
+func (q *Queries) DeleteTranscription(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteTranscription, id)
 	return err
 }
 
@@ -205,6 +253,99 @@ func (q *Queries) GetTicket(ctx context.Context, id string) (Ticket, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getTranscription = `-- name: GetTranscription :one
+
+SELECT id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at FROM transcriptions
+WHERE id = ?
+LIMIT 1
+`
+
+// Transcriptions Functionality
+func (q *Queries) GetTranscription(ctx context.Context, id string) (Transcription, error) {
+	row := q.db.QueryRowContext(ctx, getTranscription, id)
+	var i Transcription
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Transcription,
+		&i.RecordingPath,
+		&i.Intent,
+		&i.AssistantResponse,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTranscriptionByRecordingPath = `-- name: GetTranscriptionByRecordingPath :one
+SELECT id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at FROM transcriptions
+where recording_path = ? AND board_id = ?
+`
+
+type GetTranscriptionByRecordingPathParams struct {
+	RecordingPath sql.NullString
+	BoardID       string
+}
+
+func (q *Queries) GetTranscriptionByRecordingPath(ctx context.Context, arg GetTranscriptionByRecordingPathParams) (Transcription, error) {
+	row := q.db.QueryRowContext(ctx, getTranscriptionByRecordingPath, arg.RecordingPath, arg.BoardID)
+	var i Transcription
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Transcription,
+		&i.RecordingPath,
+		&i.Intent,
+		&i.AssistantResponse,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listAllTranscriptions = `-- name: ListAllTranscriptions :many
+SELECT id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at FROM transcriptions
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListAllTranscriptionsParams struct {
+	Limit  int64
+	Offset int64
+}
+
+func (q *Queries) ListAllTranscriptions(ctx context.Context, arg ListAllTranscriptionsParams) ([]Transcription, error) {
+	rows, err := q.db.QueryContext(ctx, listAllTranscriptions, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transcription
+	for rows.Next() {
+		var i Transcription
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Transcription,
+			&i.RecordingPath,
+			&i.Intent,
+			&i.AssistantResponse,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listBoards = `-- name: ListBoards :many
@@ -306,6 +447,44 @@ func (q *Queries) ListTicketsByColumn(ctx context.Context, columnID string) ([]T
 			&i.StoryPoints,
 			&i.PrLink,
 			&i.TicketType,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTranscriptionsByBoard = `-- name: ListTranscriptionsByBoard :many
+SELECT id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at FROM transcriptions
+WHERE board_id = ?
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListTranscriptionsByBoard(ctx context.Context, boardID string) ([]Transcription, error) {
+	rows, err := q.db.QueryContext(ctx, listTranscriptionsByBoard, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transcription
+	for rows.Next() {
+		var i Transcription
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Transcription,
+			&i.RecordingPath,
+			&i.Intent,
+			&i.AssistantResponse,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -447,6 +626,64 @@ func (q *Queries) UpdateTicketColumn(ctx context.Context, arg UpdateTicketColumn
 		&i.StoryPoints,
 		&i.PrLink,
 		&i.TicketType,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTranscriptionIntent = `-- name: UpdateTranscriptionIntent :one
+UPDATE transcriptions
+SET intent = ?,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+RETURNING id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at
+`
+
+type UpdateTranscriptionIntentParams struct {
+	Intent sql.NullString
+	ID     string
+}
+
+func (q *Queries) UpdateTranscriptionIntent(ctx context.Context, arg UpdateTranscriptionIntentParams) (Transcription, error) {
+	row := q.db.QueryRowContext(ctx, updateTranscriptionIntent, arg.Intent, arg.ID)
+	var i Transcription
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Transcription,
+		&i.RecordingPath,
+		&i.Intent,
+		&i.AssistantResponse,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTranscriptionResponse = `-- name: UpdateTranscriptionResponse :one
+UPDATE transcriptions
+SET assistant_response = ?,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+RETURNING id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at
+`
+
+type UpdateTranscriptionResponseParams struct {
+	AssistantResponse sql.NullString
+	ID                string
+}
+
+func (q *Queries) UpdateTranscriptionResponse(ctx context.Context, arg UpdateTranscriptionResponseParams) (Transcription, error) {
+	row := q.db.QueryRowContext(ctx, updateTranscriptionResponse, arg.AssistantResponse, arg.ID)
+	var i Transcription
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Transcription,
+		&i.RecordingPath,
+		&i.Intent,
+		&i.AssistantResponse,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

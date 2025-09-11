@@ -36,3 +36,14 @@ type Ticket struct {
 	CreatedAt   sql.NullString
 	UpdatedAt   sql.NullString
 }
+
+type Transcription struct {
+	ID                string
+	BoardID           string
+	Transcription     string
+	RecordingPath     sql.NullString
+	Intent            sql.NullString
+	AssistantResponse sql.NullString
+	CreatedAt         sql.NullString
+	UpdatedAt         sql.NullString
+}

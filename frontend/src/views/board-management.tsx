@@ -1,15 +1,7 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit3, Trash2, Calendar, Clock, SquarePen } from "lucide-react";
+import { Plus, Edit3, Trash2, Calendar } from "lucide-react";
 import { Button } from "~/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -104,167 +96,191 @@ export default function BoardManagement() {
   };
 
   return (
-    <div className="flex-1 flex flex-col">
-      <header className="bg-white border-b px-8 py-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Board Management</h1>
-            <p className="text-sm text-neutral-500 mt-1">
-              Manage your boards and workspaces
-            </p>
-          </div>
+    <div className="h-full flex flex-col bg-gray-50/50">
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="max-w-6xl mx-auto">
+          <h1 className="text-2xl font-semibold text-gray-900">Boards</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Manage and organize your project boards
+          </p>
         </div>
-      </header>
+      </div>
 
-      <div className="flex-1 p-8 overflow-auto">
-        <div className="mb-8">
-          <Card className="max-w-md mx-auto rounded-none shadow-none">
-            <CardHeader>
-              <CardTitle className="text-lg">Create New Board</CardTitle>
-              <CardDescription>
-                Add a new board to organize your tasks and ideas
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCreateBoard} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="boardName">Board Name</Label>
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-6xl mx-auto p-6">
+          {isLoading && boards.length === 0 ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                <p className="text-gray-500">Loading boards...</p>
+              </div>
+            </div>
+          ) : boards.length === 0 ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center max-w-md">
+                <div className="w-24 h-24 mx-auto bg-gray-100 rounded-lg flex items-center justify-center mb-6">
+                  <Plus className="h-8 w-8 text-gray-400" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  No boards yet
+                </h3>
+                <p className="text-gray-500 mb-8">
+                  Create your first board to start organizing your tasks and
+                  projects
+                </p>
+
+                <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+                  <h4 className="text-lg font-medium text-gray-900 mb-4">
+                    Create your first board
+                  </h4>
+                  <form onSubmit={handleCreateBoard} className="space-y-4">
+                    <Input
+                      type="text"
+                      placeholder="Enter board name..."
+                      value={newBoardName}
+                      onChange={(e) => setNewBoardName(e.target.value)}
+                      disabled={isCreating}
+                      className="w-full"
+                    />
+                    <Button
+                      type="submit"
+                      disabled={!newBoardName.trim() || isCreating}
+                      className="w-full gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {isCreating ? "Creating..." : "Create Board"}
+                    </Button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                  Create New Board
+                </h2>
+                <form onSubmit={handleCreateBoard} className="flex gap-3">
                   <Input
-                    id="boardName"
                     type="text"
-                    placeholder="e.g., Personal Tasks, Work Projects..."
+                    placeholder="Enter board name..."
                     value={newBoardName}
                     onChange={(e) => setNewBoardName(e.target.value)}
                     disabled={isCreating}
+                    className="flex-1"
                   />
-                </div>
-                <Button
-                  type="submit"
-                  disabled={!newBoardName.trim() || isCreating}
-                  className="w-full"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  {isCreating ? "Creating..." : "Create Board"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold">
-              Your Boards ({boards.length})
-            </h2>
-          </div>
-
-          {isLoading && boards.length === 0 ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-            </div>
-          ) : boards.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="mx-auto h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                <Plus className="h-8 w-8 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                No boards yet
-              </h3>
-              <p className="text-gray-500 mb-4">
-                Create your first board to get started
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {boards.map((board) => (
-                <Card
-                  key={board.id}
-                  className={`cursor-pointer px-0 py-6 w-full rounded-none shadow-none transition-all  ${
-                    currentBoard?.id === board.id ? "border" : ""
-                  }`}
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      {editingBoard?.id === board.id ? (
-                        <form
-                          onSubmit={handleUpdateBoard}
-                          className="flex-1 mr-2"
-                        >
-                          <Input
-                            value={editingBoard.name}
-                            onChange={(e) =>
-                              setEditingBoard({
-                                ...editingBoard,
-                                name: e.target.value,
-                              })
-                            }
-                            className="text-lg font-semibold"
-                            autoFocus
-                            onBlur={() => setEditingBoard(null)}
-                          />
-                        </form>
-                      ) : (
-                        <CardTitle
-                          className="text-base cursor-pointer"
-                          onClick={() => handleSelectBoard(board)}
-                        >
-                          <span className="truncate line-clamp-1">
-                            {board.name}
-                          </span>
-                          {currentBoard?.id === board.id && (
-                            <span className="ml-2 text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">
-                              Current
-                            </span>
-                          )}
-                        </CardTitle>
-                      )}
-
-                      <div className="flex space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingBoard({ id: board.id, name: board.name });
-                          }}
-                          className="h-8 w-8 p-0"
-                        >
-                          <SquarePen className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteBoard(board.id, board.name);
-                          }}
-                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-
-                  <CardContent
-                    className="pt-0"
-                    onClick={() => handleSelectBoard(board)}
+                  <Button
+                    type="submit"
+                    disabled={!newBoardName.trim() || isCreating}
+                    className="gap-2 px-6"
                   >
-                    <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      <div className="flex items-center">
-                        <Calendar className="h-4 w-4 mr-1" />
-                        {new Date(board.created_at).toLocaleDateString()}
+                    <Plus className="h-4 w-4" />
+                    {isCreating ? "Creating..." : "Create"}
+                  </Button>
+                </form>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Your Boards ({boards.length})
+                  </h2>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {boards.map((board) => (
+                    <div
+                      key={board.id}
+                      className={`group bg-white border rounded-sm p-4 shadow-sm hover:shadow-md transition-all cursor-pointer ${
+                        currentBoard?.id === board.id
+                          ? "border-black bg-blue-50/50 ring-1 ring-black"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        {editingBoard?.id === board.id ? (
+                          <form
+                            onSubmit={handleUpdateBoard}
+                            className="flex-1 mr-2"
+                          >
+                            <Input
+                              value={editingBoard.name}
+                              onChange={(e) =>
+                                setEditingBoard({
+                                  ...editingBoard,
+                                  name: e.target.value,
+                                })
+                              }
+                              className="font-medium text-gray-900"
+                              autoFocus
+                              onBlur={() => setEditingBoard(null)}
+                            />
+                          </form>
+                        ) : (
+                          <div
+                            className="flex-1 min-w-0"
+                            onClick={() => handleSelectBoard(board)}
+                          >
+                            <h3 className="font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+                              {board.name}
+                            </h3>
+                            {currentBoard?.id === board.id && (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700 mt-1">
+                                Current
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingBoard({
+                                id: board.id,
+                                name: board.name,
+                              });
+                            }}
+                            className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteBoard(board.id, board.name);
+                            }}
+                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-600"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div
+                        className="space-y-2"
+                        onClick={() => handleSelectBoard(board)}
+                      >
+                        <div className="flex items-center text-sm text-gray-500">
+                          <Calendar className="h-4 w-4 mr-2" />
+                          Created{" "}
+                          {new Date(board.created_at).toLocaleDateString()}
+                        </div>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -288,7 +304,6 @@ export default function BoardManagement() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Warning Dialog for Last Board */}
       <AlertDialog open={warningDialogOpen} onOpenChange={setWarningDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

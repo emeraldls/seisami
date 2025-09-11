@@ -5,6 +5,9 @@ export interface Transcription {
   isTranscribing?: boolean;
   duration?: number;
   wordCount?: number;
+  intent?: string;
+  assistantResponse?: string;
+  recordingPath?: string;
 }
 
 export type TicketType = "bug" | "feature" | "enhancement";

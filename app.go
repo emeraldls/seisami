@@ -35,7 +35,7 @@ type App struct {
 }
 
 // NewApp creates a new App application struct
-func NewApp(apiKey string) *App {
+func NewApp() *App {
 	repo := repo.NewRepo()
 	return &App{
 		stopChan:   make(chan bool),
@@ -63,23 +63,23 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) handleFnKeyPress() {
-	fnPressed := false
-	for {
-		if isFnPressed() {
-			if !fnPressed {
-				fnPressed = true
-				fmt.Println("FN key pressed, starting recording")
-				go a.startRecording()
-			}
-		} else {
-			if fnPressed {
-				fnPressed = false
-				fmt.Println("FN key released, stopping recording")
-				a.stopRecording()
-			}
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+	_ = false
+	// for {
+	// 	if isFnPressed() {
+	// 		if !fnPressed {
+	// 			fnPressed = true
+	// 			fmt.Println("FN key pressed, starting recording")
+	// 			go a.startRecording()
+	// 		}
+	// 	} else {
+	// 		if fnPressed {
+	// 			fnPressed = false
+	// 			fmt.Println("FN key released, stopping recording")
+	// 			a.stopRecording()
+	// 		}
+	// 	}
+	// 	time.Sleep(100 * time.Millisecond)
+	// }
 }
 
 // Greet returns a greeting for the given name
@@ -151,6 +151,14 @@ func (a *App) UpdateTicketColumn(ticketId string, columnId string) (query.Ticket
 	return a.repository.UpdateTicketColumn(ticketId, columnId)
 }
 
+func (a *App) GetTranscriptions(boardId string, page, pageSize int64) ([]query.Transcription, error) {
+	return a.repository.GetTranscriptions(boardId, page, pageSize)
+}
+
+func (a *App) GetTranscriptionByID(transcriptionId string) (query.Transcription, error) {
+	return a.repository.GetTranscriptionByID(transcriptionId)
+}
+
 // TODO: Add C API to check for microphone permissions - macOS
 func (a *App) startRecording() {
 	PlaySound()
@@ -191,7 +199,7 @@ func (a *App) startRecording() {
 	}
 	defer stream.Stop()
 
-	fileName := fmt.Sprintf("recording_%s.wav", time.Now().Format("20060102_150405"))
+	fileName := fmt.Sprintf("./recordings/recording_%s.wav", time.Now().Format("20060102_150405"))
 	a.recordingPath = fileName
 	outFile, err := os.Create(fileName)
 	if err != nil {
@@ -404,6 +412,7 @@ func (a *App) getAudioWaveForm(filePath string, barsCount int) ([]float64, error
 	return bars, nil
 }
 
+// TODO: I should use another format for emiting data rather than slow json, maybe an array of length2 [id, transcription]
 func (a *App) trancribe() {
 	file, err := os.Open(a.recordingPath)
 	if err != nil {
@@ -441,6 +450,12 @@ func (a *App) trancribe() {
 		return
 	}
 
+	transcriptionRecord, err := a.repository.AddTransscription(a.currentBoardId, transcription, a.recordingPath)
+	if err != nil {
+		fmt.Println("unable to create transcription: ", err)
+		return
+	}
+
 	data := map[string]string{
 		"id":            a.recordingPath,
 		"transcription": transcription,
@@ -454,19 +469,36 @@ func (a *App) trancribe() {
 
 	runtime.EventsEmit(a.ctx, "transcription", string(dataBytes))
 
-	results, err := a.action.ProcessTranscription(transcription, a.currentBoardId)
+	result, err := a.action.ProcessTranscription(transcription, a.currentBoardId)
 	if err != nil {
-		fmt.Println("unable to get process transcription: %w", err)
+		fmt.Println("unable to process transcription:", err)
 		return
 	}
 
-	structuredJson, err := json.MarshalIndent(results, "", " ")
+	if result.Intent != "" {
+		err = a.repository.UpdateTranscriptionIntent(transcriptionRecord.ID, result.Intent)
+		if err != nil {
+			fmt.Println("unable to update transcription intent:", err)
+		}
+	}
+
+	if result.Result != "" {
+		err = a.repository.UpdateTranscriptionResponse(transcriptionRecord.ID, result.Result)
+		if err != nil {
+			fmt.Println("unable to update transcription response:", err)
+		}
+	}
+
+	structuredJson, err := json.MarshalIndent(result, "", " ")
 	if err != nil {
-		fmt.Println("unable to marshal json: %w", err)
+		fmt.Println("unable to marshal structured response:", err)
 		return
 	}
 
-	fmt.Println(string(structuredJson))
+	fmt.Println("Structured Response:", string(structuredJson))
+
+	// Emit structured response to frontend for display
+	runtime.EventsEmit(a.ctx, "structured_response", string(structuredJson))
 
 }
 

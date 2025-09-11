@@ -22,6 +22,10 @@ export function GetColumn(arg1:string):Promise<query.Column>;
 
 export function GetTicket(arg1:string):Promise<query.Ticket>;
 
+export function GetTranscriptionByID(arg1:string):Promise<query.Transcription>;
+
+export function GetTranscriptions(arg1:string,arg2:number,arg3:number):Promise<Array<query.Transcription>>;
+
 export function Greet(arg1:string):Promise<string>;
 
 export function ListColumnsByBoard(arg1:string):Promise<Array<query.Column>>;

@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -11,8 +12,6 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
-
-	"database/sql"
 )
 
 type repo struct {
@@ -206,4 +205,60 @@ func (r *repo) UpdateTicketColumn(ticketId string, columnId string) (query.Ticke
 		return query.Ticket{}, fmt.Errorf("error updating ticket column: %v", err)
 	}
 	return ticket, nil
+}
+
+func (r *repo) AddTransscription(boardId string, transcription string, recordingPath string) (query.Transcription, error) {
+	Id := uuid.New().String()
+	data, err := r.queries.CreateTranscription(r.ctx, query.CreateTranscriptionParams{
+		ID:            Id,
+		BoardID:       boardId,
+		Transcription: transcription,
+		RecordingPath: sql.NullString{String: recordingPath, Valid: true},
+	})
+	if err != nil {
+		return query.Transcription{}, fmt.Errorf("unable to create transcription: %w", err)
+	}
+
+	return data, nil
+}
+
+func (r *repo) GetTranscriptions(boardId string, page, pageSize int64) ([]query.Transcription, error) {
+	return r.queries.ListTranscriptionsByBoard(r.ctx, boardId)
+}
+
+func (r *repo) GetTranscriptionByID(transcriptionId string) (query.Transcription, error) {
+	transcription, err := r.queries.GetTranscription(r.ctx, transcriptionId)
+	if err != nil {
+		return query.Transcription{}, fmt.Errorf("unable to get transcription: %w", err)
+	}
+
+	return transcription, nil
+}
+
+func (r *repo) UpdateTranscriptionIntent(transcriptionId string, intent string) error {
+	_, err := r.queries.UpdateTranscriptionIntent(r.ctx, query.UpdateTranscriptionIntentParams{
+		ID: transcriptionId,
+		Intent: sql.NullString{
+			String: intent,
+			Valid:  true,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("unable to update transcription intent: %w", err)
+	}
+	return nil
+}
+
+func (r *repo) UpdateTranscriptionResponse(transcriptionId string, response string) error {
+	_, err := r.queries.UpdateTranscriptionResponse(r.ctx, query.UpdateTranscriptionResponseParams{
+		ID: transcriptionId,
+		AssistantResponse: sql.NullString{
+			String: response,
+			Valid:  true,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("unable to update transcription response: %w", err)
+	}
+	return nil
 }

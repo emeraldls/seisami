@@ -42,6 +42,14 @@ export function GetTicket(arg1) {
   return window['go']['main']['App']['GetTicket'](arg1);
 }
 
+export function GetTranscriptionByID(arg1) {
+  return window['go']['main']['App']['GetTranscriptionByID'](arg1);
+}
+
+export function GetTranscriptions(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetTranscriptions'](arg1, arg2, arg3);
+}
+
 export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }

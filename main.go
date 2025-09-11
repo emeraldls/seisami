@@ -2,8 +2,6 @@ package main
 
 import (
 	"embed"
-	"log"
-	"os"
 
 	"github.com/joho/godotenv"
 	"github.com/wailsapp/wails/v2"
@@ -15,17 +13,7 @@ import (
 var assets embed.FS
 
 func main() {
-	err := godotenv.Load(".env")
-
-	if err != nil {
-		log.Fatal("unable to load environment variables: ", err)
-	}
-
-	var OPENAI_API_KEY = os.Getenv("OPENAI_API_KEY")
-
-	if OPENAI_API_KEY == "" {
-		log.Fatal("API KEY IS MISSING")
-	}
+	_ = godotenv.Load(".env")
 
 	// bars, err := getAudioWaveForm("./audio.wav", 100)
 	// if err != nil {
@@ -37,13 +25,13 @@ func main() {
 	// return
 
 	// Create an instance of the app structure
-	app := NewApp(OPENAI_API_KEY)
+	app := NewApp()
 
 	// Create application with options
-	err = wails.Run(&options.App{
-		Title:  "seisami",
-		Width:  1024,
-		Height: 768,
+	err := wails.Run(&options.App{
+		Title:     "seisami",
+		MinWidth:  1024,
+		MinHeight: 768,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

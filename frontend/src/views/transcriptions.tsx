@@ -3,9 +3,10 @@ import { Mic, Copy, Trash2 } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { EventsOn, EventsEmit } from "../../wailsjs/runtime/runtime";
-import { GetBoards } from "../../wailsjs/go/main/App";
+import { GetTranscriptions } from "../../wailsjs/go/main/App";
 import { PlannerCalendar } from "~/components/planner-calendar";
 import { TranscriptionCard } from "~/components/transcription-card";
+import { TranscriptionDetailModal } from "~/components/transcription-detail-modal";
 import { Transcription } from "~/types/types";
 import { useBoardStore } from "~/stores/board-store";
 
@@ -18,7 +19,6 @@ const drawLineSegment = (
 ) => {
   ctx.lineWidth = 1;
   ctx.strokeStyle = "#0a0a0a";
-  //   ctx.fillStyle = "#0a0a0a";
 
   const barWidth = Math.min(width * 0.6, 10);
   const barX = x + (width - barWidth) / 2;
@@ -42,6 +42,9 @@ export default function Transcriptions() {
   const [isRecording, setIsRecording] = useState(false);
   const [audioBars, setAudioBars] = useState<number[] | null>(null);
   const [smoothedBars, setSmoothedBars] = useState<number[] | null>(null);
+  const [selectedTranscription, setSelectedTranscription] =
+    useState<Transcription | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [startDrawing, setStartDrawing] = useState(false);
   const animationRef = useRef<number>(0);
@@ -50,23 +53,34 @@ export default function Transcriptions() {
   const { currentBoard } = useBoardStore();
 
   useEffect(() => {
-    const unsubscribeBoards = () => {
-      async function fetchBoards() {
+    const fetchTranscriptions = async () => {
+      if (currentBoard) {
         try {
-          const boardList = await GetBoards(1, 10);
-          console.log(boardList);
-        } catch (err) {
-          console.error(err);
+          const transcriptions = await GetTranscriptions(
+            currentBoard.id,
+            1,
+            50
+          );
+          const formattedTranscriptions: Transcription[] = transcriptions.map(
+            (t) => ({
+              id: t.ID,
+              text: t.Transcription,
+              timestamp: new Date(t.CreatedAt.String || new Date()),
+              isTranscribing: false,
+              intent: t.Intent?.String || undefined,
+              assistantResponse: t.AssistantResponse?.String || undefined,
+              recordingPath: t.RecordingPath?.String || undefined,
+            })
+          );
+          setTranscriptions(formattedTranscriptions);
+        } catch (error) {
+          console.error("Failed to fetch transcriptions:", error);
         }
       }
-
-      fetchBoards();
     };
 
-    return () => {
-      unsubscribeBoards();
-    };
-  }, []);
+    fetchTranscriptions();
+  }, [currentBoard]);
 
   useEffect(() => {
     if (!audioBars) return;
@@ -191,6 +205,32 @@ export default function Transcriptions() {
       }
     );
 
+    const unsubscribeStructuredResponse = EventsOn(
+      "structured_response",
+      (data: string) => {
+        if (data) {
+          try {
+            const parsed = JSON.parse(data);
+            console.log("Structured Response received:", parsed);
+
+            setTranscriptions((prev) => {
+              const updated = [...prev];
+              if (updated.length > 0) {
+                updated[0] = {
+                  ...updated[0],
+                  intent: parsed.intent,
+                  assistantResponse: parsed.result,
+                };
+              }
+              return updated;
+            });
+          } catch (e) {
+            console.error("Failed to parse structured response data", e);
+          }
+        }
+      }
+    );
+
     const unsubscribeAudioBars = EventsOn("audio_bars", (data) => {
       if (Array.isArray(data) && data.length > 0) {
         console.log(data);
@@ -247,6 +287,7 @@ export default function Transcriptions() {
 
     return () => {
       unsubscribeTranscription();
+      unsubscribeStructuredResponse();
       unsubscribeRecordingStart();
       unsubscribeRecordingStop();
       unsubscribeTranscriptionShort();
@@ -260,6 +301,16 @@ export default function Transcriptions() {
 
   const copyTranscription = (text: string) => {
     navigator.clipboard.writeText(text);
+  };
+
+  const handleTranscriptionClick = (transcription: Transcription) => {
+    setSelectedTranscription(transcription);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedTranscription(null);
   };
 
   const formatDuration = (seconds: number) => {
@@ -319,12 +370,20 @@ export default function Transcriptions() {
                   transcription={transcription}
                   onCopy={copyTranscription}
                   onDelete={deleteTranscription}
+                  onClick={handleTranscriptionClick}
                 />
               ))}
             </div>
           )}
         </div>
       </div>
+
+      <TranscriptionDetailModal
+        transcription={selectedTranscription}
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        onCopy={copyTranscription}
+      />
     </div>
   );
 }

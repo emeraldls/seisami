@@ -65,7 +65,9 @@ func (t *Tools) HandleReadBoard() {
 			return "", err
 		}
 
-		res, _ := json.Marshal(board)
+		res, _ := json.MarshalIndent(board, "", " ")
+		fmt.Println("Board: ", string(res))
+
 		return string(res), nil
 	}
 

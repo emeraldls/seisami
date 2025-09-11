@@ -99,3 +99,50 @@ RETURNING *;
 -- name: DeleteTicket :exec
 DELETE FROM tickets
 WHERE id = ?;
+
+-- 
+-- Transcriptions Functionality
+--
+
+-- name: GetTranscription :one
+SELECT * FROM transcriptions
+WHERE id = ?
+LIMIT 1;
+
+-- name: ListTranscriptionsByBoard :many
+SELECT * FROM transcriptions
+WHERE board_id = ?
+ORDER BY created_at DESC;
+
+-- name: ListAllTranscriptions :many
+SELECT * FROM transcriptions
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: CreateTranscription :one
+INSERT INTO transcriptions (id, board_id, transcription, recording_path, intent, assistant_response)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: UpdateTranscriptionIntent :one
+UPDATE transcriptions
+SET intent = ?,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+RETURNING *;
+
+-- name: UpdateTranscriptionResponse :one
+UPDATE transcriptions
+SET assistant_response = ?,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+RETURNING *;
+
+-- name: DeleteTranscription :exec
+DELETE FROM transcriptions
+WHERE id = ?;
+
+
+-- name: GetTranscriptionByRecordingPath :one
+SELECT * FROM transcriptions
+where recording_path = ? AND board_id = ?;

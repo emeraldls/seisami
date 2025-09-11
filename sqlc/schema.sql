@@ -31,3 +31,17 @@ CREATE TABLE IF NOT EXISTS tickets (
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (column_id) REFERENCES columns(id) ON DELETE CASCADE
 );
+
+
+-- 4. Transcription Table
+CREATE TABLE IF NOT EXISTS transcriptions (
+    id TEXT PRIMARY KEY,
+    board_id TEXT NOT NULL,
+    transcription TEXT NOT NULL,
+    recording_path TEXT,
+    intent TEXT,
+    assistant_response TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
+)

@@ -24,4 +24,10 @@ type Repository interface {
 	ListTicketsByColumn(columnId string) ([]query.Ticket, error)
 	UpdateTicket(id string, title string, description string) (query.Ticket, error)
 	UpdateTicketColumn(ticketId string, columnId string) (query.Ticket, error)
+
+	AddTransscription(boardId string, transcription string, recordingPath string) (query.Transcription, error)
+	GetTranscriptions(boardId string, page, pageSize int64) ([]query.Transcription, error)
+	GetTranscriptionByID(transcriptionId string) (query.Transcription, error)
+	UpdateTranscriptionIntent(transcriptionId string, intent string) error
+	UpdateTranscriptionResponse(transcriptionId string, response string) error
 }
