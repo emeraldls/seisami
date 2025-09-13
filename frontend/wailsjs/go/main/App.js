@@ -38,6 +38,10 @@ export function GetColumn(arg1) {
   return window['go']['main']['App']['GetColumn'](arg1);
 }
 
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
+}
+
 export function GetTicket(arg1) {
   return window['go']['main']['App']['GetTicket'](arg1);
 }
@@ -60,6 +64,14 @@ export function ListColumnsByBoard(arg1) {
 
 export function ListTicketsByColumn(arg1) {
   return window['go']['main']['App']['ListTicketsByColumn'](arg1);
+}
+
+export function OpenFileDialog(arg1, arg2) {
+  return window['go']['main']['App']['OpenFileDialog'](arg1, arg2);
+}
+
+export function SaveSettings(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SaveSettings'](arg1, arg2, arg3, arg4);
 }
 
 export function UpdateBoard(arg1, arg2) {

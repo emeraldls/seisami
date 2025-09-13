@@ -10,43 +10,59 @@ import { TranscriptionDetailModal } from "~/components/transcription-detail-moda
 import { Transcription } from "~/types/types";
 import { useBoardStore } from "~/stores/board-store";
 
-const drawLineSegment = (
+const drawWaveform = (
   ctx: CanvasRenderingContext2D,
-  x: number,
-  height: number,
-  width: number,
-  isEven: boolean
+  waveformData: number[],
+  currentPosition: number,
+  canvasWidth: number,
+  canvasHeight: number
 ) => {
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = "#0a0a0a";
+  const maxHeight = canvasHeight * 0.8;
+  const barWidth = 2;
+  const barSpacing = 1;
+  const totalBarWidth = barWidth + barSpacing;
 
-  const barWidth = Math.min(width * 0.6, 10);
-  const barX = x + (width - barWidth) / 2;
-  const radius = barWidth / 2;
+  // Draw past waveform (recorded audio)
+  ctx.fillStyle = "#3b82f6"; // Blue for recorded
+  for (let i = 0; i < currentPosition && i < waveformData.length; i++) {
+    const x = i * totalBarWidth;
+    const height = Math.max(waveformData[i] * maxHeight, 2);
+    const y = (canvasHeight - height) / 2;
 
-  ctx.beginPath();
-
-  if (height > 2) {
-    ctx.roundRect(barX, -height, barWidth, height, radius);
-    ctx.roundRect(barX, 0, barWidth, height, radius);
-  } else {
-    ctx.fillRect(barX, -height, barWidth, height);
-    ctx.fillRect(barX, 0, barWidth, height);
+    ctx.fillRect(x, y, barWidth, height);
   }
 
-  ctx.stroke();
+  // Draw current position indicator
+  if (currentPosition < waveformData.length) {
+    ctx.fillStyle = "#ef4444"; // Red for current
+    const x = currentPosition * totalBarWidth;
+    const height = Math.max(waveformData[currentPosition] * maxHeight, 2);
+    const y = (canvasHeight - height) / 2;
+
+    ctx.fillRect(x, y, barWidth, height);
+  }
+
+  // Draw future waveform (faded)
+  ctx.fillStyle = "#e5e7eb"; // Gray for future
+  for (let i = currentPosition + 1; i < waveformData.length; i++) {
+    const x = i * totalBarWidth;
+    const height = Math.max(waveformData[i] * maxHeight, 2);
+    const y = (canvasHeight - height) / 2;
+
+    ctx.fillRect(x, y, barWidth, height);
+  }
 };
 
 export default function Transcriptions() {
   const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [audioBars, setAudioBars] = useState<number[] | null>(null);
-  const [smoothedBars, setSmoothedBars] = useState<number[] | null>(null);
+  const [waveformData, setWaveformData] = useState<number[]>([]);
+  const [currentPosition, setCurrentPosition] = useState(0);
   const [selectedTranscription, setSelectedTranscription] =
     useState<Transcription | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [startDrawing, setStartDrawing] = useState(false);
   const animationRef = useRef<number>(0);
   const lastUpdateTime = useRef<number>(0);
 
@@ -85,29 +101,14 @@ export default function Transcriptions() {
   useEffect(() => {
     if (!audioBars) return;
 
-    const smoothingFactor = 0.1;
-
-    setSmoothedBars((prevSmoothedBars) => {
-      if (!prevSmoothedBars) {
-        return [...audioBars];
-      }
-
-      return prevSmoothedBars.map((current, index) => {
-        const target = audioBars[index] || 0;
-        return current + (target - current) * smoothingFactor;
-      });
-    });
+    // Add new audio data to waveform
+    setWaveformData((prev) => [...prev, ...audioBars]);
+    setCurrentPosition((prev) => prev + audioBars.length);
   }, [audioBars]);
 
   useEffect(() => {
     const draw = () => {
-      if (!startDrawing) {
-        console.log("start drawing not enabled yet");
-        return;
-      }
-
-      if (!smoothedBars) {
-        console.warn("no audio bars to draw canvas");
+      if (!isRecording || waveformData.length === 0) {
         return;
       }
 
@@ -124,30 +125,15 @@ export default function Transcriptions() {
       }
 
       const dpr = window.devicePixelRatio || 1;
-      const padding = 10;
       const rect = canvas.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
 
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, rect.width, rect.height);
-      ctx.translate(0, rect.height / 2);
 
-      const maxBars = Math.min(smoothedBars.length, Math.floor(rect.width / 6));
-      const barsToShow = smoothedBars.slice(0, maxBars);
-      const width = rect.width / barsToShow.length + 4;
-
-      for (let i = 0; i < barsToShow.length; i++) {
-        const x = width * i;
-        let height = barsToShow[i] * (rect.height / 2 - padding);
-
-        height = Math.max(height, 2);
-
-        if (height > rect.height / 2 - padding) {
-          height = rect.height / 2 - padding;
-        }
-        drawLineSegment(ctx, x, height, width, (i + 1) % 2 === 0);
-      }
+      // Draw the waveform
+      drawWaveform(ctx, waveformData, currentPosition, rect.width, rect.height);
     };
 
     const animate = () => {
@@ -158,12 +144,12 @@ export default function Transcriptions() {
         lastUpdateTime.current = now;
       }
 
-      if (startDrawing) {
+      if (isRecording) {
         animationRef.current = requestAnimationFrame(animate);
       }
     };
 
-    if (startDrawing) {
+    if (isRecording) {
       animate();
     }
 
@@ -172,7 +158,7 @@ export default function Transcriptions() {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [smoothedBars, startDrawing]);
+  }, [waveformData, currentPosition, isRecording]);
 
   useEffect(() => {
     const unsubscribeTranscription = EventsOn(
@@ -233,14 +219,14 @@ export default function Transcriptions() {
 
     const unsubscribeAudioBars = EventsOn("audio_bars", (data) => {
       if (Array.isArray(data) && data.length > 0) {
-        console.log(data);
         setAudioBars(data);
-        setStartDrawing(true);
       }
     });
 
     const unsubscribeRecordingStart = EventsOn("recording:start", () => {
       setIsRecording(true);
+      setWaveformData([]);
+      setCurrentPosition(0);
       if (currentBoard) {
         console.log("emitting event: ", currentBoard.id);
         EventsEmit("board:id", currentBoard.id);
@@ -252,8 +238,8 @@ export default function Transcriptions() {
       (data: string) => {
         setIsRecording(false);
         setAudioBars(null);
-        setSmoothedBars(null);
-        setStartDrawing(false);
+        setWaveformData([]);
+        setCurrentPosition(0);
         if (data) {
           try {
             const parsed = JSON.parse(data) as { id: string };
@@ -342,8 +328,8 @@ export default function Transcriptions() {
       </header>
       <canvas
         ref={canvasRef}
-        className="w-full h-40 border-b"
-        style={{ display: isRecording || startDrawing ? "block" : "none" }}
+        className="w-full h-20 border-b bg-gray-50"
+        style={{ display: isRecording ? "block" : "none" }}
       ></canvas>
       {/* <div className="p-4">
         <PlannerCalendar />

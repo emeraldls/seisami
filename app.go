@@ -8,14 +8,16 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"seisami/internal/actions"
 	"seisami/internal/repo"
-	"seisami/sqlc/query"
+	"seisami/internal/repo/sqlc/query"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/emeraldls/portaudio"
+	"github.com/sashabaranov/go-openai"
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
@@ -63,23 +65,23 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) handleFnKeyPress() {
-	_ = false
-	// for {
-	// 	if isFnPressed() {
-	// 		if !fnPressed {
-	// 			fnPressed = true
-	// 			fmt.Println("FN key pressed, starting recording")
-	// 			go a.startRecording()
-	// 		}
-	// 	} else {
-	// 		if fnPressed {
-	// 			fnPressed = false
-	// 			fmt.Println("FN key released, stopping recording")
-	// 			a.stopRecording()
-	// 		}
-	// 	}
-	// 	time.Sleep(100 * time.Millisecond)
-	// }
+	fnPressed := false
+	for {
+		if isFnPressed() {
+			if !fnPressed {
+				fnPressed = true
+				fmt.Println("FN key pressed, starting recording")
+				go a.startRecording()
+			}
+		} else {
+			if fnPressed {
+				fnPressed = false
+				fmt.Println("FN key released, stopping recording")
+				a.stopRecording()
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // Greet returns a greeting for the given name
@@ -159,6 +161,22 @@ func (a *App) GetTranscriptionByID(transcriptionId string) (query.Transcription,
 	return a.repository.GetTranscriptionByID(transcriptionId)
 }
 
+func (a *App) GetSettings() (query.Setting, error) {
+	return a.repository.GetSettings()
+}
+
+func (a *App) SaveSettings(transcriptionMethod string, whisperBinaryPath *string, whisperModelPath *string, openaiApiKey *string) (query.Setting, error) {
+	return a.repository.CreateOrUpdateSettings(transcriptionMethod, whisperBinaryPath, whisperModelPath, openaiApiKey)
+}
+
+func (a *App) OpenFileDialog(title string, filters []runtime.FileFilter) (string, error) {
+	options := runtime.OpenDialogOptions{
+		Title:   title,
+		Filters: filters,
+	}
+	return runtime.OpenFileDialog(a.ctx, options)
+}
+
 // TODO: Add C API to check for microphone permissions - macOS
 func (a *App) startRecording() {
 	PlaySound()
@@ -198,10 +216,21 @@ func (a *App) startRecording() {
 		return
 	}
 	defer stream.Stop()
+	home, _ := os.UserHomeDir()
+	appDir := filepath.Join(home, "Music", "Seisami")
 
-	fileName := fmt.Sprintf("./recordings/recording_%s.wav", time.Now().Format("20060102_150405"))
-	a.recordingPath = fileName
-	outFile, err := os.Create(fileName)
+	if err := os.MkdirAll(appDir, 0755); err != nil {
+		log.Printf("Error creating recordings folder: %v\n", err)
+		a.isRecording = false
+		return
+	}
+
+	fileName := fmt.Sprintf("recording_%s.wav", time.Now().Format("20060102_150405"))
+	fullPath := filepath.Join(appDir, fileName)
+
+	a.recordingPath = fullPath
+
+	outFile, err := os.Create(fullPath)
 	if err != nil {
 		log.Printf("Error creating file: %v\n", err)
 		a.isRecording = false
@@ -274,14 +303,6 @@ func fromInt16(in []int16) []int {
 	return out
 }
 
-func fromInt32(in []int32) []int {
-	out := make([]int, len(in))
-	for i, v := range in {
-		out[i] = int(v)
-	}
-	return out
-}
-
 func (a *App) getAudioBarsFromBuffer(buffer []int16, barsCount int) []float64 {
 	if len(buffer) == 0 {
 		return make([]float64, barsCount)
@@ -340,78 +361,6 @@ func (a *App) getAudioBarsFromBuffer(buffer []int16, barsCount int) []float64 {
 	return bars
 }
 
-func (a *App) getAudioWaveForm(filePath string, barsCount int) ([]float64, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		fmt.Printf("Unable to load file: %v\n", err)
-		return nil, err
-	}
-
-	decoded := wav.NewDecoder(file)
-	if decoded == nil {
-		fmt.Println("couldnt create decoder")
-		return nil, err
-	}
-
-	buf, err := decoded.FullPCMBuffer()
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode wav: %v", err)
-	}
-
-	if buf == nil || buf.Data == nil {
-		return nil, err
-	}
-
-	samples := buf.Data
-
-	totalSamples := len(samples)
-	blockSize := totalSamples / barsCount
-	fmt.Println("Block size: ", blockSize)
-
-	if blockSize == 0 {
-		return nil, fmt.Errorf("numBars too high for file")
-	}
-
-	bars := make([]float64, barsCount)
-
-	for i := 0; i < barsCount; i++ {
-		start := i * blockSize
-		end := start + blockSize
-
-		if end > totalSamples {
-			end = totalSamples
-		}
-
-		sum := 0.0
-		for _, s := range samples[start:end] {
-			sum += math.Abs(float64(s))
-		}
-
-		sampleCount := end - start
-		if sampleCount == 0 {
-			bars[i] = 0
-			continue
-		}
-		avg := sum / float64(sampleCount)
-		bars[i] = avg
-	}
-
-	maxVal := 0.0
-	for _, v := range bars {
-		if v > maxVal {
-			maxVal = v
-		}
-	}
-
-	if maxVal > 0 {
-		for i := range bars {
-			bars[i] /= maxVal
-		}
-	}
-
-	return bars, nil
-}
-
 // TODO: I should use another format for emiting data rather than slow json, maybe an array of length2 [id, transcription]
 func (a *App) trancribe() {
 	file, err := os.Open(a.recordingPath)
@@ -443,11 +392,34 @@ func (a *App) trancribe() {
 		return
 	}
 
-	transcription, err := a.transcribeLocally(a.recordingPath)
+	settings, err := a.repository.GetSettings()
+	if err != nil {
+		fmt.Printf("Error getting settings, using default transcription: %v\n", err)
+		settings.TranscriptionMethod = "cloud"
+	}
+
+	var transcription string
+	switch settings.TranscriptionMethod {
+	case "local":
+		transcription, err = a.transcribeWithLocalWhisper(a.recordingPath, settings)
+	case "custom":
+		transcription, err = a.transcribeWithOpenAI(a.recordingPath, settings)
+	case "cloud":
+		// TODO: update this when cloud transcription implemented
+		fallthrough
+	default:
+		transcription, err = a.transcribeWithCloud(a.recordingPath)
+	}
+
 	if err != nil {
 		fmt.Printf("Transcription error: %v\n", err)
 		// TODO: emit error to frontend
 		return
+	}
+
+	// TODO: adjust db for transcription error
+	if strings.Contains(transcription, "[BLANK AUDIO") {
+
 	}
 
 	transcriptionRecord, err := a.repository.AddTransscription(a.currentBoardId, transcription, a.recordingPath)
@@ -526,4 +498,65 @@ func (a *App) transcribeLocally(filePath string) (string, error) {
 	}
 
 	return strings.TrimSpace(string(output)), nil
+}
+
+func (a *App) transcribeWithLocalWhisper(filePath string, settings query.Setting) (string, error) {
+	binaryPath := ""
+	modelPath := ""
+
+	if settings.WhisperBinaryPath.Valid && settings.WhisperBinaryPath.String != "" {
+		binaryPath = settings.WhisperBinaryPath.String
+	}
+	if settings.WhisperModelPath.Valid && settings.WhisperModelPath.String != "" {
+		modelPath = settings.WhisperModelPath.String
+	}
+
+	cmd := exec.Command(binaryPath, "-m", modelPath, "-f", filePath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("error running whisper-cli: %v\n%s", err, string(output))
+	}
+
+	lines := strings.Split(string(output), "\n")
+	var transcriptionLines []string
+	for _, line := range lines {
+		if strings.Contains(line, "-->") {
+			parts := strings.Split(line, "]")
+			if len(parts) > 1 {
+				transcriptionLines = append(transcriptionLines, strings.TrimSpace(parts[1]))
+			}
+		}
+	}
+
+	if len(transcriptionLines) > 0 {
+		return strings.Join(transcriptionLines, " "), nil
+	}
+
+	return strings.TrimSpace(string(output)), nil
+}
+
+func (a *App) transcribeWithOpenAI(filePath string, settings query.Setting) (string, error) {
+	if !settings.OpenaiApiKey.Valid || settings.OpenaiApiKey.String == "" {
+		return "", fmt.Errorf("OpenAI API key not configured")
+	}
+
+	client := openai.NewClient(settings.OpenaiApiKey.String)
+
+	req := openai.AudioRequest{
+		Model:    openai.Whisper1,
+		FilePath: filePath,
+	}
+
+	resp, err := client.CreateTranscription(context.Background(), req)
+	if err != nil {
+		return "", fmt.Errorf("OpenAI transcription failed: %v", err)
+	}
+
+	return resp.Text, nil
+}
+
+func (a *App) transcribeWithCloud(filePath string) (string, error) {
+	// TODO: implement cloud transcription
+	// for now, fall back to local transcription using env API key or current method
+	return a.transcribeLocally(filePath)
 }

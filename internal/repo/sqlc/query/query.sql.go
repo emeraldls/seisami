@@ -65,6 +65,39 @@ func (q *Queries) CreateColumn(ctx context.Context, arg CreateColumnParams) (Col
 	return i, err
 }
 
+const createSettings = `-- name: CreateSettings :one
+INSERT INTO settings (id, transcription_method, whisper_binary_path, whisper_model_path, openai_api_key)
+VALUES (1, ?, ?, ?, ?)
+RETURNING id, transcription_method, whisper_binary_path, whisper_model_path, openai_api_key, created_at, updated_at
+`
+
+type CreateSettingsParams struct {
+	TranscriptionMethod string
+	WhisperBinaryPath   sql.NullString
+	WhisperModelPath    sql.NullString
+	OpenaiApiKey        sql.NullString
+}
+
+func (q *Queries) CreateSettings(ctx context.Context, arg CreateSettingsParams) (Setting, error) {
+	row := q.db.QueryRowContext(ctx, createSettings,
+		arg.TranscriptionMethod,
+		arg.WhisperBinaryPath,
+		arg.WhisperModelPath,
+		arg.OpenaiApiKey,
+	)
+	var i Setting
+	err := row.Scan(
+		&i.ID,
+		&i.TranscriptionMethod,
+		&i.WhisperBinaryPath,
+		&i.WhisperModelPath,
+		&i.OpenaiApiKey,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createTicket = `-- name: CreateTicket :one
 INSERT INTO tickets (id, column_id, title, description, assignee_id, story_points, pr_link, ticket_type)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -223,6 +256,29 @@ func (q *Queries) GetColumn(ctx context.Context, id string) (Column, error) {
 		&i.BoardID,
 		&i.Title,
 		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getSettings = `-- name: GetSettings :one
+
+SELECT id, transcription_method, whisper_binary_path, whisper_model_path, openai_api_key, created_at, updated_at FROM settings
+WHERE id = 1
+LIMIT 1
+`
+
+// Settings Functionality
+func (q *Queries) GetSettings(ctx context.Context) (Setting, error) {
+	row := q.db.QueryRowContext(ctx, getSettings)
+	var i Setting
+	err := row.Scan(
+		&i.ID,
+		&i.TranscriptionMethod,
+		&i.WhisperBinaryPath,
+		&i.WhisperModelPath,
+		&i.OpenaiApiKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -547,6 +603,44 @@ func (q *Queries) UpdateColumn(ctx context.Context, arg UpdateColumnParams) (Col
 		&i.BoardID,
 		&i.Title,
 		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateSettings = `-- name: UpdateSettings :one
+UPDATE settings
+SET transcription_method = ?,
+    whisper_binary_path = ?,
+    whisper_model_path = ?,
+    openai_api_key = ?,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = 1
+RETURNING id, transcription_method, whisper_binary_path, whisper_model_path, openai_api_key, created_at, updated_at
+`
+
+type UpdateSettingsParams struct {
+	TranscriptionMethod string
+	WhisperBinaryPath   sql.NullString
+	WhisperModelPath    sql.NullString
+	OpenaiApiKey        sql.NullString
+}
+
+func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) (Setting, error) {
+	row := q.db.QueryRowContext(ctx, updateSettings,
+		arg.TranscriptionMethod,
+		arg.WhisperBinaryPath,
+		arg.WhisperModelPath,
+		arg.OpenaiApiKey,
+	)
+	var i Setting
+	err := row.Scan(
+		&i.ID,
+		&i.TranscriptionMethod,
+		&i.WhisperBinaryPath,
+		&i.WhisperModelPath,
+		&i.OpenaiApiKey,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

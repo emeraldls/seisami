@@ -16,15 +16,13 @@ type ToolHandler func(args json.RawMessage, repo repo.Repository) (string, error
 type Tools struct {
 	openAiTools   []openai.Tool
 	ctx           context.Context
-	openAiClient  openai.Client
 	repo          repo.Repository
 	toolsRegistry map[string]ToolHandler
 }
 
-func NewTools(repo repo.Repository, openAiClient openai.Client, ctx context.Context) *Tools {
+func NewTools(repo repo.Repository, ctx context.Context) *Tools {
 	t := &Tools{
 		repo:          repo,
-		openAiClient:  openAiClient,
 		ctx:           ctx,
 		openAiTools:   make([]openai.Tool, 0),
 		toolsRegistry: make(map[string]ToolHandler),

@@ -1,7 +1,7 @@
 package repo
 
 import (
-	"seisami/sqlc/query"
+	"seisami/internal/repo/sqlc/query"
 )
 
 type Repository interface {
@@ -30,4 +30,7 @@ type Repository interface {
 	GetTranscriptionByID(transcriptionId string) (query.Transcription, error)
 	UpdateTranscriptionIntent(transcriptionId string, intent string) error
 	UpdateTranscriptionResponse(transcriptionId string, response string) error
+
+	GetSettings() (query.Setting, error)
+	CreateOrUpdateSettings(transcriptionMethod string, whisperBinaryPath *string, whisperModelPath *string, openaiApiKey *string) (query.Setting, error)
 }

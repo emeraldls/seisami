@@ -146,3 +146,28 @@ WHERE id = ?;
 -- name: GetTranscriptionByRecordingPath :one
 SELECT * FROM transcriptions
 where recording_path = ? AND board_id = ?;
+
+
+-- 
+-- Settings Functionality
+--
+
+-- name: GetSettings :one
+SELECT * FROM settings
+WHERE id = 1
+LIMIT 1;
+
+-- name: CreateSettings :one
+INSERT INTO settings (id, transcription_method, whisper_binary_path, whisper_model_path, openai_api_key)
+VALUES (1, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: UpdateSettings :one
+UPDATE settings
+SET transcription_method = ?,
+    whisper_binary_path = ?,
+    whisper_model_path = ?,
+    openai_api_key = ?,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = 1
+RETURNING *;

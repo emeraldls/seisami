@@ -24,6 +24,16 @@ type Column struct {
 	UpdatedAt sql.NullString
 }
 
+type Setting struct {
+	ID                  int64
+	TranscriptionMethod string
+	WhisperBinaryPath   sql.NullString
+	WhisperModelPath    sql.NullString
+	OpenaiApiKey        sql.NullString
+	CreatedAt           sql.NullString
+	UpdatedAt           sql.NullString
+}
+
 type Ticket struct {
 	ID          string
 	ColumnID    string

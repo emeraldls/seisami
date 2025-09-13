@@ -156,7 +156,7 @@ export default function BoardManagement() {
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+              <div className="bg-white border border-gray-200 rounded-sm p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">
                   Create New Board
                 </h2>
@@ -167,7 +167,7 @@ export default function BoardManagement() {
                     value={newBoardName}
                     onChange={(e) => setNewBoardName(e.target.value)}
                     disabled={isCreating}
-                    className="flex-1"
+                    className="flex-1 outline-none focus:outline-none focus:ring-0"
                   />
                   <Button
                     type="submit"

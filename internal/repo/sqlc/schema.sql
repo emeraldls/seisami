@@ -44,4 +44,15 @@ CREATE TABLE IF NOT EXISTS transcriptions (
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
+);
+
+-- 5. Settings Table
+CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1), -- Single row table
+    transcription_method TEXT NOT NULL DEFAULT 'cloud', -- 'cloud', 'local', 'custom'
+    whisper_binary_path TEXT,
+    whisper_model_path TEXT,
+    openai_api_key TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
 )

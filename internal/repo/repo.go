@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"seisami/sqlc/query"
+	"path/filepath"
+	"seisami/internal/repo/sqlc/query"
 
 	_ "embed"
 
@@ -19,20 +20,28 @@ type repo struct {
 	ctx     context.Context
 }
 
+//go:embed sqlc/schema.sql
+var schema string
+
+func dbPath() string {
+	home, _ := os.UserHomeDir()
+	appDir := filepath.Join(home, "Library", "Application Support", "Seisami")
+	os.MkdirAll(appDir, 0755)
+	return filepath.Join(appDir, "seisami.db")
+}
+
 func NewRepo() *repo {
-	// path := "../../sqlc/schema.sql"
 	ctx := context.Background()
-	db, err := sql.Open("sqlite3", "seisami.db")
+	db, err := sql.Open("sqlite3", dbPath())
 	if err != nil {
 		log.Fatalf("unable to setup sqlite: %v\n", err)
 	}
 
-	ddl, err := os.ReadFile("sqlc/schema.sql")
-	if err != nil {
-		log.Fatalf("unable to read schema: %v", err)
-	}
+	wd, _ := os.Getwd()
 
-	if _, err := db.ExecContext(ctx, string(ddl)); err != nil {
+	fmt.Println("cwd:", wd)
+
+	if _, err := db.ExecContext(ctx, schema); err != nil {
 		log.Fatalf("unable to create tables: %v\n", err)
 	}
 
@@ -261,4 +270,56 @@ func (r *repo) UpdateTranscriptionResponse(transcriptionId string, response stri
 		return fmt.Errorf("unable to update transcription response: %w", err)
 	}
 	return nil
+}
+
+func (r *repo) GetSettings() (query.Setting, error) {
+	settings, err := r.queries.GetSettings(r.ctx)
+	if err != nil {
+		// If no settings exist, return default settings
+		if err == sql.ErrNoRows {
+			return query.Setting{
+				ID:                  1,
+				TranscriptionMethod: "cloud",
+			}, nil
+		}
+		return query.Setting{}, fmt.Errorf("unable to get settings: %w", err)
+	}
+	return settings, nil
+}
+
+func (r *repo) CreateOrUpdateSettings(transcriptionMethod string, whisperBinaryPath *string, whisperModelPath *string, openaiApiKey *string) (query.Setting, error) {
+	// Try to get existing settings
+	_, err := r.queries.GetSettings(r.ctx)
+
+	var binaryPath, modelPath, apiKey sql.NullString
+
+	if whisperBinaryPath != nil {
+		binaryPath = sql.NullString{String: *whisperBinaryPath, Valid: true}
+	}
+	if whisperModelPath != nil {
+		modelPath = sql.NullString{String: *whisperModelPath, Valid: true}
+	}
+	if openaiApiKey != nil {
+		apiKey = sql.NullString{String: *openaiApiKey, Valid: true}
+	}
+
+	if err == sql.ErrNoRows {
+		// Create new settings
+		return r.queries.CreateSettings(r.ctx, query.CreateSettingsParams{
+			TranscriptionMethod: transcriptionMethod,
+			WhisperBinaryPath:   binaryPath,
+			WhisperModelPath:    modelPath,
+			OpenaiApiKey:        apiKey,
+		})
+	} else if err != nil {
+		return query.Setting{}, fmt.Errorf("unable to check existing settings: %w", err)
+	}
+
+	// Update existing settings
+	return r.queries.UpdateSettings(r.ctx, query.UpdateSettingsParams{
+		TranscriptionMethod: transcriptionMethod,
+		WhisperBinaryPath:   binaryPath,
+		WhisperModelPath:    modelPath,
+		OpenaiApiKey:        apiKey,
+	})
 }

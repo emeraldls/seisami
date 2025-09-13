@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
-	"os"
 	"seisami/internal/repo"
 	"seisami/internal/tools"
 	"time"
@@ -14,13 +12,11 @@ import (
 )
 
 type Action struct {
-	ctx          context.Context
-	repo         repo.Repository
-	tools        *tools.Tools
-	openAiClient *openai.Client
+	ctx   context.Context
+	repo  repo.Repository
+	tools *tools.Tools
 }
 
-// StructuredResponse represents the AI's structured response
 type StructuredResponse struct {
 	Intent       string                 `json:"intent"`
 	Understood   string                 `json:"understood"`
@@ -32,19 +28,11 @@ type StructuredResponse struct {
 
 func NewAction(ctx context.Context, repo repo.Repository) *Action {
 
-	openaiKey := os.Getenv("OPENAI_API_KEY")
-	if openaiKey == "" {
-		log.Fatal("OPENAI_API_KEY ENV NOT FOUND")
-		return nil
-	}
-
-	openAiClient := openai.NewClient(openaiKey)
-	tools := tools.NewTools(repo, *openAiClient, ctx)
+	tools := tools.NewTools(repo, ctx)
 	return &Action{
 		ctx,
 		repo,
 		tools,
-		openAiClient,
 	}
 }
 
@@ -80,10 +68,22 @@ IMPORTANT: Use tools when needed to get current data, then format the response w
 	return prompt
 }
 
+// TODO: implemented process transcription with cloud api
 func (a *Action) ProcessTranscription(transcription string, boardId string) (*StructuredResponse, error) {
 	prompt := buildPromptTemplate(transcription, boardId)
 
-	resp, err := a.openAiClient.CreateChatCompletion(a.ctx, openai.ChatCompletionRequest{
+	settings, err := a.repo.GetSettings()
+	if err != nil {
+		fmt.Printf("Error getting settings, using default transcription: %v\n", err)
+	}
+
+	if !settings.OpenaiApiKey.Valid || settings.OpenaiApiKey.String == "" {
+		return nil, fmt.Errorf("OpenAI API key not configured")
+	}
+
+	openAiClient := openai.NewClient(settings.OpenaiApiKey.String)
+
+	resp, err := openAiClient.CreateChatCompletion(a.ctx, openai.ChatCompletionRequest{
 		Model: tools.TranscriptionModel,
 		Messages: []openai.ChatCompletionMessage{
 			{
@@ -154,8 +154,19 @@ func (a *Action) handleToolCalls(message openai.ChatCompletionMessage, originalP
 		})
 	}
 
+	settings, err := a.repo.GetSettings()
+	if err != nil {
+		fmt.Printf("Error getting settings, using default transcription: %v\n", err)
+	}
+
+	if !settings.OpenaiApiKey.Valid || settings.OpenaiApiKey.String == "" {
+		return "", fmt.Errorf("OpenAI API key not configured")
+	}
+
+	openAiClient := openai.NewClient(settings.OpenaiApiKey.String)
+
 	// Ask OpenAI to provide a final structured response based on the tool results
-	resp, err := a.openAiClient.CreateChatCompletion(a.ctx, openai.ChatCompletionRequest{
+	resp, err := openAiClient.CreateChatCompletion(a.ctx, openai.ChatCompletionRequest{
 		Model:       tools.TranscriptionModel,
 		Messages:    toolMessages,
 		Temperature: 0.1,

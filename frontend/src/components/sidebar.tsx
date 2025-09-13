@@ -1,16 +1,11 @@
-import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ChevronLast,
   ChevronLeft,
   Home,
   Settings,
-  SquareKanban,
   FolderKanban,
   ClosedCaption,
 } from "lucide-react";
-import LogoWithText from "~/assets/images/logo-with-text.png";
-import Logo from "~/assets/images/logo.png";
 import { cn } from "~/lib/utils";
 import { Link, useLocation } from "react-router-dom";
 import { useSidebar } from "~/contexts/sidebar-context";
@@ -120,7 +115,8 @@ export const Sidebar = () => {
 
             return (
               <div key={item.id}>
-                <button
+                <Link
+                  to={"/" + item.id}
                   className={cn(
                     "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1",
                     "transition-all duration-200",
@@ -130,7 +126,7 @@ export const Sidebar = () => {
                 >
                   <Icon className="h-5 w-5" />
                   {!collapsed && <span className="text-sm">{item.label}</span>}
-                </button>
+                </Link>
               </div>
             );
           })}

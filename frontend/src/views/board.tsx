@@ -34,7 +34,7 @@ import {
   DeleteTicket,
 } from "../../wailsjs/go/main/App";
 import { useBoardStore } from "~/stores/board-store";
-import { ColumnResponse, TicketResponse } from "~/types/types";
+import { TicketResponse } from "~/types/types";
 import { Avatar, AvatarFallback } from "~/components/ui/avatar";
 import {
   Dialog,
@@ -89,15 +89,14 @@ export default function KanbanView() {
   const fetchBoard = useCallback(async () => {
     if (!currentBoard) return;
     try {
-      const columnsData = (await ListColumnsByBoard(
-        currentBoard.id
-      )) as ColumnResponse[];
+      const columnsData = await ListColumnsByBoard(currentBoard.id);
 
       const transformedColumns: Column[] = columnsData.map((c) => ({
         id: c.ID.toString(),
         name: c.Title,
         color: "#10B981", //TODO: add a column in *column* table to include color
       }));
+
       setColumns(transformedColumns);
 
       const allFeatures: Feature[] = [];
@@ -129,15 +128,11 @@ export default function KanbanView() {
   const handleDataChange = useCallback(
     async (newFeatures: Feature[]) => {
       for (const newFeature of newFeatures) {
-        const oldFeature = features.find((f) => f.id === newFeature.id);
-
-        if (oldFeature && oldFeature.column !== newFeature.column) {
-          try {
-            await UpdateTicketColumn(newFeature.id, newFeature.column);
-          } catch (err) {
-            console.error("Failed to update ticket column", err);
-            return;
-          }
+        try {
+          await UpdateTicketColumn(newFeature.id, newFeature.column);
+        } catch (err) {
+          console.error("Failed to update ticket column", err);
+          return;
         }
       }
 
@@ -494,7 +489,10 @@ export default function KanbanView() {
       )}
 
       <Dialog open={isCardDialogOpen} onOpenChange={setIsCardDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-4xl max-h-[90vh] overflow-y-auto"
+          aria-describedby="sinzu"
+        >
           {selectedCard && (
             <>
               <DialogHeader>

@@ -14,17 +14,6 @@ var assets embed.FS
 
 func main() {
 	_ = godotenv.Load(".env")
-
-	// bars, err := getAudioWaveForm("./audio.wav", 100)
-	// if err != nil {
-	// 	log.Fatalf("Error: %v", err)
-	// }
-
-	// fmt.Println("Waveform bars:", bars)
-
-	// return
-
-	// Create an instance of the app structure
 	app := NewApp()
 
 	// Create application with options

@@ -9,6 +9,7 @@ import { LoadingScreen } from "~/components/loading";
 import { useBoardStore } from "~/stores/board-store";
 import Transcriptions from "~/views/transcriptions";
 import KanbanView from "~/views/board";
+import Settings from "./views/settings";
 
 export default function App() {
   const { hasCompletedOnboarding, fetchBoards, isLoading } = useBoardStore();
@@ -37,6 +38,7 @@ export default function App() {
             <Route element={<KanbanView />} path="/" />
             <Route element={<Transcriptions />} path="/transcriptions" />
             <Route element={<BoardManagement />} path="/boards" />
+            <Route element={<Settings />} path="/settings" />
           </Route>
         </Routes>
       </SidebarProvider>
