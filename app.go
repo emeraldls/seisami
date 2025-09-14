@@ -70,8 +70,37 @@ func (a *App) handleFnKeyPress() {
 		if isFnPressed() {
 			if !fnPressed {
 				fnPressed = true
-				fmt.Println("FN key pressed, starting recording")
-				go a.startRecording()
+				fmt.Println("FN key pressed, checking permissions and starting recording")
+
+				// Check microphone permissions before attempting to record
+				permissionStatus := checkMicrophonePermission()
+				switch permissionStatus {
+				case 1:
+					// Authorized, proceed with recording
+					fmt.Println("Microphone permission authorized, starting recording")
+					go a.startRecording()
+				case 0:
+					// Denied or restricted
+					fmt.Println("Microphone permission denied - cannot start recording")
+					runtime.EventsEmit(a.ctx, "microphone:permission_denied", "Microphone access is denied. Please grant permission in System Settings to use recording.")
+					runtime.EventsEmit(a.ctx, "recording:blocked", "Recording blocked due to missing microphone permissions")
+				case -1:
+					// Not determined - request permission but don't start recording immediately
+					fmt.Println("Microphone permission not determined - requesting permission")
+					runtime.EventsEmit(a.ctx, "microphone:requesting_permission", "Microphone permission required. Please grant access when prompted.")
+
+					// Request permission asynchronously but don't block the FN key handler
+					go func() {
+						if requestMicrophonePermissionSync() {
+							fmt.Println("Microphone permission granted via FN key request")
+							runtime.EventsEmit(a.ctx, "microphone:permission_granted", "Microphone permission granted. You can now press FN to record.")
+						} else {
+							fmt.Println("Microphone permission denied via FN key request")
+							runtime.EventsEmit(a.ctx, "microphone:permission_denied", "Microphone permission was denied. Please grant permission in System Settings.")
+							openMicrophoneSettings()
+						}
+					}()
+				}
 			}
 		} else {
 			if fnPressed {
@@ -177,6 +206,22 @@ func (a *App) OpenFileDialog(title string, filters []runtime.FileFilter) (string
 	return runtime.OpenFileDialog(a.ctx, options)
 }
 
+// CheckMicrophonePermission checks the current microphone permission status
+// Returns: 1 = authorized, 0 = denied/restricted, -1 = not determined
+func (a *App) CheckMicrophonePermission() int {
+	return checkMicrophonePermission()
+}
+
+// RequestMicrophonePermission requests microphone permission and returns the result
+func (a *App) RequestMicrophonePermission() bool {
+	return requestMicrophonePermissionSync()
+}
+
+// OpenMicrophoneSettings opens the system settings for microphone permissions
+func (a *App) OpenMicrophoneSettings() {
+	openMicrophoneSettings()
+}
+
 // TODO: Add C API to check for microphone permissions - macOS
 func (a *App) startRecording() {
 	PlaySound()
@@ -184,6 +229,9 @@ func (a *App) startRecording() {
 		log.Println("Already recording.")
 		return
 	}
+
+	// Note: Microphone permission checks are now handled in handleFnKeyPress()
+	// This function assumes permissions have already been verified
 
 	a.isRecording = true
 	runtime.EventsEmit(a.ctx, "recording:start", true)

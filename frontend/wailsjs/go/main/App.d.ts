@@ -3,6 +3,8 @@
 import {query} from '../models';
 import {frontend} from '../models';
 
+export function CheckMicrophonePermission():Promise<number>;
+
 export function CreateBoard(arg1:string):Promise<query.Board>;
 
 export function CreateColumn(arg1:string,arg2:string):Promise<query.Column>;
@@ -36,6 +38,10 @@ export function ListColumnsByBoard(arg1:string):Promise<Array<query.Column>>;
 export function ListTicketsByColumn(arg1:string):Promise<Array<query.Ticket>>;
 
 export function OpenFileDialog(arg1:string,arg2:Array<frontend.FileFilter>):Promise<string>;
+
+export function OpenMicrophoneSettings():Promise<void>;
+
+export function RequestMicrophonePermission():Promise<boolean>;
 
 export function SaveSettings(arg1:string,arg2:any,arg3:any,arg4:any):Promise<query.Setting>;
 

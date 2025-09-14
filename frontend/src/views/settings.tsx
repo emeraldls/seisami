@@ -7,6 +7,9 @@ import {
   GetSettings,
   SaveSettings,
   OpenFileDialog,
+  CheckMicrophonePermission,
+  RequestMicrophonePermission,
+  OpenMicrophoneSettings,
 } from "../../wailsjs/go/main/App";
 import { query, frontend } from "../../wailsjs/go/models";
 
@@ -19,9 +22,12 @@ const Settings = () => {
   const [openaiApiKey, setOpenaiApiKey] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [microphonePermission, setMicrophonePermission] = useState<number>(-2); // -2 = not checked, -1 = not determined, 0 = denied, 1 = authorized
+  const [checkingPermission, setCheckingPermission] = useState(false);
 
   useEffect(() => {
     loadSettings();
+    checkMicrophonePermission();
   }, []);
 
   const loadSettings = async () => {
@@ -37,6 +43,58 @@ const Settings = () => {
       setTranscriptionMethod("cloud");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkMicrophonePermission = async () => {
+    try {
+      const permission = await CheckMicrophonePermission();
+      setMicrophonePermission(permission);
+    } catch (error) {
+      console.error("Failed to check microphone permission:", error);
+      setMicrophonePermission(-2);
+    }
+  };
+
+  const handleRequestMicrophonePermission = async () => {
+    setCheckingPermission(true);
+    try {
+      const granted = await RequestMicrophonePermission();
+      setMicrophonePermission(granted ? 1 : 0);
+      if (!granted) {
+        // If permission was denied, offer to open settings
+        const openSettings = confirm(
+          "Microphone permission was denied. Would you like to open System Settings to grant permission manually?"
+        );
+        if (openSettings) {
+          OpenMicrophoneSettings();
+        }
+      }
+    } catch (error) {
+      console.error("Failed to request microphone permission:", error);
+    } finally {
+      setCheckingPermission(false);
+    }
+  };
+
+  const getMicrophonePermissionStatus = () => {
+    switch (microphonePermission) {
+      case 1:
+        return {
+          text: "Authorized",
+          color: "text-green-600",
+          bg: "bg-green-50",
+        };
+      case 0:
+        return { text: "Denied", color: "text-red-600", bg: "bg-red-50" };
+      case -1:
+        return {
+          text: "Not Determined",
+          color: "text-yellow-600",
+          bg: "bg-yellow-50",
+        };
+      default:
+        return { text: "Unknown", color: "text-gray-600", bg: "bg-gray-50" };
     }
   };
 
@@ -104,6 +162,62 @@ const Settings = () => {
 
       <Card className="p-6 rounded-sm shadow-none">
         <div className="space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold mb-4">
+              Microphone Permissions
+            </h2>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 rounded-lg border">
+                <div>
+                  <h3 className="font-medium">Microphone Access</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Required for audio recording functionality
+                  </p>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      getMicrophonePermissionStatus().color
+                    } ${getMicrophonePermissionStatus().bg}`}
+                  >
+                    {getMicrophonePermissionStatus().text}
+                  </span>
+                  {microphonePermission !== 1 && (
+                    <Button
+                      onClick={handleRequestMicrophonePermission}
+                      disabled={checkingPermission}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {checkingPermission
+                        ? "Checking..."
+                        : "Request Permission"}
+                    </Button>
+                  )}
+                  {microphonePermission === 0 && (
+                    <Button
+                      onClick={() => OpenMicrophoneSettings()}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Open Settings
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {microphonePermission === 0 && (
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Microphone access is required</strong> for recording
+                    functionality. Please grant permission in System Settings →
+                    Privacy & Security → Microphone, then restart the
+                    application.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
           <div>
             <h2 className="text-xl font-semibold mb-4">Transcription Method</h2>
             <div className="space-y-3">
