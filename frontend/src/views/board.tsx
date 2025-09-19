@@ -16,6 +16,11 @@ import {
   MoreHorizontal,
   Edit,
   Trash2,
+  Save,
+  Upload,
+  Search,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -29,12 +34,12 @@ import {
   ListColumnsByBoard,
   ListCardsByColumn,
   UpdateCardColumn,
+  UpdateCard,
   UpdateColumn,
   DeleteColumn,
   DeleteCard,
 } from "../../wailsjs/go/main/App";
 import { useBoardStore } from "~/stores/board-store";
-import { TicketResponse } from "~/types/types";
 import { Avatar, AvatarFallback } from "~/components/ui/avatar";
 import {
   Dialog,
@@ -46,6 +51,8 @@ import {
 type Feature = {
   id: string;
   name: string;
+  description: string;
+  attachments: string;
   startAt: Date;
   endAt: Date;
   column: string;
@@ -79,10 +86,19 @@ export default function KanbanView() {
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [selectedCard, setSelectedCard] = useState<Feature | null>(null);
   const [isCardDialogOpen, setIsCardDialogOpen] = useState(false);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editingDescription, setEditingDescription] = useState("");
+  const [newAttachment, setNewAttachment] = useState("");
   const [dragStartTime, setDragStartTime] = useState<number | null>(null);
   const [draggedCardId, setDraggedCardId] = useState<string | null>(null);
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
   const [editingColumnName, setEditingColumnName] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Feature[]>([]);
+  const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
+  const [highlightedCardId, setHighlightedCardId] = useState<string | null>(
+    null
+  );
 
   const { currentBoard } = useBoardStore();
 
@@ -106,8 +122,12 @@ export default function KanbanView() {
           const featuresForColumn: Feature[] = tickets.map((t) => ({
             id: t.ID.toString(),
             name: t.Title,
+            description: t.Description.Valid ? t.Description.String : "",
+            attachments: t.Attachments.Valid ? t.Attachments.String : "",
             startAt: new Date(t.CreatedAt.String!),
-            endAt: new Date(t.CreatedAt.String!),
+            endAt: new Date(
+              t.UpdatedAt.Valid ? t.UpdatedAt.String! : t.CreatedAt.String!
+            ),
             column: col.ID.toString(),
           }));
           allFeatures.push(...featuresForColumn);
@@ -129,7 +149,7 @@ export default function KanbanView() {
         try {
           await UpdateCardColumn(newFeature.id, newFeature.column);
         } catch (err) {
-          console.error("Failed to update ticket column", err);
+          console.error("Failed to update card column", err);
           return;
         }
       }
@@ -170,7 +190,7 @@ export default function KanbanView() {
       setAddingCardInStatus(null);
       fetchBoard();
     } catch (err) {
-      console.error("Failed to create ticket", err);
+      console.error("Failed to create card", err);
     }
   };
 
@@ -225,24 +245,194 @@ export default function KanbanView() {
     }
   };
 
+  const handleStartEditDescription = () => {
+    setEditingDescription(selectedCard?.description || "");
+    setIsEditingDescription(true);
+  };
+
+  const handleSaveDescription = async () => {
+    if (!selectedCard) return;
+
+    try {
+      await UpdateCard(selectedCard.id, selectedCard.name, editingDescription);
+      setIsEditingDescription(false);
+      fetchBoard();
+    } catch (err) {
+      console.error("Failed to update description", err);
+    }
+  };
+
+  const handleCancelEditDescription = () => {
+    setIsEditingDescription(false);
+    setEditingDescription("");
+  };
+
+  const handleAddAttachment = async () => {
+    if (!selectedCard || !newAttachment.trim()) return;
+
+    try {
+      // TODO: Need to add UpdateCardAttachments function to backend
+      // Current UpdateCard only handles title and description
+      console.log("Add attachment functionality needs backend support");
+      setNewAttachment("");
+      // fetchBoard();
+    } catch (err) {
+      console.error("Failed to add attachment", err);
+    }
+  };
+
+  const handleRemoveAttachment = async (attachmentToRemove: string) => {
+    if (!selectedCard) return;
+
+    try {
+      // TODO: Need to add UpdateCardAttachments function to backend
+      // Current UpdateCard only handles title and description
+      console.log("Remove attachment functionality needs backend support");
+      // fetchBoard();
+    } catch (err) {
+      console.error("Failed to remove attachment", err);
+    }
+  };
+
+  const performSearch = useCallback(
+    (query: string) => {
+      if (!query.trim()) {
+        setSearchResults([]);
+        setHighlightedCardId(null);
+        setCurrentSearchIndex(0);
+        return;
+      }
+
+      const lowercaseQuery = query.toLowerCase();
+      const results: Feature[] = [];
+
+      features.forEach((feature) => {
+        const matchesTitle = feature.name
+          .toLowerCase()
+          .includes(lowercaseQuery);
+        const matchesDescription = feature.description
+          .toLowerCase()
+          .includes(lowercaseQuery);
+
+        // Also search in column names
+        const column = columns.find((col) => col.id === feature.column);
+        const matchesColumn = column?.name
+          .toLowerCase()
+          .includes(lowercaseQuery);
+
+        if (matchesTitle || matchesDescription || matchesColumn) {
+          results.push(feature);
+        }
+      });
+
+      setSearchResults(results);
+      setCurrentSearchIndex(0);
+
+      if (results.length > 0) {
+        setHighlightedCardId(results[0].id);
+        scrollToCard(results[0].id);
+      } else {
+        setHighlightedCardId(null);
+      }
+    },
+    [features, columns]
+  );
+
+  const navigateSearchResults = (direction: "next" | "prev") => {
+    if (searchResults.length === 0) return;
+
+    let newIndex = currentSearchIndex;
+
+    if (direction === "next") {
+      newIndex = (currentSearchIndex + 1) % searchResults.length;
+    } else {
+      newIndex =
+        currentSearchIndex === 0
+          ? searchResults.length - 1
+          : currentSearchIndex - 1;
+    }
+
+    setCurrentSearchIndex(newIndex);
+    setHighlightedCardId(searchResults[newIndex].id);
+    scrollToCard(searchResults[newIndex].id);
+  };
+
+  const scrollToCard = (cardId: string) => {
+    const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
+    if (cardElement) {
+      cardElement.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "center",
+      });
+    }
+  };
+
+  const highlightText = (text: string, query: string) => {
+    if (!query.trim()) return text;
+
+    const regex = new RegExp(
+      `(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+      "gi"
+    );
+    const parts = text.split(regex);
+
+    return parts.map((part, index) =>
+      regex.test(part) ? (
+        <mark
+          key={index}
+          className="bg-yellow-200 text-yellow-900 px-1 rounded"
+        >
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
+  };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+    setSearchResults([]);
+    setHighlightedCardId(null);
+    setCurrentSearchIndex(0);
+  };
+
+  useEffect(() => {
+    performSearch(searchQuery);
+  }, [searchQuery, performSearch]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (searchResults.length === 0) return;
+
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        navigateSearchResults("next");
+      } else if (e.key === "Enter" && e.shiftKey) {
+        e.preventDefault();
+        navigateSearchResults("prev");
+      } else if (e.key === "Escape" && searchQuery) {
+        clearSearch();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [searchResults.length, searchQuery]);
+
   const getCardData = (feature: Feature) => {
+    let attachments: string[] = [];
+    if (feature.attachments && feature.attachments.trim()) {
+      attachments = feature.attachments
+        .split(",")
+        .map((att) => att.trim())
+        .filter((att) => att.length > 0);
+    }
+
     return {
       ...feature,
-      description: "This is a sample description for the task.",
-      attachments: [
-        {
-          id: "2",
-          name: "requirements.pdf",
-          type: "pdf",
-          size: "1.2 MB",
-          addedDate: "5 Jan 2019, 14:23",
-          isCover: false,
-        },
-      ],
-      assignees: [
-        { id: "1", name: "John Doe", initials: "JD" },
-        { id: "2", name: "Jane Smith", initials: "JS" },
-      ],
+      attachments,
     };
   };
 
@@ -256,6 +446,60 @@ export default function KanbanView() {
 
   return (
     <div className="p-4 h-full w-full overflow-x-auto">
+      <div className="mb-4 flex items-center gap-2 max-w-md">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search cards, descriptions, columns..."
+            className="pl-10 pr-10"
+          />
+          {searchQuery && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearSearch}
+              className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
+
+        {searchResults.length > 0 && (
+          <div className="flex items-center gap-1">
+            <span className="text-sm text-muted-foreground px-2">
+              {currentSearchIndex + 1} of {searchResults.length}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigateSearchResults("prev")}
+              className="h-8 w-8 p-0"
+              title="Previous result (Shift+Enter)"
+            >
+              <ChevronUp className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigateSearchResults("next")}
+              className="h-8 w-8 p-0"
+              title="Next result (Ctrl/Cmd+Enter)"
+            >
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+
+        {searchQuery && searchResults.length === 0 && (
+          <span className="text-sm text-muted-foreground">
+            No results found
+          </span>
+        )}
+      </div>
+
       {columns.length === 0 ? (
         <div className="h-full flex items-center justify-center">
           <div className="text-center">
@@ -342,7 +586,20 @@ export default function KanbanView() {
                           autoFocus
                         />
                       ) : (
-                        <span>{column.name}</span>
+                        <span
+                          className={
+                            searchQuery &&
+                            column.name
+                              .toLowerCase()
+                              .includes(searchQuery.toLowerCase())
+                              ? "bg-neutral-200 text-yellow-900 px-1 rounded"
+                              : ""
+                          }
+                        >
+                          {searchQuery
+                            ? highlightText(column.name, searchQuery)
+                            : column.name}
+                        </span>
                       )}
                     </div>
                     <DropdownMenu>
@@ -393,31 +650,61 @@ export default function KanbanView() {
                   </div>
                 ) : (
                   <KanbanCards id={column.id}>
-                    {(feature: Feature) => (
-                      <KanbanCard
-                        column={column.id}
-                        id={feature.id}
-                        key={feature.id}
-                        name={feature.name}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex flex-col gap-1">
-                            <p className="m-0 flex-1 font-medium text-sm">
-                              {feature.name}
-                            </p>
+                    {(feature: Feature) => {
+                      const isHighlighted = highlightedCardId === feature.id;
+                      const isInSearchResults = searchResults.some(
+                        (result) => result.id === feature.id
+                      );
+
+                      return (
+                        <KanbanCard
+                          column={column.id}
+                          id={feature.id}
+                          key={feature.id}
+                          name={feature.name}
+                          className={`transition-all duration-200 ${
+                            isHighlighted
+                              ? "ring-2 ring-yellow-400 shadow-lg"
+                              : isInSearchResults
+                              ? "ring-1 ring-yellow-200"
+                              : ""
+                          }`}
+                        >
+                          <div
+                            className="flex items-start justify-between gap-2"
+                            data-card-id={feature.id}
+                          >
+                            <div className="flex flex-col gap-1">
+                              <p className="m-0 flex-1 font-medium text-sm">
+                                {searchQuery
+                                  ? highlightText(feature.name, searchQuery)
+                                  : feature.name}
+                              </p>
+                              {searchQuery &&
+                                feature.description &&
+                                feature.description
+                                  .toLowerCase()
+                                  .includes(searchQuery.toLowerCase()) && (
+                                  <p className="m-0 text-xs text-muted-foreground truncate">
+                                    {highlightText(
+                                      feature.description,
+                                      searchQuery
+                                    )}
+                                  </p>
+                                )}
+                            </div>
+                            <Avatar className="h-4 w-4 shrink-0">
+                              <AvatarFallback>
+                                {feature.name.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
                           </div>
-                          <Avatar className="h-4 w-4 shrink-0">
-                            <AvatarFallback>
-                              {feature.name.slice(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                        <p className="m-0 text-muted-foreground text-xs">
-                          {shortDateFormatter.format(feature.startAt)} -{" "}
-                          {dateFormatter.format(feature.endAt)}
-                        </p>
-                      </KanbanCard>
-                    )}
+                          <p className="m-0 text-muted-foreground text-xs">
+                            {shortDateFormatter.format(feature.startAt)}
+                          </p>
+                        </KanbanCard>
+                      );
+                    }}
                   </KanbanCards>
                 )}
 
@@ -512,14 +799,52 @@ export default function KanbanView() {
 
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
-                    <User className="h-4 w-4" />
-                    Description
+                  <h3 className="text-sm font-medium mb-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Description
+                    </div>
+                    {!isEditingDescription && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleStartEditDescription}
+                        className="h-6 w-6 p-0"
+                      >
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                    )}
                   </h3>
                   <div className="bg-muted/20 rounded-lg p-4">
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {getCardData(selectedCard).description}
-                    </p>
+                    {isEditingDescription ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={editingDescription}
+                          onChange={(e) =>
+                            setEditingDescription(e.target.value)
+                          }
+                          className="w-full min-h-24 p-2 text-sm bg-background border rounded resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                          placeholder="Enter description..."
+                        />
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={handleSaveDescription}>
+                            <Save className="h-3 w-3 mr-1" />
+                            Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={handleCancelEditDescription}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        {selectedCard.description || "No description provided."}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -528,34 +853,63 @@ export default function KanbanView() {
                     <Paperclip className="h-4 w-4" />
                     Attachments
                   </h3>
+
+                  <div className="mb-4 flex gap-2">
+                    <Input
+                      value={newAttachment}
+                      onChange={(e) => setNewAttachment(e.target.value)}
+                      placeholder="Enter file name or URL..."
+                      className="flex-1"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleAddAttachment}
+                      disabled={!newAttachment.trim()}
+                    >
+                      <Upload className="h-3 w-3 mr-1" />
+                      Add
+                    </Button>
+                  </div>
+
                   <div className="space-y-2">
-                    {getCardData(selectedCard).attachments.map((attachment) => (
-                      <div
-                        key={attachment.id}
-                        className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/20 transition-colors"
-                      >
-                        <div className="flex-shrink-0 w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                          <span className="text-xs font-medium text-orange-600">
-                            {attachment.type.toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="flex-grow min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium text-sm truncate">
-                              {attachment.name}
-                            </p>
-                            {attachment.isCover && (
-                              <span className="text-xs bg-orange-100 text-orange-600 px-2 py-1 rounded">
-                                Cover
+                    {getCardData(selectedCard).attachments.length > 0 ? (
+                      getCardData(selectedCard).attachments.map(
+                        (attachment: string, index: number) => (
+                          <div
+                            key={index}
+                            className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/20 transition-colors"
+                          >
+                            <div className="flex-shrink-0 w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                              <span className="text-xs font-medium text-orange-600">
+                                FILE
                               </span>
-                            )}
+                            </div>
+                            <div className="flex-grow min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-sm truncate">
+                                  {attachment}
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveAttachment(attachment)}
+                              className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            Added {attachment.addedDate} • {attachment.size}
-                          </p>
-                        </div>
+                        )
+                      )
+                    ) : (
+                      <div className="text-center py-8">
+                        <Paperclip className="h-8 w-8 mx-auto text-muted-foreground/40 mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          No attachments
+                        </p>
                       </div>
-                    ))}
+                    )}
                   </div>
                 </div>
 

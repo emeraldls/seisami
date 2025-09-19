@@ -43,7 +43,7 @@ const drawWaveform = (
   }
 
   // Draw future waveform (faded)
-  ctx.fillStyle = "#e5e7eb"; // Gray for future
+  ctx.fillStyle = "#e5e7eb"; // neutral for future
   for (let i = currentPosition + 1; i < waveformData.length; i++) {
     const x = i * totalBarWidth;
     const height = Math.max(waveformData[i] * maxHeight, 2);
@@ -328,7 +328,7 @@ export default function Transcriptions() {
       </header>
       <canvas
         ref={canvasRef}
-        className="w-full h-20 border-b bg-gray-50"
+        className="w-full h-20 border-b bg-neutral-50"
         style={{ display: isRecording ? "block" : "none" }}
       ></canvas>
       {/* <div className="p-4">

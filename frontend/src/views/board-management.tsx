@@ -96,11 +96,11 @@ export default function BoardManagement() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-50/50">
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+    <div className="h-full flex flex-col bg-neutral-50/50">
+      <div className="bg-white border-b border-neutral-200 px-6 py-4">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-2xl font-semibold text-gray-900">Boards</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-semibold text-neutral-900">Boards</h1>
+          <p className="text-sm text-neutral-500 mt-1">
             Manage and organize your project boards
           </p>
         </div>
@@ -112,25 +112,25 @@ export default function BoardManagement() {
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-500">Loading boards...</p>
+                <p className="text-neutral-500">Loading boards...</p>
               </div>
             </div>
           ) : boards.length === 0 ? (
             <div className="flex items-center justify-center py-20">
               <div className="text-center max-w-md">
-                <div className="w-24 h-24 mx-auto bg-gray-100 rounded-lg flex items-center justify-center mb-6">
-                  <Plus className="h-8 w-8 text-gray-400" />
+                <div className="w-24 h-24 mx-auto bg-neutral-100 rounded-lg flex items-center justify-center mb-6">
+                  <Plus className="h-8 w-8 text-neutral-400" />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                <h3 className="text-xl font-semibold text-neutral-900 mb-2">
                   No boards yet
                 </h3>
-                <p className="text-gray-500 mb-8">
+                <p className="text-neutral-500 mb-8">
                   Create your first board to start organizing your tasks and
                   projects
                 </p>
 
-                <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-                  <h4 className="text-lg font-medium text-gray-900 mb-4">
+                <div className="bg-white border border-neutral-200 rounded-lg p-6 shadow-sm">
+                  <h4 className="text-lg font-medium text-neutral-900 mb-4">
                     Create your first board
                   </h4>
                   <form onSubmit={handleCreateBoard} className="space-y-4">
@@ -156,8 +156,8 @@ export default function BoardManagement() {
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="bg-white border border-gray-200 rounded-sm p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              <div className="bg-white border border-neutral-200 rounded-sm p-6">
+                <h2 className="text-lg font-semibold text-neutral-900 mb-4">
                   Create New Board
                 </h2>
                 <form onSubmit={handleCreateBoard} className="flex gap-3">
@@ -182,7 +182,7 @@ export default function BoardManagement() {
 
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">
+                  <h2 className="text-lg font-semibold text-neutral-900">
                     Your Boards ({boards.length})
                   </h2>
                 </div>
@@ -194,7 +194,7 @@ export default function BoardManagement() {
                       className={`group bg-white border rounded-sm p-4 shadow-sm hover:shadow-md transition-all cursor-pointer ${
                         currentBoard?.id === board.id
                           ? "border-black bg-blue-50/50 ring-1 ring-black"
-                          : "border-gray-200 hover:border-gray-300"
+                          : "border-neutral-200 hover:border-neutral-300"
                       }`}
                     >
                       <div className="flex items-start justify-between mb-3">
@@ -211,7 +211,7 @@ export default function BoardManagement() {
                                   name: e.target.value,
                                 })
                               }
-                              className="font-medium text-gray-900"
+                              className="font-medium text-neutral-900"
                               autoFocus
                               onBlur={() => setEditingBoard(null)}
                             />
@@ -221,7 +221,7 @@ export default function BoardManagement() {
                             className="flex-1 min-w-0"
                             onClick={() => handleSelectBoard(board)}
                           >
-                            <h3 className="font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+                            <h3 className="font-medium text-neutral-900 truncate group-hover:text-blue-600 transition-colors">
                               {board.name}
                             </h3>
                             {currentBoard?.id === board.id && (
@@ -244,7 +244,7 @@ export default function BoardManagement() {
                                 name: board.name,
                               });
                             }}
-                            className="h-8 w-8 p-0 text-gray-400 hover:text-gray-600"
+                            className="h-8 w-8 p-0 text-neutral-400 hover:text-neutral-600"
                           >
                             <Edit3 className="h-4 w-4" />
                           </Button>
@@ -255,7 +255,7 @@ export default function BoardManagement() {
                               e.stopPropagation();
                               handleDeleteBoard(board.id, board.name);
                             }}
-                            className="h-8 w-8 p-0 text-gray-400 hover:text-red-600"
+                            className="h-8 w-8 p-0 text-neutral-400 hover:text-red-600"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -266,7 +266,7 @@ export default function BoardManagement() {
                         className="space-y-2"
                         onClick={() => handleSelectBoard(board)}
                       >
-                        <div className="flex items-center text-sm text-gray-500">
+                        <div className="flex items-center text-sm text-neutral-500">
                           <Calendar className="h-4 w-4 mr-2" />
                           Created{" "}
                           {new Date(board.created_at).toLocaleDateString()}

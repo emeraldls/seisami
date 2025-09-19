@@ -36,23 +36,23 @@ export const TranscriptionDetailModal: React.FC<
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Transcription Details</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Timestamp */}
           <div>
-            <h3 className="text-sm font-medium text-gray-900 mb-2">Recorded</h3>
-            <p className="text-sm text-gray-600">{date}</p>
-            <p className="text-xs text-gray-500">{time}</p>
+            <h3 className="text-sm font-medium text-neutral-900 mb-2">
+              Recorded
+            </h3>
+            <p className="text-sm text-neutral-600">{date}</p>
+            <p className="text-xs text-neutral-500">{time}</p>
           </div>
 
-          {/* Transcription Text */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-900">
+              <h3 className="text-sm font-medium text-neutral-900">
                 What you said
               </h3>
               <Button
@@ -65,22 +65,21 @@ export const TranscriptionDetailModal: React.FC<
                 Copy
               </Button>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm text-gray-900 leading-relaxed">
+            <div className="bg-neutral-50 rounded-lg p-4">
+              <p className="text-sm text-neutral-900 leading-relaxed">
                 "{transcription.text}"
               </p>
               {transcription.wordCount && (
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-xs text-neutral-500 mt-2">
                   {transcription.wordCount} words
                 </p>
               )}
             </div>
           </div>
 
-          {/* Intent */}
           {transcription.intent && (
             <div>
-              <h3 className="text-sm font-medium text-gray-900 mb-2">
+              <h3 className="text-sm font-medium text-neutral-900 mb-2">
                 AI Understanding
               </h3>
               <div className="bg-blue-50 rounded-lg p-4">
@@ -91,11 +90,10 @@ export const TranscriptionDetailModal: React.FC<
             </div>
           )}
 
-          {/* Assistant Response */}
           {transcription.assistantResponse && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-gray-900">
+                <h3 className="text-sm font-medium text-neutral-900">
                   AI Response
                 </h3>
                 <Button
@@ -108,21 +106,20 @@ export const TranscriptionDetailModal: React.FC<
                   Copy
                 </Button>
               </div>
-              <div className="bg-green-50 rounded-lg p-4">
-                <p className="text-sm text-green-800 leading-relaxed">
+              <div className="bg-neutral-100 rounded-lg p-4">
+                <p className="text-sm leading-relaxed">
                   {transcription.assistantResponse}
                 </p>
               </div>
             </div>
           )}
 
-          {/* Recording Path (for debugging) */}
           {transcription.recordingPath && (
             <div>
-              <h3 className="text-xs font-medium text-gray-500 mb-1">
+              <h3 className="text-xs font-medium text-neutral-500 mb-1">
                 Recording File
               </h3>
-              <p className="text-xs text-gray-400 font-mono bg-gray-100 p-2 rounded">
+              <p className="text-xs text-neutral-400 font-mono bg-neutral-100 p-2 rounded">
                 {transcription.recordingPath}
               </p>
             </div>

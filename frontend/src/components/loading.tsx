@@ -26,10 +26,10 @@ interface LoadingScreenProps {
 
 export function LoadingScreen({ message = "Loading..." }: LoadingScreenProps) {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+    <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
       <div className="text-center">
         <LoadingSpinner size="lg" className="mx-auto mb-4" />
-        <p className="text-gray-600">{message}</p>
+        <p className="text-neutral-600">{message}</p>
       </div>
     </div>
   );

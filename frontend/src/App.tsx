@@ -10,6 +10,7 @@ import { useBoardStore } from "~/stores/board-store";
 import Transcriptions from "~/views/transcriptions";
 import KanbanView from "~/views/board";
 import Settings from "./views/settings";
+import { Toaster } from "~/components/ui/sonner";
 
 export default function App() {
   const { hasCompletedOnboarding, fetchBoards, isLoading } = useBoardStore();
@@ -41,6 +42,7 @@ export default function App() {
             <Route element={<Settings />} path="/settings" />
           </Route>
         </Routes>
+        <Toaster />
       </SidebarProvider>
     </ErrorBoundary>
   );

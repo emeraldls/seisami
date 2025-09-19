@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sashabaranov/go-openai"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type Action struct {
@@ -40,7 +41,7 @@ func buildPromptTemplate(transcription string, boardId string) string {
 	prompt := fmt.Sprintf(`You are Seisami AI — a minimalist, high-precision desktop-first productivity assistant. You help users manage their boards and tasks through voice commands.
 
 CONTEXT:
-- Current time: %s (RFC3339)
+- Current date time: %s (RFC3339)
 - Current Board ID: %s
 - User said: "%s"
 
@@ -49,6 +50,7 @@ IMPORTANT CONCEPTS:
 - If a column for a task doesn't exist, create it first, then add the card to that column.
 - Extract multiple tasks from a single transcription when mentioned.
 - Use appropriate column names like "To Do", "In Progress", "Done", "Backlog", etc.
+- Context Awareness: Use the current datetime (provided as {{%s}} RFC3339) to resolve relative times like "Saturday" or "next week." Handle multi-step commands by sequencing actions logically.
 
 INSTRUCTIONS:
 1. Use available tools when you need to fetch or modify data
@@ -75,35 +77,21 @@ EXAMPLE RESPONSE:
   "Fetched current board to prepare for task creation"
  ],
  "result": "Ready to create tasks for visiting girlfriend, watching a play, attending a meeting, and completing house chores as per the user's schedule.",
- "data": {
-  "tasks_to_create": [
-   {
-    "due": "2025-09-20T17:00:00+01:00",
-    "title": "Visit girlfriend"
-   },
-   {
-    "due": "2025-09-20T09:30:00+01:00",
-    "title": "Watch a play before 10am meeting"
-   },
-   {
-    "due": "2025-09-20T10:00:00+01:00",
-    "title": "Meeting with Oluwasamwe and Smart"
-   },
-   {
-    "due": "2025-09-20T09:00:00+01:00",
-    "title": "Complete house chores before play and meeting"
-   }
-  ]
- }
 }
 
-IMPORTANT: This is NOT a chat interface. The response will be saved as a summary with the transcription. Focus on providing a clear, actionable summary of what was accomplished.`, now, boardId, transcription)
+IMPORTANT: This is NOT a chat interface. The response will be saved as a summary with the transcription. Focus on providing a clear, actionable summary of what was accomplished.`, now, boardId, transcription, now)
 
 	return prompt
 }
 
 // TODO: implemented process transcription with cloud api
 func (a *Action) ProcessTranscription(transcription string, boardId string) (*StructuredResponse, error) {
+	runtime.EventsEmit(a.ctx, "ai:processing_start", map[string]interface{}{
+		"transcription": transcription,
+		"boardId":       boardId,
+		"timestamp":     time.Now().Format(time.RFC3339),
+	})
+
 	prompt := buildPromptTemplate(transcription, boardId)
 
 	settings, err := a.repo.GetSettings()
@@ -112,6 +100,10 @@ func (a *Action) ProcessTranscription(transcription string, boardId string) (*St
 	}
 
 	if !settings.OpenaiApiKey.Valid || settings.OpenaiApiKey.String == "" {
+		runtime.EventsEmit(a.ctx, "ai:error", map[string]interface{}{
+			"error":     "OpenAI API key not configured",
+			"timestamp": time.Now().Format(time.RFC3339),
+		})
 		return nil, fmt.Errorf("OpenAI API key not configured")
 	}
 
@@ -130,10 +122,18 @@ func (a *Action) ProcessTranscription(transcription string, boardId string) (*St
 	})
 
 	if err != nil {
+		runtime.EventsEmit(a.ctx, "ai:error", map[string]interface{}{
+			"error":     fmt.Sprintf("OpenAI API call failed: %v", err),
+			"timestamp": time.Now().Format(time.RFC3339),
+		})
 		return nil, fmt.Errorf("unable to make OpenAI API call: %w", err)
 	}
 
 	if len(resp.Choices) == 0 {
+		runtime.EventsEmit(a.ctx, "ai:error", map[string]interface{}{
+			"error":     "No response choices returned from OpenAI",
+			"timestamp": time.Now().Format(time.RFC3339),
+		})
 		return nil, fmt.Errorf("no response choices returned from OpenAI")
 	}
 
@@ -143,8 +143,13 @@ func (a *Action) ProcessTranscription(transcription string, boardId string) (*St
 	var finalResponse string
 
 	if len(message.ToolCalls) > 0 {
+
 		finalResponse, err = a.handleToolCalls(message, prompt)
 		if err != nil {
+			runtime.EventsEmit(a.ctx, "ai:error", map[string]interface{}{
+				"error":     fmt.Sprintf("Tool execution failed: %v", err),
+				"timestamp": time.Now().Format(time.RFC3339),
+			})
 			return nil, err
 		}
 	} else {
@@ -160,6 +165,13 @@ func (a *Action) ProcessTranscription(transcription string, boardId string) (*St
 		}
 	}
 
+	runtime.EventsEmit(a.ctx, "ai:processing_complete", map[string]interface{}{
+		"intent":       structuredResp.Intent,
+		"actionsTaken": structuredResp.ActionsTaken,
+		"result":       structuredResp.Result,
+		"timestamp":    time.Now().Format(time.RFC3339),
+	})
+
 	return &structuredResp, nil
 }
 
@@ -171,23 +183,6 @@ func (a *Action) handleToolCalls(message openai.ChatCompletionMessage, originalP
 	})
 	toolMessages = append(toolMessages, message)
 
-	fmt.Println("Tool calls:", message.ToolCalls)
-
-	for _, toolCall := range message.ToolCalls {
-		fmt.Printf("Executing tool: %s\n", toolCall.Function.Name)
-
-		result, err := a.tools.ExecuteTool(toolCall)
-		if err != nil {
-			result = fmt.Sprintf("Error executing tool: %s", err.Error())
-		}
-
-		toolMessages = append(toolMessages, openai.ChatCompletionMessage{
-			Role:       openai.ChatMessageRoleTool,
-			ToolCallID: toolCall.ID,
-			Content:    result,
-		})
-	}
-
 	settings, err := a.repo.GetSettings()
 	if err != nil {
 		fmt.Printf("Error getting settings, using default transcription: %v\n", err)
@@ -198,21 +193,69 @@ func (a *Action) handleToolCalls(message openai.ChatCompletionMessage, originalP
 	}
 
 	openAiClient := openai.NewClient(settings.OpenaiApiKey.String)
+	currentMessage := message
+	maxIterations := 10
 
-	// Ask OpenAI to provide a final structured response based on the tool results
-	resp, err := openAiClient.CreateChatCompletion(a.ctx, openai.ChatCompletionRequest{
-		Model:       tools.TranscriptionModel,
-		Messages:    toolMessages,
-		Temperature: 0.1,
-	})
+	for iteration := 0; iteration < maxIterations && len(currentMessage.ToolCalls) > 0; iteration++ {
+		fmt.Printf("Tool call iteration %d with %d tool calls\n", iteration+1, len(currentMessage.ToolCalls))
 
-	if err != nil {
-		return "", fmt.Errorf("unable to make follow-up OpenAI API call: %w", err)
+		for _, toolCall := range currentMessage.ToolCalls {
+			fmt.Printf("Executing tool: %s\n", toolCall.Function.Name)
+
+			result, err := a.tools.ExecuteTool(toolCall)
+			if err != nil {
+				result = fmt.Sprintf("Error executing tool: %s", err.Error())
+
+				runtime.EventsEmit(a.ctx, "ai:tool_error", map[string]interface{}{
+					"toolName":  toolCall.Function.Name,
+					"error":     err.Error(),
+					"iteration": iteration + 1,
+					"timestamp": time.Now().Format(time.RFC3339),
+				})
+			} else {
+
+				runtime.EventsEmit(a.ctx, "ai:tool_complete", map[string]interface{}{
+					"toolName":  toolCall.Function.Name,
+					"result":    result,
+					"iteration": iteration + 1,
+					"timestamp": time.Now().Format(time.RFC3339),
+				})
+			}
+
+			toolMessages = append(toolMessages, openai.ChatCompletionMessage{
+				Role:       openai.ChatMessageRoleTool,
+				ToolCallID: toolCall.ID,
+				Content:    result,
+			})
+		}
+
+		resp, err := openAiClient.CreateChatCompletion(a.ctx, openai.ChatCompletionRequest{
+			Model:       tools.TranscriptionModel,
+			Messages:    toolMessages,
+			Temperature: 0.1,
+			Tools:       a.tools.AvailableTools(),
+		})
+
+		if err != nil {
+			return "", fmt.Errorf("unable to make follow-up OpenAI API call: %w", err)
+		}
+
+		if len(resp.Choices) == 0 {
+			return "", fmt.Errorf("no response choices returned from follow-up call")
+		}
+
+		currentMessage = resp.Choices[0].Message
+		toolMessages = append(toolMessages, currentMessage)
+
+		if len(currentMessage.ToolCalls) == 0 {
+			fmt.Printf("No more tool calls, returning final response\n")
+			return currentMessage.Content, nil
+		}
 	}
 
-	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("no response choices returned from follow-up call")
+	if len(currentMessage.ToolCalls) > 0 {
+		fmt.Printf("Hit max iterations (%d), stopping tool call chain\n", maxIterations)
 	}
 
-	return resp.Choices[0].Message.Content, nil
+	return currentMessage.Content, nil
 }

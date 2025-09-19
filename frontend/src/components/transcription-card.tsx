@@ -7,10 +7,13 @@ const formatTime = (date: Date) => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
+const truncateText = (text: string, maxLength: number = 200) => {
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength).trim() + "...";
+};
+
 export const TranscriptionCard = ({
   transcription,
-  onCopy,
-  onDelete,
   onClick,
 }: {
   transcription: Transcription;
@@ -21,7 +24,7 @@ export const TranscriptionCard = ({
   return (
     <div
       key={transcription.id}
-      className="group border-b py-2 transition-all duration-200 cursor-pointer hover:bg-gray-50 rounded-lg px-3"
+      className="group border-b py-2 transition-all duration-200 cursor-pointer hover:bg-neutral-50 rounded-lg px-3"
       onClick={() => onClick?.(transcription)}
     >
       <div className="flex items-start justify-between gap-4">
@@ -34,8 +37,8 @@ export const TranscriptionCard = ({
             ) : (
               <div className="flex justify-between items-start">
                 <div className="flex-1 max-w-[80%]">
-                  <p className="text-sm text-neutral-800 text-balance">
-                    {transcription.text}
+                  <p className="text-sm text-neutral-800">
+                    {truncateText(transcription.text)}
                   </p>
                   {transcription.intent && (
                     <p className="text-xs text-blue-600 mt-1 font-medium">

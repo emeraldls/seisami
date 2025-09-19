@@ -161,3 +161,11 @@ p, span, div, button, input, textarea {
     }
   }
 
+:root::-webkit-scrollbar{
+  display: none;
+}
+
+body::-webkit-scrollbar {
+  display: none;
+}
+

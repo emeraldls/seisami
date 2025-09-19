@@ -157,38 +157,6 @@ func (a *App) OpenFileDialog(title string, filters []runtime.FileFilter) (string
 	return runtime.OpenFileDialog(a.ctx, options)
 }
 
-// CheckMicrophonePermission checks the current microphone permission status
-// Returns: 1 = authorized, 0 = denied/restricted, -1 = not determined
-func (a *App) CheckMicrophonePermission() int {
-	return checkMicrophonePermission()
-}
-
-// RequestMicrophonePermission requests microphone permission and returns the result
-func (a *App) RequestMicrophonePermission() bool {
-	return requestMicrophonePermissionSync()
-}
-
-// OpenMicrophoneSettings opens the system settings for microphone permissions
-func (a *App) OpenMicrophoneSettings() {
-	openMicrophoneSettings()
-}
-
-// CheckAccessibilityPermission checks the current accessibility permission status
-// Returns: 1 = authorized, 0 = denied/not authorized
-func (a *App) CheckAccessibilityPermission() int {
-	return checkAccessibilityPermission()
-}
-
-// RequestAccessibilityPermission requests accessibility permission and shows system dialog
-func (a *App) RequestAccessibilityPermission() {
-	requestAccessibilityPermission()
-}
-
-// OpenAccessibilitySettings opens the system settings for accessibility permissions
-func (a *App) OpenAccessibilitySettings() {
-	openAccessibilitySettings()
-}
-
 func (a *App) handleFnKeyPress() {
 	fnPressed := false
 
@@ -246,16 +214,12 @@ func (a *App) handleFnKeyPress() {
 	}
 }
 
-// TODO: Add C API to check for microphone permissions - macOS
 func (a *App) startRecording() {
 	PlaySound()
 	if a.isRecording {
 		log.Println("Already recording.")
 		return
 	}
-
-	// Note: Microphone permission checks are now handled in handleFnKeyPress()
-	// This function assumes permissions have already been verified
 
 	a.isRecording = true
 	runtime.EventsEmit(a.ctx, "recording:start", true)
@@ -339,7 +303,6 @@ func (a *App) startRecording() {
 				continue
 			}
 
-			// Throttle audio bar emissions to ~20 FPS for smoother frontend experience
 			now := time.Now()
 			if now.Sub(a.lastBarEmitTime) >= 50*time.Millisecond {
 				bars := a.getAudioBarsFromBuffer(buffer, 20)
