@@ -57,3 +57,15 @@ func requestMicrophonePermissionSync() bool {
 func openMicrophoneSettings() {
 	C.open_microphone_settings()
 }
+
+func checkAccessibilityPermission() int {
+	return int(C.check_accessibility_permission())
+}
+
+func requestAccessibilityPermission() {
+	C.request_accessibility_permission()
+}
+
+func openAccessibilitySettings() {
+	C.open_accessibility_settings()
+}

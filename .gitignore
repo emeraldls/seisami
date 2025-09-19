@@ -6,3 +6,4 @@ frontend/dist
 .DS_Store
 *.wav
 *.db
+dist

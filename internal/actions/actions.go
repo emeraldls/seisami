@@ -23,7 +23,6 @@ type StructuredResponse struct {
 	ActionsTaken []string               `json:"actions_taken"`
 	Result       string                 `json:"result"`
 	Data         map[string]interface{} `json:"data,omitempty"`
-	Suggestions  []string               `json:"suggestions,omitempty"`
 }
 
 func NewAction(ctx context.Context, repo repo.Repository) *Action {
@@ -45,8 +44,14 @@ CONTEXT:
 - Current Board ID: %s
 - User said: "%s"
 
+IMPORTANT CONCEPTS:
+- Tasks = Cards in this system. When users mention "tasks", they mean cards.
+- If a column for a task doesn't exist, create it first, then add the card to that column.
+- Extract multiple tasks from a single transcription when mentioned.
+- Use appropriate column names like "To Do", "In Progress", "Done", "Backlog", etc.
+
 INSTRUCTIONS:
-1. Use available tools when you need to fetch or modify data (read_board, list_boards, etc.)
+1. Use available tools when you need to fetch or modify data
 2. After using tools (or if no tools needed), provide a structured response that includes:
    - What you understood from the user's request
    - What actions were taken (if any)
@@ -55,15 +60,44 @@ INSTRUCTIONS:
 RESPONSE FORMAT:
 Always respond with a JSON object containing:
 {
-  "intent": "string - what the user wanted (e.g., 'read_board', 'create_task', 'get_summary')",
+  "intent": "string - what the user wanted (e.g., 'create_task', 'read_board', 'move_task')",
   "understood": "string - natural language summary of what you understood",
   "actions_taken": ["array of actions performed"],
   "result": "string - the main result or answer",
-  "data": {} // optional - any structured data returned from tools,
-  "suggestions": ["array of suggested next actions"] // optional
+  "data": {} // optional - any structured data returned from tools
 }
 
-IMPORTANT: Use tools when needed to get current data, then format the response with that data included.`, now, boardId, transcription)
+EXAMPLE RESPONSE:
+{
+ "intent": "create_task",
+ "understood": "The user wants to schedule several tasks: visit their girlfriend by 5pm tomorrow, watch a play before a 10am meeting with Oluwasamwe and Smart, and complete house chores before these events.",
+ "actions_taken": [
+  "Fetched current board to prepare for task creation"
+ ],
+ "result": "Ready to create tasks for visiting girlfriend, watching a play, attending a meeting, and completing house chores as per the user's schedule.",
+ "data": {
+  "tasks_to_create": [
+   {
+    "due": "2025-09-20T17:00:00+01:00",
+    "title": "Visit girlfriend"
+   },
+   {
+    "due": "2025-09-20T09:30:00+01:00",
+    "title": "Watch a play before 10am meeting"
+   },
+   {
+    "due": "2025-09-20T10:00:00+01:00",
+    "title": "Meeting with Oluwasamwe and Smart"
+   },
+   {
+    "due": "2025-09-20T09:00:00+01:00",
+    "title": "Complete house chores before play and meeting"
+   }
+  ]
+ }
+}
+
+IMPORTANT: This is NOT a chat interface. The response will be saved as a summary with the transcription. Focus on providing a clear, actionable summary of what was accomplished.`, now, boardId, transcription)
 
 	return prompt
 }

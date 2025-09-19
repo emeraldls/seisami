@@ -3,29 +3,31 @@
 import {query} from '../models';
 import {frontend} from '../models';
 
+export function CheckAccessibilityPermission():Promise<number>;
+
 export function CheckMicrophonePermission():Promise<number>;
 
 export function CreateBoard(arg1:string):Promise<query.Board>;
 
-export function CreateColumn(arg1:string,arg2:string):Promise<query.Column>;
+export function CreateCard(arg1:string,arg2:string,arg3:string):Promise<query.Card>;
 
-export function CreateTicket(arg1:string,arg2:string,arg3:string,arg4:string):Promise<query.Ticket>;
+export function CreateColumn(arg1:string,arg2:string):Promise<query.Column>;
 
 export function DeleteBoard(arg1:string):Promise<void>;
 
-export function DeleteColumn(arg1:string):Promise<void>;
+export function DeleteCard(arg1:string):Promise<void>;
 
-export function DeleteTicket(arg1:string):Promise<void>;
+export function DeleteColumn(arg1:string):Promise<void>;
 
 export function GetBoardByID(arg1:string):Promise<query.Board>;
 
 export function GetBoards(arg1:number,arg2:number):Promise<Array<query.Board>>;
 
+export function GetCard(arg1:string):Promise<query.Card>;
+
 export function GetColumn(arg1:string):Promise<query.Column>;
 
 export function GetSettings():Promise<query.Setting>;
-
-export function GetTicket(arg1:string):Promise<query.Ticket>;
 
 export function GetTranscriptionByID(arg1:string):Promise<query.Transcription>;
 
@@ -33,13 +35,17 @@ export function GetTranscriptions(arg1:string,arg2:number,arg3:number):Promise<A
 
 export function Greet(arg1:string):Promise<string>;
 
+export function ListCardsByColumn(arg1:string):Promise<Array<query.Card>>;
+
 export function ListColumnsByBoard(arg1:string):Promise<Array<query.Column>>;
 
-export function ListTicketsByColumn(arg1:string):Promise<Array<query.Ticket>>;
+export function OpenAccessibilitySettings():Promise<void>;
 
 export function OpenFileDialog(arg1:string,arg2:Array<frontend.FileFilter>):Promise<string>;
 
 export function OpenMicrophoneSettings():Promise<void>;
+
+export function RequestAccessibilityPermission():Promise<void>;
 
 export function RequestMicrophonePermission():Promise<boolean>;
 
@@ -47,8 +53,8 @@ export function SaveSettings(arg1:string,arg2:any,arg3:any,arg4:any):Promise<que
 
 export function UpdateBoard(arg1:string,arg2:string):Promise<query.Board>;
 
+export function UpdateCard(arg1:string,arg2:string,arg3:string):Promise<query.Card>;
+
+export function UpdateCardColumn(arg1:string,arg2:string):Promise<query.Card>;
+
 export function UpdateColumn(arg1:string,arg2:string):Promise<query.Column>;
-
-export function UpdateTicket(arg1:string,arg2:string,arg3:string):Promise<query.Ticket>;
-
-export function UpdateTicketColumn(arg1:string,arg2:string):Promise<query.Ticket>;

@@ -40,6 +40,12 @@ func (t *Tools) AvailableTools() []openai.Tool {
 func (t *Tools) registerTools() {
 	t.HandleReadBoard()
 	t.HandleListBoards()
+	t.HandleSearchColumns()
+	t.HandleListCards()
+	t.HandleMoveCard()
+	t.HandleCreateCard()
+	t.HandleUpdateCard()
+	t.HandleCreateColumn()
 }
 
 type readBoardParameter struct {
@@ -51,6 +57,37 @@ type listBoardsParameter struct {
 	PageSize int64 `json:"page_size,omitempty"`
 }
 
+type searchColumnsParameter struct {
+	BoardID     string `json:"board_id" validate:"required"`
+	SearchQuery string `json:"search_query" validate:"required"`
+}
+
+type listCardsParameter struct {
+	ColumnID string `json:"column_id" validate:"required"`
+}
+
+type moveCardParameter struct {
+	CardID   string `json:"card_id" validate:"required"`
+	ColumnID string `json:"column_id" validate:"required"`
+}
+
+type createCardParameter struct {
+	ColumnID    string `json:"column_id" validate:"required"`
+	Title       string `json:"title" validate:"required"`
+	Description string `json:"description" validate:"required"`
+}
+
+type updateCardParameter struct {
+	CardID      string `json:"card_id" validate:"required"`
+	Title       string `json:"title" validate:"required"`
+	Description string `json:"description" validate:"required"`
+}
+
+type createColumnParameter struct {
+	BoardID    string `json:"board_id" validate:"required"`
+	ColumnName string `json:"column_name" validate:"required"`
+}
+
 func (t *Tools) HandleReadBoard() {
 	handler := func(args json.RawMessage, repo repo.Repository) (string, error) {
 		var params readBoardParameter
@@ -58,13 +95,13 @@ func (t *Tools) HandleReadBoard() {
 			return "", err
 		}
 
-		board, err := repo.GetBoard(params.BoardID)
+		columns, err := repo.ListColumnsByBoard(params.BoardID)
 		if err != nil {
 			return "", err
 		}
 
-		res, _ := json.MarshalIndent(board, "", " ")
-		fmt.Println("Board: ", string(res))
+		res, _ := json.MarshalIndent(columns, "", " ")
+		fmt.Println("Columns: ", string(res))
 
 		return string(res), nil
 	}
@@ -142,6 +179,274 @@ func (t *Tools) HandleListBoards() {
 	}
 
 	t.openAiTools = append(t.openAiTools, listBoardsTool)
+}
+
+func (t *Tools) HandleSearchColumns() {
+	handler := func(args json.RawMessage, repo repo.Repository) (string, error) {
+		var params searchColumnsParameter
+		if err := json.Unmarshal(args, &params); err != nil {
+			return "", err
+		}
+
+		columns, err := repo.SearchColumnsByBoardAndName(params.BoardID, params.SearchQuery)
+		if err != nil {
+			return "", err
+		}
+
+		res, _ := json.MarshalIndent(columns, "", " ")
+		return string(res), nil
+	}
+
+	t.toolsRegistry["search_columns"] = handler
+
+	searchColumnsTool := openai.Tool{
+		Type: "function",
+		Function: &openai.FunctionDefinition{
+			Name:        "search_columns",
+			Description: "Search for columns by name within a specific board",
+			Strict:      false,
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board_id": map[string]any{
+						"type":        "string",
+						"description": "The ID of the board to search in",
+					},
+					"search_query": map[string]any{
+						"type":        "string",
+						"description": "The search query to match column names",
+					},
+				},
+				"required": []string{"board_id", "search_query"},
+			},
+		},
+	}
+
+	t.openAiTools = append(t.openAiTools, searchColumnsTool)
+}
+
+func (t *Tools) HandleListCards() {
+	handler := func(args json.RawMessage, repo repo.Repository) (string, error) {
+		var params listCardsParameter
+		if err := json.Unmarshal(args, &params); err != nil {
+			return "", err
+		}
+
+		cards, err := repo.ListCardsByColumn(params.ColumnID)
+		if err != nil {
+			return "", err
+		}
+
+		res, _ := json.MarshalIndent(cards, "", " ")
+		return string(res), nil
+	}
+
+	t.toolsRegistry["list_cards"] = handler
+
+	listCardsTool := openai.Tool{
+		Type: "function",
+		Function: &openai.FunctionDefinition{
+			Name:        "list_cards",
+			Description: "List all cards in a specific column",
+			Strict:      false,
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"column_id": map[string]any{
+						"type":        "string",
+						"description": "The ID of the column to list cards from",
+					},
+				},
+				"required": []string{"column_id"},
+			},
+		},
+	}
+
+	t.openAiTools = append(t.openAiTools, listCardsTool)
+}
+
+func (t *Tools) HandleMoveCard() {
+	handler := func(args json.RawMessage, repo repo.Repository) (string, error) {
+		var params moveCardParameter
+		if err := json.Unmarshal(args, &params); err != nil {
+			return "", err
+		}
+
+		updatedCard, err := repo.UpdateCardColumn(params.CardID, params.ColumnID)
+		if err != nil {
+			return "", err
+		}
+
+		res, _ := json.MarshalIndent(updatedCard, "", " ")
+		return string(res), nil
+	}
+
+	t.toolsRegistry["move_card"] = handler
+
+	moveCardTool := openai.Tool{
+		Type: "function",
+		Function: &openai.FunctionDefinition{
+			Name:        "move_card",
+			Description: "Move a card to a different column",
+			Strict:      false,
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"card_id": map[string]any{
+						"type":        "string",
+						"description": "The ID of the card to move",
+					},
+					"column_id": map[string]any{
+						"type":        "string",
+						"description": "The ID of the target column to move the card to",
+					},
+				},
+				"required": []string{"card_id", "column_id"},
+			},
+		},
+	}
+
+	t.openAiTools = append(t.openAiTools, moveCardTool)
+}
+
+func (t *Tools) HandleCreateCard() {
+	handler := func(args json.RawMessage, repo repo.Repository) (string, error) {
+		var params createCardParameter
+		if err := json.Unmarshal(args, &params); err != nil {
+			return "", err
+		}
+
+		newCard, err := repo.CreateCard(params.ColumnID, params.Title, params.Description)
+		if err != nil {
+			return "", err
+		}
+
+		res, _ := json.MarshalIndent(newCard, "", " ")
+		return string(res), nil
+	}
+
+	t.toolsRegistry["create_card"] = handler
+
+	createCardTool := openai.Tool{
+		Type: "function",
+		Function: &openai.FunctionDefinition{
+			Name:        "create_card",
+			Description: "Create a new card in a specific column",
+			Strict:      false,
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"column_id": map[string]any{
+						"type":        "string",
+						"description": "The ID of the column to create the card in",
+					},
+					"title": map[string]any{
+						"type":        "string",
+						"description": "The title of the new card",
+					},
+					"description": map[string]any{
+						"type":        "string",
+						"description": "Well detailed explanation of the new card",
+					},
+				},
+				"required": []string{"column_id", "title", "description"},
+			},
+		},
+	}
+
+	t.openAiTools = append(t.openAiTools, createCardTool)
+}
+
+func (t *Tools) HandleUpdateCard() {
+	handler := func(args json.RawMessage, repo repo.Repository) (string, error) {
+		var params updateCardParameter
+		if err := json.Unmarshal(args, &params); err != nil {
+			return "", err
+		}
+
+		updatedCard, err := repo.UpdateCard(params.CardID, params.Title, params.Description)
+		if err != nil {
+			return "", err
+		}
+
+		res, _ := json.MarshalIndent(updatedCard, "", " ")
+		return string(res), nil
+	}
+
+	t.toolsRegistry["update_card"] = handler
+
+	updateCardTool := openai.Tool{
+		Type: "function",
+		Function: &openai.FunctionDefinition{
+			Name:        "update_card",
+			Description: "Update an existing card's title and description",
+			Strict:      false,
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"card_id": map[string]any{
+						"type":        "string",
+						"description": "The ID of the card to update",
+					},
+					"title": map[string]any{
+						"type":        "string",
+						"description": "The new title for the card",
+					},
+					"description": map[string]any{
+						"type":        "string",
+						"description": "The new description for the card",
+					},
+				},
+				"required": []string{"card_id", "title", "description"},
+			},
+		},
+	}
+
+	t.openAiTools = append(t.openAiTools, updateCardTool)
+}
+
+func (t *Tools) HandleCreateColumn() {
+	handler := func(args json.RawMessage, repo repo.Repository) (string, error) {
+		var params createColumnParameter
+		if err := json.Unmarshal(args, &params); err != nil {
+			return "", err
+		}
+
+		newColumn, err := repo.CreateColumn(params.BoardID, params.ColumnName)
+		if err != nil {
+			return "", err
+		}
+
+		res, _ := json.MarshalIndent(newColumn, "", " ")
+		return string(res), nil
+	}
+
+	t.toolsRegistry["create_column"] = handler
+
+	createColumnTool := openai.Tool{
+		Type: "function",
+		Function: &openai.FunctionDefinition{
+			Name:        "create_column",
+			Description: "Create a new column in a specific board",
+			Strict:      false,
+			Parameters: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board_id": map[string]any{
+						"type":        "string",
+						"description": "The ID of the board to create the column in",
+					},
+					"column_name": map[string]any{
+						"type":        "string",
+						"description": "The name of the new column",
+					},
+				},
+				"required": []string{"board_id", "column_name"},
+			},
+		},
+	}
+
+	t.openAiTools = append(t.openAiTools, createColumnTool)
 }
 
 func (t *Tools) ExecuteTool(toolCall openai.ToolCall) (string, error) {

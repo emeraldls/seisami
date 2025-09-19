@@ -33,16 +33,51 @@ func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board
 	return i, err
 }
 
+const createCard = `-- name: CreateCard :one
+INSERT INTO cards (id, column_id, title, description, attachments)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id, column_id, title, description, attachments, created_at, updated_at
+`
+
+type CreateCardParams struct {
+	ID          string
+	ColumnID    string
+	Title       string
+	Description sql.NullString
+	Attachments sql.NullString
+}
+
+func (q *Queries) CreateCard(ctx context.Context, arg CreateCardParams) (Card, error) {
+	row := q.db.QueryRowContext(ctx, createCard,
+		arg.ID,
+		arg.ColumnID,
+		arg.Title,
+		arg.Description,
+		arg.Attachments,
+	)
+	var i Card
+	err := row.Scan(
+		&i.ID,
+		&i.ColumnID,
+		&i.Title,
+		&i.Description,
+		&i.Attachments,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createColumn = `-- name: CreateColumn :one
-INSERT INTO columns (id, board_id, title, position)
+INSERT INTO columns (id, board_id, name, position)
 VALUES (?, ?, ?, ?)
-RETURNING id, board_id, title, position, created_at, updated_at
+RETURNING id, board_id, name, position, created_at, updated_at
 `
 
 type CreateColumnParams struct {
 	ID       string
 	BoardID  string
-	Title    string
+	Name     string
 	Position int64
 }
 
@@ -50,14 +85,14 @@ func (q *Queries) CreateColumn(ctx context.Context, arg CreateColumnParams) (Col
 	row := q.db.QueryRowContext(ctx, createColumn,
 		arg.ID,
 		arg.BoardID,
-		arg.Title,
+		arg.Name,
 		arg.Position,
 	)
 	var i Column
 	err := row.Scan(
 		&i.ID,
 		&i.BoardID,
-		&i.Title,
+		&i.Name,
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -92,50 +127,6 @@ func (q *Queries) CreateSettings(ctx context.Context, arg CreateSettingsParams) 
 		&i.WhisperBinaryPath,
 		&i.WhisperModelPath,
 		&i.OpenaiApiKey,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const createTicket = `-- name: CreateTicket :one
-INSERT INTO tickets (id, column_id, title, description, assignee_id, story_points, pr_link, ticket_type)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, column_id, title, description, assignee_id, story_points, pr_link, ticket_type, created_at, updated_at
-`
-
-type CreateTicketParams struct {
-	ID          string
-	ColumnID    string
-	Title       string
-	Description sql.NullString
-	AssigneeID  sql.NullInt64
-	StoryPoints sql.NullInt64
-	PrLink      sql.NullString
-	TicketType  string
-}
-
-func (q *Queries) CreateTicket(ctx context.Context, arg CreateTicketParams) (Ticket, error) {
-	row := q.db.QueryRowContext(ctx, createTicket,
-		arg.ID,
-		arg.ColumnID,
-		arg.Title,
-		arg.Description,
-		arg.AssigneeID,
-		arg.StoryPoints,
-		arg.PrLink,
-		arg.TicketType,
-	)
-	var i Ticket
-	err := row.Scan(
-		&i.ID,
-		&i.ColumnID,
-		&i.Title,
-		&i.Description,
-		&i.AssigneeID,
-		&i.StoryPoints,
-		&i.PrLink,
-		&i.TicketType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -190,6 +181,16 @@ func (q *Queries) DeleteBoard(ctx context.Context, id string) error {
 	return err
 }
 
+const deleteCard = `-- name: DeleteCard :exec
+DELETE FROM cards
+WHERE id = ?
+`
+
+func (q *Queries) DeleteCard(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteCard, id)
+	return err
+}
+
 const deleteColumn = `-- name: DeleteColumn :exec
 DELETE FROM columns
 WHERE id = ?
@@ -197,16 +198,6 @@ WHERE id = ?
 
 func (q *Queries) DeleteColumn(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, deleteColumn, id)
-	return err
-}
-
-const deleteTicket = `-- name: DeleteTicket :exec
-DELETE FROM tickets
-WHERE id = ?
-`
-
-func (q *Queries) DeleteTicket(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, deleteTicket, id)
 	return err
 }
 
@@ -240,9 +231,32 @@ func (q *Queries) GetBoard(ctx context.Context, id string) (Board, error) {
 	return i, err
 }
 
+const getCard = `-- name: GetCard :one
+
+SELECT id, column_id, title, description, attachments, created_at, updated_at FROM cards
+WHERE id = ?
+LIMIT 1
+`
+
+// Cards Functionality
+func (q *Queries) GetCard(ctx context.Context, id string) (Card, error) {
+	row := q.db.QueryRowContext(ctx, getCard, id)
+	var i Card
+	err := row.Scan(
+		&i.ID,
+		&i.ColumnID,
+		&i.Title,
+		&i.Description,
+		&i.Attachments,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getColumn = `-- name: GetColumn :one
 
-SELECT id, board_id, title, position, created_at, updated_at FROM columns
+SELECT id, board_id, name, position, created_at, updated_at FROM columns
 WHERE id = ?
 LIMIT 1
 `
@@ -254,7 +268,7 @@ func (q *Queries) GetColumn(ctx context.Context, id string) (Column, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.BoardID,
-		&i.Title,
+		&i.Name,
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -279,32 +293,6 @@ func (q *Queries) GetSettings(ctx context.Context) (Setting, error) {
 		&i.WhisperBinaryPath,
 		&i.WhisperModelPath,
 		&i.OpenaiApiKey,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getTicket = `-- name: GetTicket :one
-
-SELECT id, column_id, title, description, assignee_id, story_points, pr_link, ticket_type, created_at, updated_at FROM tickets
-WHERE id = ?
-LIMIT 1
-`
-
-// Tickets Functionality
-func (q *Queries) GetTicket(ctx context.Context, id string) (Ticket, error) {
-	row := q.db.QueryRowContext(ctx, getTicket, id)
-	var i Ticket
-	err := row.Scan(
-		&i.ID,
-		&i.ColumnID,
-		&i.Title,
-		&i.Description,
-		&i.AssigneeID,
-		&i.StoryPoints,
-		&i.PrLink,
-		&i.TicketType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -443,26 +431,27 @@ func (q *Queries) ListBoards(ctx context.Context, arg ListBoardsParams) ([]Board
 	return items, nil
 }
 
-const listColumnsByBoard = `-- name: ListColumnsByBoard :many
-SELECT id, board_id, title, position, created_at, updated_at FROM columns
-WHERE board_id = ?
+const listCardsByColumn = `-- name: ListCardsByColumn :many
+SELECT id, column_id, title, description, attachments, created_at, updated_at FROM cards
+WHERE column_id = ?
 ORDER BY created_at ASC
 `
 
-func (q *Queries) ListColumnsByBoard(ctx context.Context, boardID string) ([]Column, error) {
-	rows, err := q.db.QueryContext(ctx, listColumnsByBoard, boardID)
+func (q *Queries) ListCardsByColumn(ctx context.Context, columnID string) ([]Card, error) {
+	rows, err := q.db.QueryContext(ctx, listCardsByColumn, columnID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Column
+	var items []Card
 	for rows.Next() {
-		var i Column
+		var i Card
 		if err := rows.Scan(
 			&i.ID,
-			&i.BoardID,
+			&i.ColumnID,
 			&i.Title,
-			&i.Position,
+			&i.Description,
+			&i.Attachments,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -479,30 +468,26 @@ func (q *Queries) ListColumnsByBoard(ctx context.Context, boardID string) ([]Col
 	return items, nil
 }
 
-const listTicketsByColumn = `-- name: ListTicketsByColumn :many
-SELECT id, column_id, title, description, assignee_id, story_points, pr_link, ticket_type, created_at, updated_at FROM tickets
-WHERE column_id = ?
+const listColumnsByBoard = `-- name: ListColumnsByBoard :many
+SELECT id, board_id, name, position, created_at, updated_at FROM columns
+WHERE board_id = ?
 ORDER BY created_at ASC
 `
 
-func (q *Queries) ListTicketsByColumn(ctx context.Context, columnID string) ([]Ticket, error) {
-	rows, err := q.db.QueryContext(ctx, listTicketsByColumn, columnID)
+func (q *Queries) ListColumnsByBoard(ctx context.Context, boardID string) ([]Column, error) {
+	rows, err := q.db.QueryContext(ctx, listColumnsByBoard, boardID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Ticket
+	var items []Column
 	for rows.Next() {
-		var i Ticket
+		var i Column
 		if err := rows.Scan(
 			&i.ID,
-			&i.ColumnID,
-			&i.Title,
-			&i.Description,
-			&i.AssigneeID,
-			&i.StoryPoints,
-			&i.PrLink,
-			&i.TicketType,
+			&i.BoardID,
+			&i.Name,
+			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -557,6 +542,48 @@ func (q *Queries) ListTranscriptionsByBoard(ctx context.Context, boardID string)
 	return items, nil
 }
 
+const searchColumnsByBoardAndName = `-- name: SearchColumnsByBoardAndName :many
+SELECT id, board_id, name, position, created_at, updated_at
+FROM "columns"
+WHERE board_id = ?
+  AND name LIKE '%' || ? || '%' COLLATE NOCASE
+`
+
+type SearchColumnsByBoardAndNameParams struct {
+	BoardID string
+	Column2 sql.NullString
+}
+
+func (q *Queries) SearchColumnsByBoardAndName(ctx context.Context, arg SearchColumnsByBoardAndNameParams) ([]Column, error) {
+	rows, err := q.db.QueryContext(ctx, searchColumnsByBoardAndName, arg.BoardID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Column
+	for rows.Next() {
+		var i Column
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Name,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateBoard = `-- name: UpdateBoard :one
 UPDATE boards
 SET name = ?,
@@ -582,26 +609,90 @@ func (q *Queries) UpdateBoard(ctx context.Context, arg UpdateBoardParams) (Board
 	return i, err
 }
 
-const updateColumn = `-- name: UpdateColumn :one
-UPDATE columns
+const updateCard = `-- name: UpdateCard :one
+UPDATE cards
 SET title = ?,
+    description = ?,
+    attachments = ?,
     updated_at = CURRENT_TIMESTAMP
 WHERE id = ?
-RETURNING id, board_id, title, position, created_at, updated_at
+RETURNING id, column_id, title, description, attachments, created_at, updated_at
+`
+
+type UpdateCardParams struct {
+	Title       string
+	Description sql.NullString
+	Attachments sql.NullString
+	ID          string
+}
+
+func (q *Queries) UpdateCard(ctx context.Context, arg UpdateCardParams) (Card, error) {
+	row := q.db.QueryRowContext(ctx, updateCard,
+		arg.Title,
+		arg.Description,
+		arg.Attachments,
+		arg.ID,
+	)
+	var i Card
+	err := row.Scan(
+		&i.ID,
+		&i.ColumnID,
+		&i.Title,
+		&i.Description,
+		&i.Attachments,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateCardColumn = `-- name: UpdateCardColumn :one
+UPDATE cards
+SET column_id = ?
+WHERE id = ?
+RETURNING id, column_id, title, description, attachments, created_at, updated_at
+`
+
+type UpdateCardColumnParams struct {
+	ColumnID string
+	ID       string
+}
+
+func (q *Queries) UpdateCardColumn(ctx context.Context, arg UpdateCardColumnParams) (Card, error) {
+	row := q.db.QueryRowContext(ctx, updateCardColumn, arg.ColumnID, arg.ID)
+	var i Card
+	err := row.Scan(
+		&i.ID,
+		&i.ColumnID,
+		&i.Title,
+		&i.Description,
+		&i.Attachments,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateColumn = `-- name: UpdateColumn :one
+UPDATE columns
+SET "name" = ?,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ?
+RETURNING id, board_id, name, position, created_at, updated_at
 `
 
 type UpdateColumnParams struct {
-	Title string
-	ID    string
+	Name string
+	ID   string
 }
 
 func (q *Queries) UpdateColumn(ctx context.Context, arg UpdateColumnParams) (Column, error) {
-	row := q.db.QueryRowContext(ctx, updateColumn, arg.Title, arg.ID)
+	row := q.db.QueryRowContext(ctx, updateColumn, arg.Name, arg.ID)
 	var i Column
 	err := row.Scan(
 		&i.ID,
 		&i.BoardID,
-		&i.Title,
+		&i.Name,
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -641,85 +732,6 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 		&i.WhisperBinaryPath,
 		&i.WhisperModelPath,
 		&i.OpenaiApiKey,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const updateTicket = `-- name: UpdateTicket :one
-UPDATE tickets
-SET title = ?,
-    description = ?,
-    assignee_id = ?,
-    story_points = ?,
-    pr_link = ?,
-    ticket_type = ?,
-    updated_at = CURRENT_TIMESTAMP
-WHERE id = ?
-RETURNING id, column_id, title, description, assignee_id, story_points, pr_link, ticket_type, created_at, updated_at
-`
-
-type UpdateTicketParams struct {
-	Title       string
-	Description sql.NullString
-	AssigneeID  sql.NullInt64
-	StoryPoints sql.NullInt64
-	PrLink      sql.NullString
-	TicketType  string
-	ID          string
-}
-
-func (q *Queries) UpdateTicket(ctx context.Context, arg UpdateTicketParams) (Ticket, error) {
-	row := q.db.QueryRowContext(ctx, updateTicket,
-		arg.Title,
-		arg.Description,
-		arg.AssigneeID,
-		arg.StoryPoints,
-		arg.PrLink,
-		arg.TicketType,
-		arg.ID,
-	)
-	var i Ticket
-	err := row.Scan(
-		&i.ID,
-		&i.ColumnID,
-		&i.Title,
-		&i.Description,
-		&i.AssigneeID,
-		&i.StoryPoints,
-		&i.PrLink,
-		&i.TicketType,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const updateTicketColumn = `-- name: UpdateTicketColumn :one
-UPDATE tickets
-SET column_id = ?
-WHERE id = ?
-RETURNING id, column_id, title, description, assignee_id, story_points, pr_link, ticket_type, created_at, updated_at
-`
-
-type UpdateTicketColumnParams struct {
-	ColumnID string
-	ID       string
-}
-
-func (q *Queries) UpdateTicketColumn(ctx context.Context, arg UpdateTicketColumnParams) (Ticket, error) {
-	row := q.db.QueryRowContext(ctx, updateTicketColumn, arg.ColumnID, arg.ID)
-	var i Ticket
-	err := row.Scan(
-		&i.ID,
-		&i.ColumnID,
-		&i.Title,
-		&i.Description,
-		&i.AssigneeID,
-		&i.StoryPoints,
-		&i.PrLink,
-		&i.TicketType,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

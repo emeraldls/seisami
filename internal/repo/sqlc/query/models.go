@@ -15,10 +15,20 @@ type Board struct {
 	UpdatedAt sql.NullString
 }
 
+type Card struct {
+	ID          string
+	ColumnID    string
+	Title       string
+	Description sql.NullString
+	Attachments sql.NullString
+	CreatedAt   sql.NullString
+	UpdatedAt   sql.NullString
+}
+
 type Column struct {
 	ID        string
 	BoardID   string
-	Title     string
+	Name      string
 	Position  int64
 	CreatedAt sql.NullString
 	UpdatedAt sql.NullString
@@ -32,19 +42,6 @@ type Setting struct {
 	OpenaiApiKey        sql.NullString
 	CreatedAt           sql.NullString
 	UpdatedAt           sql.NullString
-}
-
-type Ticket struct {
-	ID          string
-	ColumnID    string
-	Title       string
-	Description sql.NullString
-	AssigneeID  sql.NullInt64
-	StoryPoints sql.NullInt64
-	PrLink      sql.NullString
-	TicketType  string
-	CreatedAt   sql.NullString
-	UpdatedAt   sql.NullString
 }
 
 type Transcription struct {

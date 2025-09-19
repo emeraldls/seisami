@@ -64,55 +64,6 @@ func (a *App) startup(ctx context.Context) {
 	go a.handleFnKeyPress()
 }
 
-func (a *App) handleFnKeyPress() {
-	fnPressed := false
-	for {
-		if isFnPressed() {
-			if !fnPressed {
-				fnPressed = true
-				fmt.Println("FN key pressed, checking permissions and starting recording")
-
-				// Check microphone permissions before attempting to record
-				permissionStatus := checkMicrophonePermission()
-				switch permissionStatus {
-				case 1:
-					// Authorized, proceed with recording
-					fmt.Println("Microphone permission authorized, starting recording")
-					go a.startRecording()
-				case 0:
-					// Denied or restricted
-					fmt.Println("Microphone permission denied - cannot start recording")
-					runtime.EventsEmit(a.ctx, "microphone:permission_denied", "Microphone access is denied. Please grant permission in System Settings to use recording.")
-					runtime.EventsEmit(a.ctx, "recording:blocked", "Recording blocked due to missing microphone permissions")
-				case -1:
-					// Not determined - request permission but don't start recording immediately
-					fmt.Println("Microphone permission not determined - requesting permission")
-					runtime.EventsEmit(a.ctx, "microphone:requesting_permission", "Microphone permission required. Please grant access when prompted.")
-
-					// Request permission asynchronously but don't block the FN key handler
-					go func() {
-						if requestMicrophonePermissionSync() {
-							fmt.Println("Microphone permission granted via FN key request")
-							runtime.EventsEmit(a.ctx, "microphone:permission_granted", "Microphone permission granted. You can now press FN to record.")
-						} else {
-							fmt.Println("Microphone permission denied via FN key request")
-							runtime.EventsEmit(a.ctx, "microphone:permission_denied", "Microphone permission was denied. Please grant permission in System Settings.")
-							openMicrophoneSettings()
-						}
-					}()
-				}
-			}
-		} else {
-			if fnPressed {
-				fnPressed = false
-				fmt.Println("FN key released, stopping recording")
-				a.stopRecording()
-			}
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-}
-
 // Greet returns a greeting for the given name
 func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
@@ -158,28 +109,28 @@ func (a *App) UpdateColumn(columnId string, name string) (query.Column, error) {
 	return a.repository.UpdateColumn(columnId, name)
 }
 
-func (a *App) CreateTicket(columnId string, title string, description string, ticketType string) (query.Ticket, error) {
-	return a.repository.CreateTicket(columnId, title, description, ticketType)
+func (a *App) CreateCard(columnId string, title string, description string) (query.Card, error) {
+	return a.repository.CreateCard(columnId, title, description)
 }
 
-func (a *App) DeleteTicket(ticketId string) error {
-	return a.repository.DeleteTicket(ticketId)
+func (a *App) DeleteCard(cardId string) error {
+	return a.repository.DeleteCard(cardId)
 }
 
-func (a *App) GetTicket(ticketId string) (query.Ticket, error) {
-	return a.repository.GetTicket(ticketId)
+func (a *App) GetCard(CardId string) (query.Card, error) {
+	return a.repository.GetCard(CardId)
 }
 
-func (a *App) ListTicketsByColumn(columnId string) ([]query.Ticket, error) {
-	return a.repository.ListTicketsByColumn(columnId)
+func (a *App) ListCardsByColumn(columnId string) ([]query.Card, error) {
+	return a.repository.ListCardsByColumn(columnId)
 }
 
-func (a *App) UpdateTicket(ticketId string, title string, description string) (query.Ticket, error) {
-	return a.repository.UpdateTicket(ticketId, title, description)
+func (a *App) UpdateCard(cardId string, title string, description string) (query.Card, error) {
+	return a.repository.UpdateCard(cardId, title, description)
 }
 
-func (a *App) UpdateTicketColumn(ticketId string, columnId string) (query.Ticket, error) {
-	return a.repository.UpdateTicketColumn(ticketId, columnId)
+func (a *App) UpdateCardColumn(cardId string, columnId string) (query.Card, error) {
+	return a.repository.UpdateCardColumn(cardId, columnId)
 }
 
 func (a *App) GetTranscriptions(boardId string, page, pageSize int64) ([]query.Transcription, error) {
@@ -220,6 +171,79 @@ func (a *App) RequestMicrophonePermission() bool {
 // OpenMicrophoneSettings opens the system settings for microphone permissions
 func (a *App) OpenMicrophoneSettings() {
 	openMicrophoneSettings()
+}
+
+// CheckAccessibilityPermission checks the current accessibility permission status
+// Returns: 1 = authorized, 0 = denied/not authorized
+func (a *App) CheckAccessibilityPermission() int {
+	return checkAccessibilityPermission()
+}
+
+// RequestAccessibilityPermission requests accessibility permission and shows system dialog
+func (a *App) RequestAccessibilityPermission() {
+	requestAccessibilityPermission()
+}
+
+// OpenAccessibilitySettings opens the system settings for accessibility permissions
+func (a *App) OpenAccessibilitySettings() {
+	openAccessibilitySettings()
+}
+
+func (a *App) handleFnKeyPress() {
+	fnPressed := false
+
+	// Check accessibility permissions once at startup
+	accessibilityStatus := checkAccessibilityPermission()
+	if accessibilityStatus != 1 {
+		fmt.Println("Accessibility permissions not granted - FN key monitoring disabled")
+		runtime.EventsEmit(a.ctx, "accessibility:permission_denied", "Accessibility permissions are required for FN key monitoring. Please grant them in System Settings.")
+		return
+	}
+
+	for {
+		if isFnPressed() {
+			if !fnPressed {
+				fnPressed = true
+				fmt.Println("FN key pressed, checking permissions and starting recording")
+
+				permissionStatus := checkMicrophonePermission()
+				switch permissionStatus {
+				case 1:
+					// Authorized, proceed with recording
+					fmt.Println("Microphone permission authorized, starting recording")
+					go a.startRecording()
+				case 0:
+					// Denied or restricted
+					fmt.Println("Microphone permission denied - cannot start recording")
+					runtime.EventsEmit(a.ctx, "microphone:permission_denied", "Microphone access is denied. Please grant permission in System Settings to use recording.")
+					runtime.EventsEmit(a.ctx, "recording:blocked", "Recording blocked due to missing microphone permissions")
+				case -1:
+					// Not determined - request permission but don't start recording immediately
+					fmt.Println("Microphone permission not determined - requesting permission")
+					runtime.EventsEmit(a.ctx, "microphone:requesting_permission", "Microphone permission required. Please grant access when prompted.")
+
+					// Request permission asynchronously but don't block the FN key handler
+					go func() {
+						if requestMicrophonePermissionSync() {
+							fmt.Println("Microphone permission granted via FN key request")
+							runtime.EventsEmit(a.ctx, "microphone:permission_granted", "Microphone permission granted. You can now press FN to record.")
+						} else {
+							fmt.Println("Microphone permission denied via FN key request")
+							runtime.EventsEmit(a.ctx, "microphone:permission_denied", "Microphone permission was denied. Please grant permission in System Settings.")
+							openMicrophoneSettings()
+						}
+					}()
+				}
+			}
+		} else {
+			if fnPressed {
+				fnPressed = false
+				fmt.Println("FN key released, stopping recording")
+				a.stopRecording()
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // TODO: Add C API to check for microphone permissions - macOS

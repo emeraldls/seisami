@@ -7,10 +7,10 @@ CREATE TABLE IF NOT EXISTS boards (
 );
 
 -- 2. Column Table
-CREATE TABLE IF NOT EXISTS columns (
+CREATE TABLE IF NOT EXISTS "columns" (
     id TEXT PRIMARY KEY,
     board_id TEXT NOT NULL,
-    title TEXT NOT NULL,
+    name TEXT NOT NULL,
     position INTEGER NOT NULL,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
@@ -55,4 +55,46 @@ CREATE TABLE IF NOT EXISTS settings (
     openai_api_key TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
-)
+);
+
+DROP TABLE tickets;
+
+-- 6. Card Table
+CREATE TABLE IF NOT EXISTS cards (
+    id TEXT PRIMARY KEY,
+    column_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    attachments TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (column_id) REFERENCES columns(id) ON DELETE CASCADE
+);
+
+CREATE TRIGGER IF NOT EXISTS update_board_updated_at
+AFTER UPDATE ON "boards"
+FOR EACH ROW
+BEGIN
+  UPDATE "boards" SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS update_columns_updated_at
+AFTER UPDATE ON "columns"
+FOR EACH ROW
+BEGIN
+  UPDATE "columns" SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS update_cards_updated_at
+AFTER UPDATE ON "cards"
+FOR EACH ROW
+BEGIN
+  UPDATE "cards" SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS update_settings_updated_at
+AFTER UPDATE ON "settings"
+FOR EACH ROW
+BEGIN
+  UPDATE "settings" SET updated_at = datetime('now') WHERE id = OLD.id;
+END;

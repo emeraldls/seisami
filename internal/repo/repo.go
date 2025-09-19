@@ -87,6 +87,10 @@ func (r *repo) GetAllBoards(page int64, pageSize int64) ([]query.Board, error) {
 		return nil, fmt.Errorf("error occured getting all boards: %v", err)
 	}
 
+	if boards == nil {
+		return []query.Board{}, nil
+	}
+
 	return boards, nil
 }
 
@@ -106,7 +110,7 @@ func (r *repo) CreateColumn(boardId string, columnName string) (query.Column, er
 	column, err := r.queries.CreateColumn(r.ctx, query.CreateColumnParams{
 		ID:       id,
 		BoardID:  boardId,
-		Title:    columnName,
+		Name:     columnName,
 		Position: int64(position),
 	})
 	if err != nil {
@@ -135,13 +139,16 @@ func (r *repo) ListColumnsByBoard(boardId string) ([]query.Column, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error listing columns by board: %v", err)
 	}
+	if columns == nil {
+		return []query.Column{}, nil
+	}
 	return columns, nil
 }
 
 func (r *repo) UpdateColumn(columnId string, name string) (query.Column, error) {
 	column, err := r.queries.UpdateColumn(r.ctx, query.UpdateColumnParams{
-		ID:    columnId,
-		Title: name,
+		ID:   columnId,
+		Name: name,
 	})
 	if err != nil {
 		return query.Column{}, fmt.Errorf("error updating column: %v", err)
@@ -149,9 +156,9 @@ func (r *repo) UpdateColumn(columnId string, name string) (query.Column, error) 
 	return column, nil
 }
 
-func (r *repo) CreateTicket(columnId string, title string, description string, ticketType string) (query.Ticket, error) {
+func (r *repo) CreateCard(columnId string, title string, description string) (query.Card, error) {
 	id := uuid.New().String()
-	ticket, err := r.queries.CreateTicket(r.ctx, query.CreateTicketParams{
+	card, err := r.queries.CreateCard(r.ctx, query.CreateCardParams{
 		ID:       id,
 		ColumnID: columnId,
 		Title:    title,
@@ -159,40 +166,48 @@ func (r *repo) CreateTicket(columnId string, title string, description string, t
 			String: description,
 			Valid:  true,
 		},
-		TicketType: ticketType,
+		// I'll make this files names separated by comma or space
+		Attachments: sql.NullString{
+			String: "",
+			Valid:  true,
+		},
 	})
 	if err != nil {
-		return query.Ticket{}, fmt.Errorf("error creating ticket: %v", err)
+		return query.Card{}, fmt.Errorf("error creating card: %v", err)
 	}
-	return ticket, nil
+	return card, nil
 }
 
-func (r *repo) DeleteTicket(ticketId string) error {
-	if err := r.queries.DeleteTicket(r.ctx, ticketId); err != nil {
-		return fmt.Errorf("error deleting ticket: %v", err)
+func (r *repo) DeleteCard(cardId string) error {
+	if err := r.queries.DeleteCard(r.ctx, cardId); err != nil {
+		return fmt.Errorf("error deleting card: %v", err)
 	}
 	return nil
 }
 
-func (r *repo) GetTicket(ticketId string) (query.Ticket, error) {
-	ticket, err := r.queries.GetTicket(r.ctx, ticketId)
+func (r *repo) GetCard(cardId string) (query.Card, error) {
+	card, err := r.queries.GetCard(r.ctx, cardId)
 	if err != nil {
-		return query.Ticket{}, fmt.Errorf("error getting ticket: %v", err)
+		return query.Card{}, fmt.Errorf("error getting card: %v", err)
 	}
-	return ticket, nil
+	return card, nil
 }
 
-func (r *repo) ListTicketsByColumn(columnId string) ([]query.Ticket, error) {
-	tickets, err := r.queries.ListTicketsByColumn(r.ctx, columnId)
+func (r *repo) ListCardsByColumn(columnId string) ([]query.Card, error) {
+	cards, err := r.queries.ListCardsByColumn(r.ctx, columnId)
 	if err != nil {
-		return nil, fmt.Errorf("error listing tickets by column: %v", err)
+		return nil, fmt.Errorf("error listing cards by column: %v", err)
 	}
-	return tickets, nil
+
+	if cards == nil {
+		return []query.Card{}, nil
+	}
+	return cards, nil
 }
 
-func (r *repo) UpdateTicket(ticketId string, title string, description string) (query.Ticket, error) {
-	ticket, err := r.queries.UpdateTicket(r.ctx, query.UpdateTicketParams{
-		ID:    ticketId,
+func (r *repo) UpdateCard(cardId string, title string, description string) (query.Card, error) {
+	card, err := r.queries.UpdateCard(r.ctx, query.UpdateCardParams{
+		ID:    cardId,
 		Title: title,
 		Description: sql.NullString{
 			String: description,
@@ -200,20 +215,20 @@ func (r *repo) UpdateTicket(ticketId string, title string, description string) (
 		},
 	})
 	if err != nil {
-		return query.Ticket{}, fmt.Errorf("error updating ticket: %v", err)
+		return query.Card{}, fmt.Errorf("error updating card: %v", err)
 	}
-	return ticket, nil
+	return card, nil
 }
 
-func (r *repo) UpdateTicketColumn(ticketId string, columnId string) (query.Ticket, error) {
-	ticket, err := r.queries.UpdateTicketColumn(r.ctx, query.UpdateTicketColumnParams{
-		ID:       ticketId,
+func (r *repo) UpdateCardColumn(cardId string, columnId string) (query.Card, error) {
+	card, err := r.queries.UpdateCardColumn(r.ctx, query.UpdateCardColumnParams{
+		ID:       cardId,
 		ColumnID: columnId,
 	})
 	if err != nil {
-		return query.Ticket{}, fmt.Errorf("error updating ticket column: %v", err)
+		return query.Card{}, fmt.Errorf("error updating card column: %v", err)
 	}
-	return ticket, nil
+	return card, nil
 }
 
 func (r *repo) AddTransscription(boardId string, transcription string, recordingPath string) (query.Transcription, error) {
@@ -232,7 +247,17 @@ func (r *repo) AddTransscription(boardId string, transcription string, recording
 }
 
 func (r *repo) GetTranscriptions(boardId string, page, pageSize int64) ([]query.Transcription, error) {
-	return r.queries.ListTranscriptionsByBoard(r.ctx, boardId)
+	transcriptions, err := r.queries.ListTranscriptionsByBoard(r.ctx, boardId)
+	if err != nil {
+		return nil, err
+	}
+
+	if transcriptions == nil {
+		return []query.Transcription{}, nil
+	}
+
+	return transcriptions, nil
+
 }
 
 func (r *repo) GetTranscriptionByID(transcriptionId string) (query.Transcription, error) {
@@ -275,7 +300,6 @@ func (r *repo) UpdateTranscriptionResponse(transcriptionId string, response stri
 func (r *repo) GetSettings() (query.Setting, error) {
 	settings, err := r.queries.GetSettings(r.ctx)
 	if err != nil {
-		// If no settings exist, return default settings
 		if err == sql.ErrNoRows {
 			return query.Setting{
 				ID:                  1,
@@ -288,7 +312,6 @@ func (r *repo) GetSettings() (query.Setting, error) {
 }
 
 func (r *repo) CreateOrUpdateSettings(transcriptionMethod string, whisperBinaryPath *string, whisperModelPath *string, openaiApiKey *string) (query.Setting, error) {
-	// Try to get existing settings
 	_, err := r.queries.GetSettings(r.ctx)
 
 	var binaryPath, modelPath, apiKey sql.NullString
@@ -304,7 +327,6 @@ func (r *repo) CreateOrUpdateSettings(transcriptionMethod string, whisperBinaryP
 	}
 
 	if err == sql.ErrNoRows {
-		// Create new settings
 		return r.queries.CreateSettings(r.ctx, query.CreateSettingsParams{
 			TranscriptionMethod: transcriptionMethod,
 			WhisperBinaryPath:   binaryPath,
@@ -315,11 +337,30 @@ func (r *repo) CreateOrUpdateSettings(transcriptionMethod string, whisperBinaryP
 		return query.Setting{}, fmt.Errorf("unable to check existing settings: %w", err)
 	}
 
-	// Update existing settings
 	return r.queries.UpdateSettings(r.ctx, query.UpdateSettingsParams{
 		TranscriptionMethod: transcriptionMethod,
 		WhisperBinaryPath:   binaryPath,
 		WhisperModelPath:    modelPath,
 		OpenaiApiKey:        apiKey,
 	})
+}
+
+func (r *repo) SearchColumnsByBoardAndName(boardId, searchQuery string) ([]query.Column, error) {
+	columns, err := r.queries.SearchColumnsByBoardAndName(r.ctx, query.SearchColumnsByBoardAndNameParams{
+		BoardID: boardId,
+		Column2: sql.NullString{
+			String: searchQuery,
+			Valid:  true,
+		},
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to search board for that column name: %v", err)
+	}
+
+	if columns == nil {
+		return []query.Column{}, nil
+	}
+
+	return columns, nil
 }

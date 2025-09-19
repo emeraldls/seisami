@@ -10,6 +10,9 @@ import {
   CheckMicrophonePermission,
   RequestMicrophonePermission,
   OpenMicrophoneSettings,
+  // CheckAccessibilityPermission,
+  // RequestAccessibilityPermission,
+  // OpenAccessibilitySettings,
 } from "../../wailsjs/go/main/App";
 import { query, frontend } from "../../wailsjs/go/models";
 
@@ -24,10 +27,14 @@ const Settings = () => {
   const [saving, setSaving] = useState(false);
   const [microphonePermission, setMicrophonePermission] = useState<number>(-2); // -2 = not checked, -1 = not determined, 0 = denied, 1 = authorized
   const [checkingPermission, setCheckingPermission] = useState(false);
+  const [accessibilityPermission, setAccessibilityPermission] =
+    useState<number>(-2); // -2 = not checked, 0 = denied, 1 = authorized
+  const [checkingAccessibility, setCheckingAccessibility] = useState(false);
 
   useEffect(() => {
     loadSettings();
     checkMicrophonePermission();
+    checkAccessibilityPermission();
   }, []);
 
   const loadSettings = async () => {
@@ -56,6 +63,19 @@ const Settings = () => {
     }
   };
 
+  const checkAccessibilityPermission = async () => {
+    try {
+      // Temporarily mock this since the function isn't available yet
+      // const permission = await CheckAccessibilityPermission();
+      // setAccessibilityPermission(permission);
+      console.log("Accessibility permission check not yet available");
+      setAccessibilityPermission(-2);
+    } catch (error) {
+      console.error("Failed to check accessibility permission:", error);
+      setAccessibilityPermission(-2);
+    }
+  };
+
   const handleRequestMicrophonePermission = async () => {
     setCheckingPermission(true);
     try {
@@ -77,6 +97,24 @@ const Settings = () => {
     }
   };
 
+  const handleRequestAccessibilityPermission = async () => {
+    setCheckingAccessibility(true);
+    try {
+      // Temporarily mock this since the function isn't available yet
+      // await RequestAccessibilityPermission();
+      // const permission = await CheckAccessibilityPermission();
+      // setAccessibilityPermission(permission);
+      console.log("Accessibility permission request not yet available");
+
+      // For now, just open the settings
+      // OpenAccessibilitySettings();
+    } catch (error) {
+      console.error("Failed to request accessibility permission:", error);
+    } finally {
+      setCheckingAccessibility(false);
+    }
+  };
+
   const getMicrophonePermissionStatus = () => {
     switch (microphonePermission) {
       case 1:
@@ -95,6 +133,25 @@ const Settings = () => {
         };
       default:
         return { text: "Unknown", color: "text-gray-600", bg: "bg-gray-50" };
+    }
+  };
+
+  const getAccessibilityPermissionStatus = () => {
+    switch (accessibilityPermission) {
+      case 1:
+        return {
+          text: "Authorized",
+          color: "text-green-600",
+          bg: "bg-green-50",
+        };
+      case 0:
+        return { text: "Denied", color: "text-red-600", bg: "bg-red-50" };
+      default:
+        return {
+          text: "Not Checked",
+          color: "text-gray-600",
+          bg: "bg-gray-50",
+        };
     }
   };
 
@@ -206,12 +263,73 @@ const Settings = () => {
                 </div>
               </div>
               {microphonePermission === 0 && (
-                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-800">
+                <div className="p-4 bg-white border border-gray-200 rounded-lg">
+                  <p className="text-sm text-neutral-800">
                     <strong>Microphone access is required</strong> for recording
                     functionality. Please grant permission in System Settings →
                     Privacy & Security → Microphone, then restart the
                     application.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-xl font-semibold mb-4">
+              Accessibility Permissions
+            </h2>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 rounded-lg border">
+                <div>
+                  <h3 className="font-medium">Accessibility Access</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Required for FN key monitoring and keyboard shortcuts
+                  </p>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <span
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      getAccessibilityPermissionStatus().color
+                    } ${getAccessibilityPermissionStatus().bg}`}
+                  >
+                    {getAccessibilityPermissionStatus().text}
+                  </span>
+                  {accessibilityPermission !== 1 && (
+                    <Button
+                      onClick={handleRequestAccessibilityPermission}
+                      disabled={checkingAccessibility}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {checkingAccessibility
+                        ? "Checking..."
+                        : "Request Permission"}
+                    </Button>
+                  )}
+                  {accessibilityPermission === 0 && (
+                    <Button
+                      onClick={() => {
+                        console.log("Opening accessibility settings...");
+                        alert(
+                          "Please go to System Settings → Privacy & Security → Accessibility and add Seisami to the list of allowed applications."
+                        );
+                      }}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Open Settings
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {accessibilityPermission === 0 && (
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Accessibility access is required</strong> for FN key
+                    monitoring. Please grant permission in System Settings →
+                    Privacy & Security → Accessibility, add Seisami to the list,
+                    then restart the application.
                   </p>
                 </div>
               )}

@@ -25,6 +25,8 @@
         <string>{{.Info.Copyright}}</string>
         <key>NSMicrophoneUsageDescription</key>
         <string>Seisami needs access to your microphone to record audio for voice transcription and creating voice notes on your boards.</string>
+        <key>NSSystemExtensionUsageDescription</key>
+        <string>Seisami needs accessibility access to monitor the FN key for hands-free voice recording functionality.</string>
         {{if .Info.FileAssociations}}
         <key>CFBundleDocumentTypes</key>
         <array>

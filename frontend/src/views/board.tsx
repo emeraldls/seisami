@@ -25,13 +25,13 @@ import {
 } from "~/components/ui/dropdown-menu";
 import {
   CreateColumn,
-  CreateTicket,
+  CreateCard,
   ListColumnsByBoard,
-  ListTicketsByColumn,
-  UpdateTicketColumn,
+  ListCardsByColumn,
+  UpdateCardColumn,
   UpdateColumn,
   DeleteColumn,
-  DeleteTicket,
+  DeleteCard,
 } from "../../wailsjs/go/main/App";
 import { useBoardStore } from "~/stores/board-store";
 import { TicketResponse } from "~/types/types";
@@ -93,7 +93,7 @@ export default function KanbanView() {
 
       const transformedColumns: Column[] = columnsData.map((c) => ({
         id: c.ID.toString(),
-        name: c.Title,
+        name: c.Name,
         color: "#10B981", //TODO: add a column in *column* table to include color
       }));
 
@@ -101,9 +101,7 @@ export default function KanbanView() {
 
       const allFeatures: Feature[] = [];
       for (const col of columnsData) {
-        const tickets = (await ListTicketsByColumn(col.ID)) as
-          | TicketResponse[]
-          | null;
+        const tickets = await ListCardsByColumn(col.ID);
         if (tickets) {
           const featuresForColumn: Feature[] = tickets.map((t) => ({
             id: t.ID.toString(),
@@ -129,7 +127,7 @@ export default function KanbanView() {
     async (newFeatures: Feature[]) => {
       for (const newFeature of newFeatures) {
         try {
-          await UpdateTicketColumn(newFeature.id, newFeature.column);
+          await UpdateCardColumn(newFeature.id, newFeature.column);
         } catch (err) {
           console.error("Failed to update ticket column", err);
           return;
@@ -167,7 +165,7 @@ export default function KanbanView() {
     if (newCardName.trim() === "" || !currentBoard) return;
 
     try {
-      await CreateTicket(columnId, newCardName, "", "Task");
+      await CreateCard(columnId, newCardName, "");
       setNewCardName("");
       setAddingCardInStatus(null);
       fetchBoard();
@@ -218,7 +216,7 @@ export default function KanbanView() {
 
   const handleDeleteCard = async (cardId: string) => {
     try {
-      await DeleteTicket(cardId);
+      await DeleteCard(cardId);
       setIsCardDialogOpen(false);
       setSelectedCard(null);
       fetchBoard();
@@ -557,19 +555,6 @@ export default function KanbanView() {
                           </p>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-medium mb-3">Assignees</h3>
-                  <div className="flex gap-2">
-                    {getCardData(selectedCard).assignees.map((assignee) => (
-                      <Avatar key={assignee.id} className="h-8 w-8">
-                        <AvatarFallback className="text-xs">
-                          {assignee.initials}
-                        </AvatarFallback>
-                      </Avatar>
                     ))}
                   </div>
                 </div>

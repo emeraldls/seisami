@@ -18,12 +18,12 @@ type Repository interface {
 	ListColumnsByBoard(boardId string) ([]query.Column, error)
 	UpdateColumn(id string, name string) (query.Column, error)
 
-	CreateTicket(columnId string, title string, description string, ticketType string) (query.Ticket, error)
-	DeleteTicket(id string) error
-	GetTicket(id string) (query.Ticket, error)
-	ListTicketsByColumn(columnId string) ([]query.Ticket, error)
-	UpdateTicket(id string, title string, description string) (query.Ticket, error)
-	UpdateTicketColumn(ticketId string, columnId string) (query.Ticket, error)
+	CreateCard(columnId string, title string, description string) (query.Card, error)
+	DeleteCard(id string) error
+	GetCard(id string) (query.Card, error)
+	ListCardsByColumn(columnId string) ([]query.Card, error)
+	UpdateCard(id string, title string, description string) (query.Card, error)
+	UpdateCardColumn(CardId string, columnId string) (query.Card, error)
 
 	AddTransscription(boardId string, transcription string, recordingPath string) (query.Transcription, error)
 	GetTranscriptions(boardId string, page, pageSize int64) ([]query.Transcription, error)
@@ -33,4 +33,6 @@ type Repository interface {
 
 	GetSettings() (query.Setting, error)
 	CreateOrUpdateSettings(transcriptionMethod string, whisperBinaryPath *string, whisperModelPath *string, openaiApiKey *string) (query.Setting, error)
+
+	SearchColumnsByBoardAndName(boardId, searchQuery string) ([]query.Column, error)
 }
