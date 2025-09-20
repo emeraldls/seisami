@@ -3,18 +3,16 @@ module seisami
 go 1.25.0
 
 require (
-	github.com/emeraldls/portaudio v0.0.0
 	github.com/go-audio/audio v1.0.0
 	github.com/go-audio/wav v1.1.0
 	github.com/google/uuid v1.6.0
+	github.com/gordonklaus/portaudio v0.0.0-20250206071425-98a94950218b
 	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/sashabaranov/go-openai v1.41.1
 	github.com/wailsapp/wails/v2 v2.10.2
 	golang.org/x/net v0.35.0
 )
-
-replace github.com/emeraldls/portaudio => /Users/lawrenceishim/Desktop/Go/portaudio
 
 require (
 	github.com/bep/debounce v1.2.1 // indirect
