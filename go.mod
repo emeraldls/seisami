@@ -3,7 +3,7 @@ module seisami
 go 1.25.0
 
 require (
-	github.com/emeraldls/portaudio v0.0.2
+	github.com/emeraldls/portaudio v0.0.3
 	github.com/go-audio/audio v1.0.0
 	github.com/go-audio/wav v1.1.0
 	github.com/google/uuid v1.6.0
