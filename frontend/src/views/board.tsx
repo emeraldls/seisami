@@ -21,6 +21,12 @@ import {
   Search,
   ChevronUp,
   ChevronDown,
+  Mic,
+  MicOff,
+  Zap,
+  Calendar,
+  Clock,
+  Tag,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -41,6 +47,7 @@ import {
 } from "../../wailsjs/go/main/App";
 import { useBoardStore } from "~/stores/board-store";
 import { Avatar, AvatarFallback } from "~/components/ui/avatar";
+import { Badge } from "~/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -314,7 +321,6 @@ export default function KanbanView() {
           .toLowerCase()
           .includes(lowercaseQuery);
 
-        // Also search in column names
         const column = columns.find((col) => col.id === feature.column);
         const matchesColumn = column?.name
           .toLowerCase()
@@ -438,341 +444,372 @@ export default function KanbanView() {
 
   if (!currentBoard) {
     return (
-      <div className="p-4 h-full flex items-center justify-center">
-        <p className="text-muted-foreground">Please select a board to view</p>
+      <div className=" min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="neural-pattern w-24 h-24 mx-auto  rounded-lg flex items-center justify-center mb-4">
+            <Zap className="h-8 w-8" />
+          </div>
+          <h3 className="text-lg font-medium mb-2">No Board Selected</h3>
+          <p className="text-gray-500">
+            Please select a board to view your tasks
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 h-full w-full overflow-x-auto">
-      <div className="mb-4 flex items-center gap-2 max-w-md">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search cards, descriptions, columns..."
-            className="pl-10 pr-10"
-          />
-          {searchQuery && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearSearch}
-              className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          )}
-        </div>
-
-        {searchResults.length > 0 && (
-          <div className="flex items-center gap-1">
-            <span className="text-sm text-muted-foreground px-2">
-              {currentSearchIndex + 1} of {searchResults.length}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigateSearchResults("prev")}
-              className="h-8 w-8 p-0"
-              title="Previous result (Shift+Enter)"
-            >
-              <ChevronUp className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigateSearchResults("next")}
-              className="h-8 w-8 p-0"
-              title="Next result (Ctrl/Cmd+Enter)"
-            >
-              <ChevronDown className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
-
-        {searchQuery && searchResults.length === 0 && (
-          <span className="text-sm text-muted-foreground">
-            No results found
-          </span>
-        )}
-      </div>
-
-      {columns.length === 0 ? (
-        <div className="h-full flex items-center justify-center">
-          <div className="text-center">
-            <div className="mb-4">
-              <div className="w-24 h-24 mx-auto bg-muted/20 rounded-lg flex items-center justify-center mb-4">
-                <Plus className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">No columns yet</h3>
-              <p className="text-muted-foreground mb-6 max-w-sm">
-                Get started by creating your first column to organize your tasks
-                and workflow.
-              </p>
-            </div>
-            <Button onClick={() => setIsAddingColumn(true)} className="gap-2">
-              <Plus className="h-4 w-4" />
-              Create your first column
-            </Button>
-            {isAddingColumn && (
-              <div className="mt-4 max-w-sm mx-auto">
-                <Input
-                  autoFocus
-                  value={newColumnName}
-                  onChange={(e) => setNewColumnName(e.target.value)}
-                  onBlur={() => setIsAddingColumn(false)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleAddColumn();
-                    if (e.key === "Escape") setIsAddingColumn(false);
-                  }}
-                  placeholder="Enter column name..."
-                  className="mb-2"
-                />
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={handleAddColumn}>
-                    Add Column
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setIsAddingColumn(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="flex gap-4 min-w-max">
-          <KanbanProvider
-            columns={columns}
-            data={features}
-            onDataChange={handleDataChange}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            modifiers={[]}
-          >
-            {(column) => (
-              <KanbanBoard
-                id={column.id}
-                key={column.id}
-                className="w-80 flex-shrink-0"
-              >
-                <KanbanHeader>
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: column.color }}
-                      />
-                      {editingColumnId === column.id ? (
-                        <Input
-                          value={editingColumnName}
-                          onChange={(e) => setEditingColumnName(e.target.value)}
-                          onBlur={handleSaveColumnEdit}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") handleSaveColumnEdit();
-                            if (e.key === "Escape") {
-                              setEditingColumnId(null);
-                              setEditingColumnName("");
-                            }
-                          }}
-                          className="h-6 text-sm font-semibold bg-transparent border-none p-0 focus:ring-0"
-                          autoFocus
-                        />
-                      ) : (
-                        <span
-                          className={
-                            searchQuery &&
-                            column.name
-                              .toLowerCase()
-                              .includes(searchQuery.toLowerCase())
-                              ? "bg-neutral-200 text-yellow-900 px-1 rounded"
-                              : ""
-                          }
-                        >
-                          {searchQuery
-                            ? highlightText(column.name, searchQuery)
-                            : column.name}
-                        </span>
-                      )}
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                        >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => handleEditColumn(column)}
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit name
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleDeleteColumn(column.id)}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete column
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </KanbanHeader>
-                {features.filter((f) => f.column === column.id).length === 0 ? (
-                  <div className="p-4 text-center">
-                    <div className="w-16 h-16 mx-auto bg-muted/10 rounded-lg flex items-center justify-center mb-3">
-                      <Plus className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      No cards in this column yet
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setAddingCardInStatus(column.id)}
-                      className="gap-2"
-                    >
-                      <Plus className="h-3 w-3" />
-                      Add first card
-                    </Button>
-                  </div>
-                ) : (
-                  <KanbanCards id={column.id}>
-                    {(feature: Feature) => {
-                      const isHighlighted = highlightedCardId === feature.id;
-                      const isInSearchResults = searchResults.some(
-                        (result) => result.id === feature.id
-                      );
-
-                      return (
-                        <KanbanCard
-                          column={column.id}
-                          id={feature.id}
-                          key={feature.id}
-                          name={feature.name}
-                          className={`transition-all duration-200 ${
-                            isHighlighted
-                              ? "ring-2 ring-yellow-400 shadow-lg"
-                              : isInSearchResults
-                              ? "ring-1 ring-yellow-200"
-                              : ""
-                          }`}
-                        >
-                          <div
-                            className="flex items-start justify-between gap-2"
-                            data-card-id={feature.id}
-                          >
-                            <div className="flex flex-col gap-1">
-                              <p className="m-0 flex-1 font-medium text-sm">
-                                {searchQuery
-                                  ? highlightText(feature.name, searchQuery)
-                                  : feature.name}
-                              </p>
-                              {searchQuery &&
-                                feature.description &&
-                                feature.description
-                                  .toLowerCase()
-                                  .includes(searchQuery.toLowerCase()) && (
-                                  <p className="m-0 text-xs text-muted-foreground truncate">
-                                    {highlightText(
-                                      feature.description,
-                                      searchQuery
-                                    )}
-                                  </p>
-                                )}
-                            </div>
-                            <Avatar className="h-4 w-4 shrink-0">
-                              <AvatarFallback>
-                                {feature.name.slice(0, 2).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                          </div>
-                          <p className="m-0 text-muted-foreground text-xs">
-                            {shortDateFormatter.format(feature.startAt)}
-                          </p>
-                        </KanbanCard>
-                      );
-                    }}
-                  </KanbanCards>
-                )}
-
-                {addingCardInStatus === column.id ? (
-                  <div className="p-2">
-                    <Input
-                      autoFocus
-                      value={newCardName}
-                      onChange={(e) => setNewCardName(e.target.value)}
-                      onBlur={() => setAddingCardInStatus(null)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleAddCard(column.id);
-                        if (e.key === "Escape") setAddingCardInStatus(null);
-                      }}
-                      placeholder="Enter card title..."
-                    />
-                    <Button
-                      size="sm"
-                      className="mt-2"
-                      onClick={() => handleAddCard(column.id)}
-                    >
-                      Add Card
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    className="m-2 justify-start"
-                    onClick={() => setAddingCardInStatus(column.id)}
-                  >
-                    <Plus className="h-4 w-4 mr-2" /> Add a card
-                  </Button>
-                )}
-              </KanbanBoard>
-            )}
-          </KanbanProvider>
-
-          <div className="p-2 w-80 flex-shrink-0">
-            {isAddingColumn ? (
-              <div>
-                <Input
-                  autoFocus
-                  value={newColumnName}
-                  onChange={(e) => setNewColumnName(e.target.value)}
-                  onBlur={() => setIsAddingColumn(false)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleAddColumn();
-                    if (e.key === "Escape") setIsAddingColumn(false);
-                  }}
-                  placeholder="Enter column name..."
-                />
-                <Button size="sm" className="mt-2" onClick={handleAddColumn}>
-                  Add Column
-                </Button>
-              </div>
-            ) : (
+    <div className=" min-h-screen">
+      <div className="bg-white border-b p-4">
+        <div className="max-w-full flex items-center gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search cards, descriptions, columns..."
+              className="pl-10 pr-10 border-gray-200 "
+            />
+            {searchQuery && (
               <Button
                 variant="ghost"
-                className="w-full justify-start"
-                onClick={() => setIsAddingColumn(true)}
+                size="sm"
+                onClick={clearSearch}
+                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
               >
-                <Plus className="h-4 w-4 mr-2" /> Add another list
+                <X className="h-3 w-3" />
               </Button>
             )}
           </div>
-        </div>
-      )}
 
+          {searchResults.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-small text-gray-500 px-2">
+                {currentSearchIndex + 1} of {searchResults.length}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigateSearchResults("prev")}
+                className="h-8 w-8 p-0"
+                title="Previous result (Shift+Enter)"
+              >
+                <ChevronUp className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigateSearchResults("next")}
+                className="h-8 w-8 p-0"
+                title="Next result (Ctrl/Cmd+Enter)"
+              >
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+
+          {searchQuery && searchResults.length === 0 && (
+            <span className="text-small text-gray-500">No results found</span>
+          )}
+        </div>
+      </div>
+
+      <div className="p-6 h-full w-full overflow-x-auto">
+        {columns.length === 0 ? (
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center">
+              <div className="mb-4">
+                <div className="w-24 h-24 mx-auto bg-muted/20 rounded-lg flex items-center justify-center mb-4">
+                  <Plus className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">No columns yet</h3>
+                <p className="text-muted-foreground mb-6 max-w-sm">
+                  Get started by creating your first column to organize your
+                  tasks and workflow.
+                </p>
+              </div>
+              <Button onClick={() => setIsAddingColumn(true)} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Create your first column
+              </Button>
+              {isAddingColumn && (
+                <div className="mt-4 max-w-sm mx-auto">
+                  <Input
+                    autoFocus
+                    value={newColumnName}
+                    onChange={(e) => setNewColumnName(e.target.value)}
+                    onBlur={() => setIsAddingColumn(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddColumn();
+                      if (e.key === "Escape") setIsAddingColumn(false);
+                    }}
+                    placeholder="Enter column name..."
+                    className="mb-2"
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={handleAddColumn}>
+                      Add Column
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setIsAddingColumn(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex gap-4 min-w-max">
+            <KanbanProvider
+              columns={columns}
+              data={features}
+              onDataChange={handleDataChange}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              modifiers={[]}
+            >
+              {(column) => (
+                <KanbanBoard
+                  id={column.id}
+                  key={column.id}
+                  className="w-80 flex-shrink-0"
+                >
+                  <KanbanHeader>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8  flex items-center justify-center">
+                            <Tag className="h-4 w-4" />
+                          </div>
+                          {editingColumnId === column.id ? (
+                            <Input
+                              value={editingColumnName}
+                              onChange={(e) =>
+                                setEditingColumnName(e.target.value)
+                              }
+                              onBlur={handleSaveColumnEdit}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSaveColumnEdit();
+                                if (e.key === "Escape") {
+                                  setEditingColumnId(null);
+                                  setEditingColumnName("");
+                                }
+                              }}
+                              className="h-6 text-sm ring-1 rounded-sm p-2 font-semibold bg-transparent border-none focus:ring-0"
+                              autoFocus
+                            />
+                          ) : (
+                            <span
+                              className={
+                                searchQuery &&
+                                column.name
+                                  .toLowerCase()
+                                  .includes(searchQuery.toLowerCase())
+                                  ? "bg-neutral-200 text-yellow-900 px-1 rounded"
+                                  : ""
+                              }
+                            >
+                              {searchQuery
+                                ? highlightText(column.name, searchQuery)
+                                : column.name}
+                            </span>
+                          )}
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleEditColumn(column)}
+                            >
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit name
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteColumn(column.id)}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete column
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  </KanbanHeader>
+                  {features.filter((f) => f.column === column.id).length ===
+                  0 ? (
+                    <div className="p-6 text-center">
+                      <div className="neural-pattern w-16 h-16 mx-auto rounded-lg flex items-center justify-center mb-4">
+                        <Zap className="h-6 w-6 " />
+                      </div>
+                      <p className="text-sm text-gray-500 mb-4">
+                        No cards in this column yet
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAddingCardInStatus(column.id)}
+                        className="gap-2 hover"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Add first card
+                      </Button>
+                    </div>
+                  ) : (
+                    <KanbanCards id={column.id}>
+                      {(feature: Feature) => {
+                        const isHighlighted = highlightedCardId === feature.id;
+                        const isInSearchResults = searchResults.some(
+                          (result) => result.id === feature.id
+                        );
+
+                        return (
+                          <KanbanCard
+                            column={column.id}
+                            id={feature.id}
+                            key={feature.id}
+                            name={feature.name}
+                            className={`hover:shadow-lg transition-all duration-200 ${
+                              isHighlighted
+                                ? "ring-2 shadow-lg"
+                                : isInSearchResults
+                            }`}
+                          >
+                            <div
+                              className="flex items-start justify-between gap-2 p-1"
+                              data-card-id={feature.id}
+                            >
+                              <div className="flex flex-col gap-2 flex-1">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="m-0 flex-1 font-medium text-sm">
+                                    {searchQuery
+                                      ? highlightText(feature.name, searchQuery)
+                                      : feature.name}
+                                  </p>
+                                </div>
+
+                                {feature.description && (
+                                  <p className="m-0 text-xs text-gray-500 line-clamp-2">
+                                    {searchQuery &&
+                                    feature.description
+                                      .toLowerCase()
+                                      .includes(searchQuery.toLowerCase())
+                                      ? highlightText(
+                                          feature.description,
+                                          searchQuery
+                                        )
+                                      : feature.description}
+                                  </p>
+                                )}
+
+                                <div className="flex items-center justify-between text-xs">
+                                  <div className="flex items-center gap-1 text-gray-400">
+                                    <Calendar className="h-3 w-3" />
+                                    <span>
+                                      {shortDateFormatter.format(
+                                        feature.startAt
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </KanbanCard>
+                        );
+                      }}
+                    </KanbanCards>
+                  )}
+
+                  {addingCardInStatus === column.id ? (
+                    <div className="p-4 ounded-lg border mx-2 mb-2">
+                      <Input
+                        autoFocus
+                        value={newCardName}
+                        onChange={(e) => setNewCardName(e.target.value)}
+                        onBlur={() => setAddingCardInStatus(null)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleAddCard(column.id);
+                          if (e.key === "Escape") setAddingCardInStatus(null);
+                        }}
+                        placeholder="Enter card title..."
+                      />
+                      <div className="flex gap-2 mt-3">
+                        <Button
+                          size="sm"
+                          onClick={() => handleAddCard(column.id)}
+                          className=" text-white"
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Add Card
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setAddingCardInStatus(null)}
+                          className="text-gray-500 hover:text-gray-700"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      className="m-2 justify-start"
+                      onClick={() => setAddingCardInStatus(column.id)}
+                    >
+                      <Plus className="h-4 w-4 mr-2" /> Add a card
+                    </Button>
+                  )}
+                </KanbanBoard>
+              )}
+            </KanbanProvider>
+
+            <div className="p-2 w-80 flex-shrink-0">
+              {isAddingColumn ? (
+                <div>
+                  <Input
+                    autoFocus
+                    value={newColumnName}
+                    onChange={(e) => setNewColumnName(e.target.value)}
+                    onBlur={() => setIsAddingColumn(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddColumn();
+                      if (e.key === "Escape") setIsAddingColumn(false);
+                    }}
+                    placeholder="Enter column name..."
+                  />
+                  <Button size="sm" className="mt-2" onClick={handleAddColumn}>
+                    Add Column
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start"
+                  onClick={() => setIsAddingColumn(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" /> Add another list
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Card Detail Dialog */}
       <Dialog open={isCardDialogOpen} onOpenChange={setIsCardDialogOpen}>
         <DialogContent
           className="max-w-4xl max-h-[90vh] overflow-y-auto"
@@ -782,7 +819,7 @@ export default function KanbanView() {
             <>
               <DialogHeader>
                 <div className="flex items-center justify-between">
-                  <DialogTitle className="text-xl font-semibold">
+                  <DialogTitle className="text-md font-semibold">
                     {selectedCard.name}
                   </DialogTitle>
                   <Button
@@ -799,7 +836,7 @@ export default function KanbanView() {
 
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-sm font-medium mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-medium flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <User className="h-4 w-4" />
                       Description
@@ -828,7 +865,6 @@ export default function KanbanView() {
                         />
                         <div className="flex gap-2">
                           <Button size="sm" onClick={handleSaveDescription}>
-                            <Save className="h-3 w-3 mr-1" />
                             Save
                           </Button>
                           <Button

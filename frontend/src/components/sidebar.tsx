@@ -5,14 +5,12 @@ import {
   Settings,
   FolderKanban,
   ClosedCaption,
-  HelpCircle,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Link, useLocation } from "react-router-dom";
 import { useSidebar } from "~/contexts/sidebar-context";
 import { Button } from "./ui/button";
 import { BoardSelector } from "./board-selector";
-import { HelpDialog } from "./help-dialog";
 import { useState } from "react";
 
 interface NavItem {
@@ -24,8 +22,6 @@ interface NavItem {
 }
 
 export const Sidebar = () => {
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
-
   const navItems: NavItem[] = [
     { id: "/", label: "Home", icon: Home, active: true },
     { id: "/transcriptions", label: "Transcripts", icon: ClosedCaption },
@@ -33,7 +29,6 @@ export const Sidebar = () => {
   ];
 
   const bottomItems: NavItem[] = [
-    { id: "help", label: "Help", icon: HelpCircle },
     { id: "settings", label: "Settings", icon: Settings },
   ];
 
@@ -78,7 +73,6 @@ export const Sidebar = () => {
           </Button>
         </div>
 
-        {/* Board Selector */}
         {!collapsed && (
           <div className="px-3 pb-2">
             <BoardSelector className="w-full" />
@@ -118,27 +112,6 @@ export const Sidebar = () => {
         >
           {bottomItems.map((item) => {
             const Icon = item.icon;
-            const isHelpButton = item.id === "help";
-
-            if (isHelpButton) {
-              return (
-                <div key={item.id} className="">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setIsHelpOpen(true)}
-                    className={cn(
-                      "w-full flex justify-start items-center gap-3 px-3 py-2.5 rounded-lg mb-1",
-                      "transition-all duration-200",
-                      "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-                      collapsed && "justify-center px-0"
-                    )}
-                  >
-                    <Icon className="h-5 w-5" />
-                    {!collapsed && <span className="">{item.label}</span>}
-                  </Button>
-                </div>
-              );
-            }
 
             return (
               <div key={item.id}>
@@ -159,8 +132,6 @@ export const Sidebar = () => {
           })}
         </div>
       </motion.aside>
-
-      <HelpDialog open={isHelpOpen} onOpenChange={setIsHelpOpen} />
     </AnimatePresence>
   );
 };
