@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gordonklaus/portaudio"
+	"github.com/emeraldls/portaudio"
 	"github.com/sashabaranov/go-openai"
 
 	"github.com/go-audio/audio"
