@@ -1,0 +1,81 @@
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+      <key>CFBundleURLTypes</key>
+        <array>
+            <dict>
+                <key>CFBundleURLName</key>
+                <string>com.seisami.auth</string>
+                <key>CFBundleURLSchemes</key>
+                <array>
+                    <string>seisami</string>
+                </array>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+            </dict>
+        </array>
+
+        <key>CFBundlePackageType</key>
+        <string>APPL</string>
+        <key>CFBundleName</key>
+        <string>Seisami</string>
+        <key>CFBundleExecutable</key>
+        <string>seisami</string>
+        <key>CFBundleIdentifier</key>
+        <string>com.wails.Seisami</string>
+        <key>CFBundleVersion</key>
+        <string>1.0.0</string>
+        <key>CFBundleGetInfoString</key>
+        <string>Built using Wails (https://wails.io)</string>
+        <key>CFBundleShortVersionString</key>
+        <string>1.0.0</string>
+        <key>CFBundleIconFile</key>
+        <string>iconfile</string>
+        <key>LSMinimumSystemVersion</key>
+        <string>10.13.0</string>
+        <key>NSHighResolutionCapable</key>
+        <string>true</string>
+        <key>NSHumanReadableCopyright</key>
+        <string>Copyright.........</string>
+        <key>NSMicrophoneUsageDescription</key>
+        <string>Seisami needs access to your microphone to record audio for voice transcription and creating voice notes on your boards.</string>
+        <key>NSSystemExtensionUsageDescription</key>
+        <string>Seisami needs accessibility access to monitor the FN key for hands-free voice recording functionality.</string>
+        
+        <key>CFBundleDocumentTypes</key>
+        <array>
+          
+          <dict>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+              <string>png</string>
+            </array>
+            <key>CFBundleTypeName</key>
+            <string>Seisami</string>
+            <key>CFBundleTypeRole</key>
+            <string></string>
+            <key>CFBundleTypeIconFile</key>
+            <string>appicon</string>
+          </dict>
+          
+        </array>
+        
+        
+        <key>CFBundleURLTypes</key>
+        <array>
+          
+            <dict>
+                <key>CFBundleURLName</key>
+                <string>com.wails.seisami</string>
+                <key>CFBundleURLSchemes</key>
+                <array>
+                    <string>seisami</string>
+                </array>
+                <key>CFBundleTypeRole</key>
+                <string>Editor</string>
+            </dict>
+          
+        </array>
+        
+    </dict>
+</plist>
