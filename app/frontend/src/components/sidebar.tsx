@@ -5,6 +5,7 @@ import {
   Settings,
   FolderKanban,
   ClosedCaption,
+  Cloud,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Link, useLocation } from "react-router-dom";
@@ -12,6 +13,8 @@ import { useSidebar } from "~/contexts/sidebar-context";
 import { Button } from "./ui/button";
 import { BoardSelector } from "./board-selector";
 import { useState } from "react";
+import { useDesktopAuthStore } from "~/stores/auth-store";
+import { DesktopAuthService } from "~/lib/desktop-auth-service";
 
 interface NavItem {
   id: string;
@@ -34,6 +37,29 @@ export const Sidebar = () => {
 
   const { pathname } = useLocation();
   const { collapsed, toggleCollapsed } = useSidebar();
+  const { isAuthenticated, email, setToken, logout, setLoading, setError } =
+    useDesktopAuthStore();
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+
+  const handleCloudLogin = async () => {
+    setIsAuthenticating(true);
+    setLoading(true);
+    try {
+      await DesktopAuthService.startAuthFlow();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Authentication failed";
+      setError(message);
+      console.error("Cloud login error:", error);
+    } finally {
+      setIsAuthenticating(false);
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    logout();
+  };
 
   return (
     <AnimatePresence>
@@ -106,10 +132,48 @@ export const Sidebar = () => {
 
         <div
           className={cn(
-            "px-3 pb-4 border-t border-sidebar-border pt-2 flex flex-col ",
+            "px-3 pb-4 border-t border-sidebar-border pt-2 flex flex-col gap-2",
             collapsed && "px-1"
           )}
         >
+          {isAuthenticated ? (
+            <div className="space-y-2">
+              {!collapsed && (
+                <div className="px-3 py-2 rounded-lg bg-sidebar-accent/30">
+                  <p className="text-xs font-medium text-sidebar-foreground/70">
+                    Cloud Enabled
+                  </p>
+                  <p className="text-xs text-sidebar-foreground/50 truncate">
+                    {email}
+                  </p>
+                </div>
+              )}
+              <Button
+                onClick={handleLogout}
+                variant="ghost"
+                size="sm"
+                className="w-full justify-center"
+              >
+                <Cloud className="h-4 w-4" />
+                {!collapsed && <span className="text-xs">Logout</span>}
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={handleCloudLogin}
+              disabled={isAuthenticating}
+              className="w-full"
+              size="sm"
+            >
+              <Cloud className="h-4 w-4" />
+              {!collapsed && (
+                <span className="text-xs">
+                  {isAuthenticating ? "Authenticating..." : "Cloud Features"}
+                </span>
+              )}
+            </Button>
+          )}
+
           {bottomItems.map((item) => {
             const Icon = item.icon;
 

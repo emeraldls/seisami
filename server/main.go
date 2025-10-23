@@ -126,9 +126,11 @@ func startCentralHTTPServer() (func(), error) {
 
 	queries := centraldb.New(pool)
 	service := central.NewAuthService(queries, cfg)
+	router := central.NewRouter(service)
+
 	server := &http.Server{
 		Addr:    cfg.HTTPAddr,
-		Handler: central.NewRouter(service),
+		Handler: router,
 	}
 
 	go func() {

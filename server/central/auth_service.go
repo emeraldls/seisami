@@ -18,7 +18,6 @@ import (
 	"seisami/server/centraldb"
 )
 
-// Sentinel errors returned by the service layer for consistent HTTP responses.
 var (
 	ErrEmailAlreadyInUse    = errors.New("email already registered")
 	ErrInvalidCredentials   = errors.New("invalid email or password")
@@ -27,7 +26,6 @@ var (
 	ErrInvalidOrExpiredCode = errors.New("invalid or expired code")
 )
 
-// AuthService coordinates auth related operations against the database.
 type AuthService struct {
 	queries              *centraldb.Queries
 	jwtSecret            []byte
@@ -35,14 +33,12 @@ type AuthService struct {
 	resetTokenExpiration time.Duration
 }
 
-// AuthResult captures the minimal information required by clients after auth flows.
 type AuthResult struct {
 	Token  string `json:"token"`
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`
 }
 
-// NewAuthService constructs a service instance using the provided dependencies.
 func NewAuthService(queries *centraldb.Queries, cfg Config) *AuthService {
 	return &AuthService{
 		queries:              queries,
@@ -52,7 +48,6 @@ func NewAuthService(queries *centraldb.Queries, cfg Config) *AuthService {
 	}
 }
 
-// Signup creates a new user and returns a fresh JWT.
 func (s *AuthService) Signup(ctx context.Context, email, password string) (AuthResult, error) {
 	if _, err := s.queries.GetUserByEmail(ctx, email); err == nil {
 		return AuthResult{}, ErrEmailAlreadyInUse
@@ -88,7 +83,6 @@ func (s *AuthService) Signup(ctx context.Context, email, password string) (AuthR
 	return AuthResult{Token: token, UserID: userID, Email: user.Email}, nil
 }
 
-// Signin authenticates a user and returns a fresh JWT.
 func (s *AuthService) Signin(ctx context.Context, email, password string) (AuthResult, error) {
 	user, err := s.queries.GetUserByEmail(ctx, email)
 	if err != nil {
@@ -115,7 +109,6 @@ func (s *AuthService) Signin(ctx context.Context, email, password string) (AuthR
 	return AuthResult{Token: token, UserID: userID, Email: user.Email}, nil
 }
 
-// ForgotPassword issues a reset token tied to an expiration window.
 func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string, time.Time, error) {
 	user, err := s.queries.GetUserByEmail(ctx, email)
 	if err != nil {
@@ -145,7 +138,6 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) (string,
 	return token, expiresAt, nil
 }
 
-// ResetPassword updates the user's password and clears the reset token.
 func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword string) error {
 	user, err := s.queries.GetUserByResetToken(ctx, pgtype.Text{String: token, Valid: true})
 	if err != nil {
@@ -170,7 +162,6 @@ func (s *AuthService) ResetPassword(ctx context.Context, token, newPassword stri
 	return nil
 }
 
-// generateToken creates a signed JWT for the given user ID.
 func (s *AuthService) generateToken(userID string) (string, error) {
 	claims := jwt.RegisteredClaims{
 		Subject:   userID,
@@ -244,7 +235,6 @@ func (s *AuthService) ExchangeDesktopLoginCode(ctx context.Context, code, state 
 		return "", err
 	}
 
-	// user still valid?
 	user, err := s.queries.GetUserByID(ctx, dbCode.UserID)
 	if err != nil {
 		return "", err
@@ -264,7 +254,7 @@ func (s *AuthService) ExchangeDesktopLoginCode(ctx context.Context, code, state 
 }
 
 func (s *AuthService) GetUserIDFromContext(ctx context.Context) (string, error) {
-	user, ok := ctx.Value("user").(*centraldb.User)
+	user, ok := ctx.Value(UserContextKey).(*centraldb.User)
 	if !ok || user == nil {
 		return "", fmt.Errorf("no user in context")
 	}

@@ -1,28 +1,111 @@
 package central
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
+
+	"seisami/server/centraldb"
 )
 
-// NewRouter wires the auth handlers into a standard http.ServeMux.
-func NewRouter(service *AuthService) http.Handler {
+// ContextKey is a custom type for context keys to avoid collisions
+type ContextKey string
+
+const UserContextKey ContextKey = "user"
+
+func NewRouter(service *AuthService) *gin.Engine {
+	router := gin.Default()
+
+	corsMiddleware := cors.New(cors.Config{
+		AllowAllOrigins: true,
+		AllowMethods:    []string{"PUT", "PATCH", "GET", "POST", "DELETE", "OPTIONS"},
+		AllowHeaders:    []string{"Origin", "Content-Type", "Authorization"},
+		MaxAge:          12 * 60 * 60,
+	})
+	router.Use(corsMiddleware)
+
 	h := &handler{service: service}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/auth/signup", h.signup)
-	mux.HandleFunc("/auth/signin", h.signin)
-	mux.HandleFunc("/auth/forgot-password", h.forgotPassword)
-	mux.HandleFunc("/auth/reset-password", h.resetPassword)
-	mux.HandleFunc("/auth/desktop/start", h.desktopStart)
-	mux.HandleFunc("/auth/desktop/exchange", h.desktopExchange)
+	auth := router.Group("/auth")
+	{
+		auth.POST("/signup", h.signup)
+		auth.POST("/signin", h.signin)
+		auth.POST("/forgot-password", h.forgotPassword)
+		auth.POST("/reset-password", h.resetPassword)
+		auth.POST("/desktop/exchange", h.desktopExchange)
 
-	return mux
+		protected := auth.Group("")
+		protected.Use(authMiddleware(service))
+		{
+			protected.GET("/desktop/start", h.desktopStart)
+		}
+	}
+
+	return router
+}
+
+func authMiddleware(service *AuthService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authorization header"})
+			c.Abort()
+			return
+		}
+
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid authorization header format"})
+			c.Abort()
+			return
+		}
+
+		tokenString := parts[1]
+
+		token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+			}
+			return service.jwtSecret, nil
+		})
+
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.Abort()
+			return
+		}
+
+		claims, ok := token.Claims.(*jwt.RegisteredClaims)
+		if !ok || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+			c.Abort()
+			return
+		}
+
+		userID := claims.Subject
+
+		c.Request = c.Request.WithContext(setUserContext(c.Request.Context(), &centraldb.User{ID: stringToUUID(userID)}))
+		c.Next()
+	}
+}
+
+func setUserContext(ctx context.Context, user *centraldb.User) context.Context {
+	return context.WithValue(ctx, UserContextKey, user)
+}
+
+func stringToUUID(userID string) pgtype.UUID {
+	parsed, _ := uuid.Parse(userID)
+	return pgtype.UUID{Bytes: parsed, Valid: true}
 }
 
 type handler struct {
@@ -34,70 +117,58 @@ type emailPasswordRequest struct {
 	Password string `json:"password"`
 }
 
-func (h *handler) signup(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		methodNotAllowed(w)
-		return
-	}
-
+func (h *handler) signup(c *gin.Context) {
 	var req emailPasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON body")
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
-	defer r.Body.Close()
 
 	req.Email = strings.TrimSpace(req.Email)
 	if req.Email == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "email and password are required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "email and password are required"})
 		return
 	}
 
-	result, err := h.service.Signup(r.Context(), req.Email, req.Password)
+	result, err := h.service.Signup(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrEmailAlreadyInUse):
-			writeError(w, http.StatusConflict, err.Error())
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		default:
-			writeError(w, http.StatusInternalServerError, "unable to complete signup")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to complete signup"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, result)
+	c.JSON(http.StatusCreated, result)
 }
 
-func (h *handler) signin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		methodNotAllowed(w)
-		return
-	}
-
+func (h *handler) signin(c *gin.Context) {
 	var req emailPasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON body")
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
-	defer r.Body.Close()
 
 	req.Email = strings.TrimSpace(req.Email)
 	if req.Email == "" || req.Password == "" {
-		writeError(w, http.StatusBadRequest, "email and password are required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "email and password are required"})
 		return
 	}
 
-	result, err := h.service.Signin(r.Context(), req.Email, req.Password)
+	result, err := h.service.Signin(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidCredentials):
-			writeError(w, http.StatusUnauthorized, err.Error())
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		default:
-			writeError(w, http.StatusInternalServerError, "unable to complete signin")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to complete signin"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, result)
+	c.JSON(http.StatusOK, result)
 }
 
 type forgotPasswordRequest struct {
@@ -111,37 +182,31 @@ type forgotPasswordResponse struct {
 	ExpiresInSec int64     `json:"expires_in_seconds"`
 }
 
-func (h *handler) forgotPassword(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		methodNotAllowed(w)
-		return
-	}
-
+func (h *handler) forgotPassword(c *gin.Context) {
 	var req forgotPasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON body")
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
-	defer r.Body.Close()
 
 	req.Email = strings.TrimSpace(req.Email)
 	if req.Email == "" {
-		writeError(w, http.StatusBadRequest, "email is required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "email is required"})
 		return
 	}
 
-	token, expiresAt, err := h.service.ForgotPassword(r.Context(), req.Email)
+	token, expiresAt, err := h.service.ForgotPassword(c.Request.Context(), req.Email)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUserNotFound):
-			writeError(w, http.StatusNotFound, err.Error())
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		default:
-			writeError(w, http.StatusInternalServerError, "unable to process password reset")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to process password reset"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, forgotPasswordResponse{
+	c.JSON(http.StatusOK, forgotPasswordResponse{
 		Message:      "password reset token generated",
 		ResetToken:   token,
 		ExpiresAt:    expiresAt,
@@ -154,87 +219,57 @@ type resetPasswordRequest struct {
 	NewPassword string `json:"password"`
 }
 
-func (h *handler) resetPassword(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		methodNotAllowed(w)
-		return
-	}
-
+func (h *handler) resetPassword(c *gin.Context) {
 	var req resetPasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON body")
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
-	defer r.Body.Close()
 
 	req.Token = strings.TrimSpace(req.Token)
 	if req.Token == "" || req.NewPassword == "" {
-		writeError(w, http.StatusBadRequest, "token and password are required")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token and password are required"})
 		return
 	}
 
-	if err := h.service.ResetPassword(r.Context(), req.Token, req.NewPassword); err != nil {
+	if err := h.service.ResetPassword(c.Request.Context(), req.Token, req.NewPassword); err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidResetToken):
-			writeError(w, http.StatusBadRequest, err.Error())
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		default:
-			writeError(w, http.StatusInternalServerError, "unable to reset password")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to reset password"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"message": "password updated"})
+	c.JSON(http.StatusOK, gin.H{"message": "password updated"})
 }
 
-func methodNotAllowed(w http.ResponseWriter) {
-	writeError(w, http.StatusMethodNotAllowed, http.StatusText(http.StatusMethodNotAllowed))
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if payload == nil {
-		return
-	}
-	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
-	}
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, map[string]string{"error": message})
-}
-
-func (h *handler) desktopStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		methodNotAllowed(w)
-		return
-	}
-
-	state := r.URL.Query().Get("state")
+func (h *handler) desktopStart(c *gin.Context) {
+	state := c.Query("state")
 	if state == "" {
-		writeError(w, http.StatusBadRequest, "missing state param")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing state param"})
 		return
 	}
 
-	// userID, err := h.service.GetUserIDFromContext(r.Context())
-	// if err != nil || userID == "" {
-	// 	writeError(w, http.StatusUnauthorized, "unauthorized")
-	// 	return
-	// }
+	userID, err := h.service.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
 
-	userID := "b1d42325-9d7c-4fbf-8b9c-31b82e9ac649"
-
-	code, expiresAt, err := h.service.CreateDesktopLoginCode(r.Context(), userID, state)
+	code, expiresAt, err := h.service.CreateDesktopLoginCode(c.Request.Context(), userID, state)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to create desktop login code")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create desktop login code"})
 		return
 	}
 
 	log.Printf("Generated code: %s", code)
 
-	redirectURL := fmt.Sprintf("seisami://auth/callback?code=%s&expires=%d", code, expiresAt.Unix())
-	http.Redirect(w, r, redirectURL, http.StatusFound)
+	c.JSON(http.StatusOK, gin.H{
+		"code":    code,
+		"expires": expiresAt.Unix(),
+	})
 }
 
 type desktopExchangeRequest struct {
@@ -242,34 +277,28 @@ type desktopExchangeRequest struct {
 	State string `json:"state"`
 }
 
-func (h *handler) desktopExchange(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		methodNotAllowed(w)
-		return
-	}
-
+func (h *handler) desktopExchange(c *gin.Context) {
 	var req desktopExchangeRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON body")
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
-	defer r.Body.Close()
 
 	if req.Code == "" || req.State == "" {
-		writeError(w, http.StatusBadRequest, "missing code or state")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing code or state"})
 		return
 	}
 
-	token, err := h.service.ExchangeDesktopLoginCode(r.Context(), req.Code, req.State)
+	token, err := h.service.ExchangeDesktopLoginCode(c.Request.Context(), req.Code, req.State)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidOrExpiredCode):
-			writeError(w, http.StatusBadRequest, err.Error())
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		default:
-			writeError(w, http.StatusInternalServerError, "unable to complete exchange")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to complete exchange"})
 		}
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"token": token})
+	c.JSON(http.StatusOK, gin.H{"token": token})
 }

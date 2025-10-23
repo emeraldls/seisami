@@ -78,11 +78,6 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.action = actions.NewAction(ctx, a.repository)
 
-	runtime.EventsOn(ctx, "url", func(optionalData ...any) {
-		log.Println("Received URL:", optionalData)
-		// Parse query param code=... and call /auth/desktop_exchange
-	})
-
 	runtime.EventsOn(ctx, "board:id", func(optionalData ...any) {
 		if len(optionalData) > 0 {
 			if boardId, ok := optionalData[0].(string); ok {
