@@ -65,7 +65,8 @@ export const Route = createRootRoute({
       },
       {
         name: "twitter:description",
-        content: "Audio-powered productivity. Record, transcribe, and manage tasks with AI.",
+        content:
+          "Audio-powered productivity. Record, transcribe, and manage tasks with AI.",
       },
       {
         name: "twitter:image",
@@ -92,11 +93,6 @@ export const Route = createRootRoute({
       {
         rel: "canonical",
         href: baseUrl,
-      },
-      {
-        rel: "alternate",
-        type: "application/rss+xml",
-        href: `${baseUrl}/seo/rss`,
       },
       {
         rel: "sitemap",

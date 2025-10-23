@@ -1,22 +1,151 @@
-# README
+# Seisami
 
-## About
+**Voice-driven task management for productivity without friction.**
 
-This is the official Wails React-TS template.
+Record tasks with a hotkey. AI transcribes and organizes them automatically. Collaborate in real-time. No account required. 100% open source.
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+## Quick Start
 
-## Live Development
+```bash
+# Development
+wails dev
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+# Build
+wails build
 
-## Building
+# Desktop app available at: build/bin/
+```
 
-To build a redistributable, production mode package, use `wails build`.
+## What is Seisami?
 
+Seisami is a **voice-first task management platform** that eliminates the friction between thinking and organizing:
 
-board -> columns. -> tickets/cards
+- **Voice Recording** - Press FN anywhere to capture tasks
+- **AI Processing** - GPT-4.1 understands context and extracts intent
+- **Kanban Boards** - Automatic task categorization and drag-and-drop organization
+- **Real-Time Collaboration** - Share boards with team, sync instantly
+- **Offline-First** - Works completely offline, no account needed
+
+## Project Structure
+
+```
+seisami/
+├── app/                    # Desktop application (Go + React)
+│   ├── frontend/          # React 19, TypeScript, Tailwind
+│   ├── internal/          # Go logic, AI integration
+│   └── main.go            # Wails entry point
+├── server/                # Central collaboration server (Go)
+│   ├── central/           # Auth & handler
+│   └── centraldb/         # PostgreSQL operations
+└── web/                   # Marketing website (TanStack Start)
+    └── src/               # React components, pages
+```
+
+## Development
+
+### Prerequisites
+- Go 1.25+
+- Node.js 18+
+- npm or pnpm
+
+### Desktop App (`/app`)
+
+```bash
+cd app
+go mod download
+npm install
+wails dev              # Hot reload development
+wails build            # Production binary
+```
+
+**Frontend**: React 19 + TypeScript + Tailwind CSS
+**Backend**: Go + Wails framework
+**Database**: SQLite (local)
+**AI**: OpenAI API (configurable)
+
+### Server (`/server`)
+
+```bash
+cd server
+go run main.go
+```
+
+Runs on:
+- HTTP: `:8080` (authentication)
+- TCP: `:2121` (real-time sync)
+
+**Database**: PostgreSQL 15+
+**Protocol**: Custom TCP with JSON messages
+
+### Website (`/web`)
+
+```bash
+cd web
+npm install
+npm run dev            # http://localhost:3000
+npm run build          # Production build
+```
+
+**Framework**: TanStack Start (full-stack React)
+**Styling**: Tailwind CSS v4
+
+## 🔧 Configuration
+
+### Desktop App
+Edit `app/wails.json`:
+```json
+{
+  "appname": "Seisami",
+  "frontend": {
+    "installprefix": "./frontend"
+  }
+}
+```
+
+### Server
+Environment variables:
+```bash
+DATABASE_URL=postgresql://user:pass@localhost/seisami
+HTTP_ADDR=:8080
+TCP_ADDR=:2121
+JWT_SECRET=your-secret-key
+```
+
+### Website
+Environment variables:
+```bash
+VITE_BASE_URL=https://seisami.com
+VITE_SITE_NAME=Seisami
+```
+
+## 📊 Database Schema
+
+### Desktop (SQLite)
+```sql
+boards, columns, cards          -- Core kanban structure
+transcriptions                  -- Audio + AI processing
+settings                        -- User configuration
+```
+
+### Server (PostgreSQL)
+```sql
+users, sessions                 -- Authentication
+rooms, room_members             -- Collaboration
+```
+
+## Privacy & Security
+
+- **Local-First**: All data stored locally by default
+- **No Tracking**: Zero telemetry
+- **Optional Cloud**: Connect to server for team collaboration
+- **Open Source**: Full code transparency for security audit
+- **Encryption**: Optional AES-256 for sensitive data
+- **No Account Required**: Works out-of-the-box
+
+## Project Goals
+
+1. **Zero Friction** - Recording tasks should be faster than typing
+2. **Privacy First** - Users own their data
+3. **Open & Transparent** - No vendor lock-in
+4. **Beautiful Design** - Simple, minimal, professional
+5. **Team Ready** - Optional collaboration without complexity
