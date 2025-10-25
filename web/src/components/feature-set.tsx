@@ -39,7 +39,7 @@ const features = [
   },
 ];
 
-export const Features = () => {
+export const FeatureSet = () => {
   return (
     <section
       id="features"
