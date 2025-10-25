@@ -175,3 +175,64 @@ SELECT *
 FROM "columns"
 WHERE board_id = ?
   AND name LIKE '%' || ? || '%' COLLATE NOCASE;
+
+-- 
+-- Export/Sync Functionality
+--
+
+-- name: ListAllColumns :many
+SELECT * FROM columns
+ORDER BY created_at ASC;
+
+-- name: ListAllCards :many
+SELECT * FROM cards
+ORDER BY created_at ASC;
+
+-- name: CreateOperation :one
+INSERT INTO operations (id, table_name, record_id, operation_type, payload)
+VALUES (?, ?, ?, ?, ?)
+RETURNING *;
+
+--  GetAllOperations The one below is faster & better
+-- SELECT * FROM operations
+-- WHERE created_at > (SELECT last_synced_at FROM sync_state WHERE sync_state."table_name" = ?)
+-- ORDER BY created_at ASC;
+
+-- name: GetAllOperations :many
+SELECT o.*
+FROM operations o
+JOIN (
+    SELECT record_id, MAX(created_at) AS max_created_at
+    FROM operations
+    WHERE created_at > (
+        SELECT COALESCE(last_synced_at, 0)
+        FROM sync_state
+        WHERE sync_state."table_name" = ?
+    )
+    AND sync_state."table_name" = ?
+    GROUP BY record_id
+) latest
+ON o.record_id = latest.record_id
+AND o.created_at = latest.max_created_at
+AND o.table_name = ?
+ORDER BY o.created_at ASC;
+
+
+-- name: UpsertSyncState :exec
+INSERT INTO sync_state (table_name, last_synced_at, last_synced_op_id)
+VALUES (?, ?, ?)
+ON CONFLICT(table_name)
+DO UPDATE SET
+  last_synced_at = excluded.last_synced_at,
+  last_synced_op_id = excluded.last_synced_op_id;
+
+-- name: GetSyncState :one
+SELECT *
+FROM sync_state
+WHERE table_name = ?
+LIMIT 1;
+
+-- name: UpdateSyncState :exec
+UPDATE sync_state
+SET last_synced_at = ?, last_synced_op_id = ?
+WHERE table_name = ?;

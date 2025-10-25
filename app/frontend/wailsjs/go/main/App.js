@@ -38,6 +38,10 @@ export function DeleteColumn(arg1) {
   return window['go']['main']['App']['DeleteColumn'](arg1);
 }
 
+export function ExportDataForSync() {
+  return window['go']['main']['App']['ExportDataForSync']();
+}
+
 export function GetBoardByID(arg1) {
   return window['go']['main']['App']['GetBoardByID'](arg1);
 }

@@ -1,28 +1,17 @@
 import { create } from "zustand";
 import { toast } from "sonner";
-import {
-  CreateCollaborationRoom,
-  JoinCollaborationRoom,
-  LeaveCollaborationRoom,
-  GetCollaborationRoomId,
-} from "../../wailsjs/go/main/App";
-import { EventsOn } from "../../wailsjs/runtime/runtime";
+import { wsService, type CollabResponse } from "../lib/websocket-service";
+import { useDesktopAuthStore } from "./auth-store";
 
 export type CollabStatus =
   | "disconnected"
   | "connected"
   | "in-room"
   | "busy"
-  | "error";
+  | "error"
+  | "unauthenticated";
 
 type Unsubscribe = () => void;
-
-type CollabEventPayload = {
-  roomId?: string;
-  address?: string;
-  error?: string;
-  [key: string]: unknown;
-};
 
 interface CollabState {
   status: CollabStatus;
@@ -33,7 +22,6 @@ interface CollabState {
   eventUnsubscribers: Unsubscribe[];
   initialize: () => void;
   teardown: () => void;
-  loadCurrentRoom: () => Promise<void>;
   createRoom: () => Promise<string | null>;
   joinRoom: (roomId: string) => Promise<string | null>;
   leaveRoom: () => Promise<string | null>;
@@ -55,52 +43,104 @@ export const useCollaborationStore = create<CollabState>((set, get) => ({
       return;
     }
 
-    const unsubscribers: Unsubscribe[] = [
-      EventsOn("collab:connected", (data: CollabEventPayload = {}) => {
-        set((state) => ({
-          status: state.roomId ? "in-room" : "connected",
-          address: data.address ?? state.address,
-        }));
-        if (data.address) {
-          toast.success("Connected to collaboration server", {
-            description: `Address: ${data.address}`,
-          });
-        }
-      }),
-      EventsOn("collab:room_created", (data: CollabEventPayload = {}) => {
-        if (!data.roomId) return;
-        set({ status: "in-room", roomId: data.roomId, lastError: null });
+    const authStore = useDesktopAuthStore.getState();
+    if (!authStore.isAuthenticated || !authStore.token) {
+      set({
+        status: "unauthenticated",
+        lastError: "Please log in to use collaboration features",
+        isInitialized: true,
+      });
+      toast.error("Authentication required", {
+        description: "Please log in to use collaboration features",
+      });
+      return;
+    }
+
+    const unsubscribers: Unsubscribe[] = [];
+
+    wsService.setAuthToken(authStore.token);
+
+    const connectPromise = wsService.connect();
+
+    const unsubConnect = wsService.onConnect(() => {
+      set((state) => ({
+        status: state.roomId ? "in-room" : "connected",
+        address: "127.0.0.1:8080",
+      }));
+      toast.success("Connected to collaboration server", {
+        description: "Ready to create or join rooms",
+      });
+    });
+    unsubscribers.push(unsubConnect);
+
+    const unsubMessage = wsService.onMessage((message: CollabResponse) => {
+      if ("status" in message && message.status === "created") {
+        const roomId = message.roomId;
+        set({ status: "in-room", roomId, lastError: null });
         toast.success("Room created", {
-          description: `Share this ID: ${data.roomId}`,
+          description: `Share this ID: ${roomId}`,
         });
-      }),
-      EventsOn("collab:joined", (data: CollabEventPayload = {}) => {
-        if (!data.roomId) return;
-        set({ status: "in-room", roomId: data.roomId, lastError: null });
+      }
+
+      if ("status" in message && message.status === "joined") {
+        const roomId = message.roomId;
+        set({ status: "in-room", roomId, lastError: null });
         toast.success("Joined room", {
-          description: `Connected to room ${data.roomId}`,
+          description: `Connected to room ${roomId}`,
         });
-      }),
-      EventsOn("collab:left", (data: CollabEventPayload = {}) => {
+      }
+
+      if ("status" in message && message.status === "left") {
+        const roomId = message.roomId;
         set({ status: "connected", roomId: "" });
-        if (data.roomId) {
-          toast.info("Left room", {
-            description: `You left room ${data.roomId}`,
-          });
-        }
-      }),
-      EventsOn("collab:error", (data: CollabEventPayload = {}) => {
-        const message =
-          typeof data.error === "string" && data.error.length > 0
-            ? data.error
-            : "Unknown collaboration error";
+        toast.info("Left room", {
+          description: `You left room ${roomId}`,
+        });
+      }
+
+      if ("type" in message && message.type === "message") {
+        console.log("Broadcast message:", message);
+        // You can handle broadcast messages here
+        // For now, just log them
+      }
+
+      if ("error" in message) {
+        const errorMsg = message.error;
+        set({ status: "error", lastError: errorMsg });
+        toast.error("Collaboration error", { description: errorMsg });
+      }
+    });
+    unsubscribers.push(unsubMessage);
+
+    const unsubError = wsService.onError((error: Error) => {
+      const message = error.message || "Unknown connection error";
+
+      if (message.includes("Authentication failed")) {
+        set({ status: "unauthenticated", lastError: message });
+        toast.error("Authentication failed", {
+          description: "Your session has expired. Please log in again.",
+        });
+      } else {
         set({ status: "error", lastError: message });
         toast.error("Collaboration error", { description: message });
-      }),
-    ];
+      }
+    });
+    unsubscribers.push(unsubError);
+
+    const unsubClose = wsService.onClose(() => {
+      set({ status: "disconnected", lastError: "Connection closed" });
+    });
+    unsubscribers.push(unsubClose);
 
     set({ isInitialized: true, eventUnsubscribers: unsubscribers });
-    void get().loadCurrentRoom();
+
+    connectPromise.catch((error) => {
+      console.error("Failed to connect:", error);
+      set({
+        status: "error",
+        lastError: error instanceof Error ? error.message : String(error),
+      });
+    });
   },
 
   teardown: () => {
@@ -112,30 +152,30 @@ export const useCollaborationStore = create<CollabState>((set, get) => ({
         console.error("Failed to unsubscribe from collaboration event", error);
       }
     });
+    wsService.disconnect();
     set({ eventUnsubscribers: [], isInitialized: false });
-  },
-
-  loadCurrentRoom: async () => {
-    try {
-      const currentRoomId = await GetCollaborationRoomId();
-      set((state) => ({
-        roomId: currentRoomId ?? "",
-        status: currentRoomId
-          ? "in-room"
-          : state.status === "disconnected"
-          ? "connected"
-          : state.status,
-      }));
-    } catch (error) {
-      console.error("Failed to load collaboration room", error);
-      set({ lastError: (error as Error).message, status: "error" });
-    }
   },
 
   createRoom: async () => {
     set({ status: "busy", lastError: null });
     try {
-      const roomId = await CreateCollaborationRoom();
+      wsService.createRoom();
+
+      const roomId = await new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          unsubscribe();
+          reject(new Error("Room creation timeout"));
+        }, 5000);
+
+        const unsubscribe = wsService.onMessage((message) => {
+          if ("status" in message && message.status === "created") {
+            clearTimeout(timeout);
+            unsubscribe();
+            resolve(message.roomId);
+          }
+        });
+      });
+
       const normalized = normalizeRoomId(roomId);
       set({ roomId: normalized, status: "in-room" });
       return normalized;
@@ -159,7 +199,23 @@ export const useCollaborationStore = create<CollabState>((set, get) => ({
     set({ status: "busy", lastError: null });
 
     try {
-      const joinedRoomId = await JoinCollaborationRoom(targetRoomId);
+      wsService.joinRoom(targetRoomId);
+
+      const joinedRoomId = await new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          unsubscribe();
+          reject(new Error("Join room timeout"));
+        }, 5000);
+
+        const unsubscribe = wsService.onMessage((message) => {
+          if ("status" in message && message.status === "joined") {
+            clearTimeout(timeout);
+            unsubscribe();
+            resolve(message.roomId);
+          }
+        });
+      });
+
       const normalized = normalizeRoomId(joinedRoomId);
       set({ roomId: normalized, status: "in-room" });
       toast.success("Joined room", {
@@ -183,7 +239,23 @@ export const useCollaborationStore = create<CollabState>((set, get) => ({
     set({ status: "busy", lastError: null });
 
     try {
-      const leftRoomId = await LeaveCollaborationRoom(currentRoomId);
+      wsService.leaveRoom(currentRoomId);
+
+      const leftRoomId = await new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          unsubscribe();
+          reject(new Error("Leave room timeout"));
+        }, 5000);
+
+        const unsubscribe = wsService.onMessage((message) => {
+          if ("status" in message && message.status === "left") {
+            clearTimeout(timeout);
+            unsubscribe();
+            resolve(message.roomId);
+          }
+        });
+      });
+
       set({ roomId: "", status: "connected" });
       toast.info("Left room", { description: `You left ${leftRoomId}` });
       return leftRoomId;

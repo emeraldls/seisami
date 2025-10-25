@@ -2,6 +2,7 @@ package repo
 
 import (
 	"seisami/app/internal/repo/sqlc/query"
+	"seisami/app/types"
 )
 
 type Repository interface {
@@ -35,4 +36,12 @@ type Repository interface {
 	CreateOrUpdateSettings(transcriptionMethod string, whisperBinaryPath *string, whisperModelPath *string, openaiApiKey *string) (query.Setting, error)
 
 	SearchColumnsByBoardAndName(boardId, searchQuery string) ([]query.Column, error)
+
+	CreateOperation(tableName types.TableName, recordId, payload string, opType types.Operation) (query.Operation, error)
+	GetAllOperations(tableName types.TableName) ([]query.Operation, error)
+	UpsertSyncState(tableName types.TableName, lastOpID string, lastSyncedAt int64) error
+	GetSyncState(tableName types.TableName) (query.SyncState, error)
+	UpdateSyncState(tableName types.TableName, lastOpID string, lastSyncedAt int64) error
+
+	ExportAllData() (*ExportedData, error)
 }

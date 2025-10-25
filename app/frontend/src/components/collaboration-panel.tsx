@@ -32,6 +32,10 @@ const statusConfig: Record<
   "in-room": { label: "In a Room", badgeClass: "bg-blue-100 text-blue-700" },
   busy: { label: "Working...", badgeClass: "bg-amber-100 text-amber-700" },
   error: { label: "Error", badgeClass: "bg-red-100 text-red-700" },
+  unauthenticated: {
+    label: "Not Authenticated",
+    badgeClass: "bg-purple-100 text-purple-700",
+  },
 };
 
 /*
@@ -44,6 +48,13 @@ const statusConfig: Record<
 
 
   - I can implmenent a custom cursor that shows in the other user's end where the current user's cursor is atm in the application, just like what figma does -- coool idea, for this, I will just get the cursor position & keep emitting a user cursor position to connected clients, then on connected clients end, i just draw the cursor & it overlays on their board. Cool
+*/
+
+/*
+  ------- Collaboration with cloud logic -----
+
+  When a user enables cloud features, first thing im to do is upload their local data to the cloud, 
+  they'll know that this will happen. So now their local data & cloud is in sync
 */
 
 export const CollaborationPanel = () => {

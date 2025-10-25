@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"math"
-	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +23,7 @@ import (
 	"github.com/emeraldls/portaudio"
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
+	"github.com/gorilla/websocket"
 	"github.com/sashabaranov/go-openai"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -34,12 +33,16 @@ TODO: When a user switch a board, kill any active connections
 */
 
 /*
-	Whenever im updating card column, card data, or whenever im performing anything on the editor, i need to broadcast what the user has done to other clients
+	Whenever im updating card column, card data, or whenever im performing anything on the board, i need to broadcast what the user has done to other clients
 
 	When a new client joins a room that has length > 0, the server sends full board snapshot to the client
+
+	Inviting a client into your own board, which means on their end, a copy of your board will be created & stored.
+
+	TODO: updating of a card name/title isnt implemented.
 */
 
-const defaultCollabServerAddr = "127.0.0.1:2121"
+const defaultCollabServerAddr = "127.0.0.1:8080"
 
 // App struct
 type App struct {
@@ -52,10 +55,10 @@ type App struct {
 	action           *actions.Action
 	currentBoardId   string
 	collabMu         sync.Mutex
-	collabConn       net.Conn
-	collabReader     *bufio.Reader
+	collabConn       *websocket.Conn
 	collabServerAddr string
 	collabRoomId     string
+	collabCloseChan  chan bool
 }
 
 // NewApp creates a new App application struct
@@ -78,49 +81,7 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.action = actions.NewAction(ctx, a.repository)
 
-	runtime.EventsOn(ctx, "board:id", func(optionalData ...any) {
-		if len(optionalData) > 0 {
-			if boardId, ok := optionalData[0].(string); ok {
-				a.currentBoardId = boardId
-				fmt.Printf("Received event 'board:id' with data: %s\n", boardId)
-			}
-		} else {
-			fmt.Println("Received event 'board:id' with no data")
-		}
-	})
-
-	// column name updatedd....
-	runtime.EventsOn(ctx, "column:data", func(optionalData ...any) {
-
-		if len(optionalData) > 0 {
-			var columnData types.ColumnEvent
-			data, ok := optionalData[0].(string)
-
-			if ok {
-				if err := json.Unmarshal([]byte(data), &columnData); err != nil {
-					// TODO: emit error
-					fmt.Printf("unable to unmarshal json: %v\n", err)
-					return
-				}
-			} else {
-				fmt.Printf("couldnt parse data structure")
-				return
-			}
-
-			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data}
-
-			response, err := a.sendCollabCommand(msg)
-			if err != nil {
-				fmt.Printf("unable to broadcast the command: %v\n", err)
-				return
-			}
-
-			// can emit response back to user maybe
-			_ = response
-
-		}
-	})
-
+	go a.handleMutations()
 	go startListener()
 	go a.handleFnKeyPress()
 }
@@ -228,17 +189,21 @@ func (a *App) ensureCollabConnectionLocked() error {
 		addr = defaultCollabServerAddr
 	}
 
-	conn, err := net.Dial("tcp", addr)
+	wsURL := url.URL{Scheme: "ws", Host: addr, Path: "/ws"}
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
 	if err != nil {
-		return fmt.Errorf("unable to connect to collaboration server at %s: %w", addr, err)
+		return fmt.Errorf("unable to connect to collaboration server at %s: %w", wsURL.String(), err)
 	}
 
 	a.collabConn = conn
-	a.collabReader = bufio.NewReader(conn)
+	a.collabCloseChan = make(chan bool)
 
 	if a.ctx != nil {
 		runtime.EventsEmit(a.ctx, "collab:connected", map[string]string{"address": addr})
 	}
+
+	// Start listening for messages from the server
+	go a.handleCollabMessages()
 
 	return nil
 }
@@ -247,118 +212,138 @@ func (a *App) resetCollabConnectionLocked() {
 	if a.collabConn != nil {
 		_ = a.collabConn.Close()
 	}
+	if a.collabCloseChan != nil {
+		close(a.collabCloseChan)
+	}
 	a.collabConn = nil
-	a.collabReader = nil
+	a.collabCloseChan = nil
 }
 
-func (a *App) sendCollabCommand(msg types.Message) (string, error) {
+func (a *App) sendCollabCommand(msg types.Message) error {
+
+	// block if there's no current roomId
+
+	if a.collabRoomId == "" {
+		return nil
+	}
+
+	fmt.Println("can send collab command")
+
 	a.collabMu.Lock()
 	defer a.collabMu.Unlock()
 
 	if err := a.ensureCollabConnectionLocked(); err != nil {
-		return "", err
+		return err
 	}
 
 	payload, err := json.Marshal(msg)
 	if err != nil {
-		return "", fmt.Errorf("unable to marshal collaboration message: %w", err)
+		return fmt.Errorf("unable to marshal collaboration message: %w", err)
 	}
 
-	payload = append(payload, '\n')
-
-	_, err = a.collabConn.Write(payload)
+	err = a.collabConn.WriteMessage(websocket.TextMessage, payload)
 	if err != nil {
 		a.resetCollabConnectionLocked()
-		return "", fmt.Errorf("unable to send collaboration message: %w", err)
+		return fmt.Errorf("unable to send collaboration message: %w", err)
 	}
 
-	if a.collabReader == nil {
-		a.resetCollabConnectionLocked()
-		return "", fmt.Errorf("collaboration reader not initialized")
-	}
-
-	response, err := a.collabReader.ReadString('\n')
-	if err != nil {
-		a.resetCollabConnectionLocked()
-		return "", fmt.Errorf("unable to read collaboration response: %w", err)
-	}
-
-	return strings.TrimSpace(response), nil
+	return nil
 }
 
-func parseCollabResponse(response, expectedPrefix string) (string, error) {
-	response = strings.TrimSpace(response)
-	if response == "" {
-		return "", fmt.Errorf("empty response from collaboration server")
+func (a *App) handleCollabMessages() {
+	if a.collabConn == nil {
+		return
 	}
 
-	lower := strings.ToLower(response)
-	if strings.HasPrefix(lower, "error:") {
-		parts := strings.SplitN(response, ":", 2)
-		if len(parts) == 2 {
-			return "", errors.New(strings.TrimSpace(parts[1]))
+	for {
+		select {
+		case <-a.collabCloseChan:
+			return
+		default:
 		}
-		return "", fmt.Errorf("collaboration server error")
-	}
 
-	prefix := expectedPrefix + " "
-	if strings.HasPrefix(response, prefix) {
-		return strings.TrimSpace(strings.TrimPrefix(response, prefix)), nil
-	}
+		_, message, err := a.collabConn.ReadMessage()
+		if err != nil {
+			fmt.Printf("Error reading from WebSocket: %v\n", err)
+			a.collabMu.Lock()
+			a.resetCollabConnectionLocked()
+			a.collabMu.Unlock()
+			return
+		}
 
-	if response == expectedPrefix {
-		return "", nil
-	}
+		var response map[string]interface{}
+		if err := json.Unmarshal(message, &response); err != nil {
+			fmt.Printf("Error unmarshalling WebSocket message: %v\n", err)
+			continue
+		}
 
-	return "", fmt.Errorf("unexpected response from collaboration server: %s", response)
+		// Update internal room ID state from server responses
+		if status, ok := response["status"].(string); ok {
+			switch status {
+			case "created", "joined":
+				if roomId, ok := response["roomId"].(string); ok {
+					a.collabMu.Lock()
+					a.collabRoomId = roomId
+					a.collabMu.Unlock()
+				}
+			case "left":
+				if roomId, ok := response["roomId"].(string); ok {
+					a.collabMu.Lock()
+					if a.collabRoomId == roomId {
+						a.collabRoomId = ""
+					}
+					a.collabMu.Unlock()
+				}
+			}
+		}
+
+		// Messages are handled directly by the frontend via WebSocket
+		// No need to re-emit as Wails events - the frontend listens directly
+	}
 }
 
-func (a *App) CreateCollaborationRoom() (string, error) {
-	response, err := a.sendCollabCommand(types.Message{Action: "create"})
+func (a *App) CreateCollaborationRoom() error {
+	err := a.sendCollabCommandAsync(types.Message{Action: "create"})
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	roomId, err := parseCollabResponse(response, "created")
-	if err != nil {
-		return "", err
-	}
+	return nil
+}
 
+func (a *App) sendCollabCommandAsync(msg types.Message) error {
 	a.collabMu.Lock()
-	a.collabRoomId = roomId
-	a.collabMu.Unlock()
+	defer a.collabMu.Unlock()
 
-	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, "collab:room_created", map[string]string{"roomId": roomId})
+	if err := a.ensureCollabConnectionLocked(); err != nil {
+		return err
 	}
 
-	return roomId, nil
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("unable to marshal collaboration message: %w", err)
+	}
+
+	err = a.collabConn.WriteMessage(websocket.TextMessage, payload)
+	if err != nil {
+		a.resetCollabConnectionLocked()
+		return fmt.Errorf("unable to send collaboration message: %w", err)
+	}
+
+	return nil
 }
 
-func (a *App) JoinCollaborationRoom(roomId string) (string, error) {
+func (a *App) JoinCollaborationRoom(roomId string) error {
 	if strings.TrimSpace(roomId) == "" {
-		return "", fmt.Errorf("room id is required")
+		return fmt.Errorf("room id is required")
 	}
 
-	response, err := a.sendCollabCommand(types.Message{Action: "join", RoomID: roomId})
+	err := a.sendCollabCommandAsync(types.Message{Action: "join", RoomID: roomId})
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	joinedRoomId, err := parseCollabResponse(response, "joined")
-	if err != nil {
-		return "", err
-	}
-
-	a.collabMu.Lock()
-	a.collabRoomId = roomId
-	a.collabMu.Unlock()
-
-	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, "collab:joined", map[string]string{"roomId": roomId})
-	}
-
-	return joinedRoomId, nil
+	return nil
 }
 
 func (a *App) LeaveCollaborationRoom(roomId string) (string, error) {
@@ -366,27 +351,13 @@ func (a *App) LeaveCollaborationRoom(roomId string) (string, error) {
 		return "", fmt.Errorf("room id is required")
 	}
 
-	response, err := a.sendCollabCommand(types.Message{Action: "leave", RoomID: roomId})
+	err := a.sendCollabCommandAsync(types.Message{Action: "leave", RoomID: roomId})
 	if err != nil {
 		return "", err
 	}
 
-	leftRoomId, err := parseCollabResponse(response, "left")
-	if err != nil {
-		return "", err
-	}
-
-	a.collabMu.Lock()
-	if a.collabRoomId == roomId {
-		a.collabRoomId = ""
-	}
-	a.collabMu.Unlock()
-
-	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, "collab:left", map[string]string{"roomId": roomId})
-	}
-
-	return leftRoomId, nil
+	// The response will come async and be handled by handleCollabMessages
+	return "", nil
 }
 
 func (a *App) GetCollaborationRoomId() string {
@@ -745,6 +716,22 @@ func (a *App) trancribe() {
 	// Emit structured response to frontend for display
 	runtime.EventsEmit(a.ctx, "structured_response", string(structuredJson))
 
+}
+
+// ExportDataForSync exports all local data for cloud sync
+func (a *App) ExportDataForSync() (map[string]interface{}, error) {
+	data, err := a.repository.ExportAllData()
+	if err != nil {
+		return nil, fmt.Errorf("failed to export data: %v", err)
+	}
+
+	// Convert to map for JSON marshaling
+	return map[string]interface{}{
+		"boards":         data.Boards,
+		"columns":        data.Columns,
+		"cards":          data.Cards,
+		"transcriptions": data.Transcriptions,
+	}, nil
 }
 
 func (a *App) transcribeLocally(filePath string) (string, error) {

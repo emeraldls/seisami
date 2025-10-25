@@ -34,6 +34,17 @@ type Column struct {
 	UpdatedAt sql.NullString
 }
 
+type Operation struct {
+	ID            string
+	TableName     string
+	RecordID      string
+	OperationType string
+	DeviceID      sql.NullString
+	Payload       string
+	CreatedAt     sql.NullString
+	UpdatedAt     sql.NullString
+}
+
 type Setting struct {
 	ID                  int64
 	TranscriptionMethod string
@@ -42,6 +53,12 @@ type Setting struct {
 	OpenaiApiKey        sql.NullString
 	CreatedAt           sql.NullString
 	UpdatedAt           sql.NullString
+}
+
+type SyncState struct {
+	TableName      string
+	LastSyncedAt   int64
+	LastSyncedOpID string
 }
 
 type Transcription struct {

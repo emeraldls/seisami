@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   KanbanProvider,
   KanbanBoard,
@@ -86,6 +86,8 @@ const shortDateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
+// TODO: fix update card index
+
 export default function KanbanView() {
   const [columns, setColumns] = useState<Column[]>([]);
   const [features, setFeatures] = useState<Feature[]>([]);
@@ -97,6 +99,8 @@ export default function KanbanView() {
   const [isAddingColumn, setIsAddingColumn] = useState(false);
   const [selectedCard, setSelectedCard] = useState<Feature | null>(null);
   const [isCardDialogOpen, setIsCardDialogOpen] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editingTitle, setEditingTitle] = useState("");
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [editingDescription, setEditingDescription] = useState("");
   const [newAttachment, setNewAttachment] = useState("");
@@ -116,6 +120,7 @@ export default function KanbanView() {
 
   const { currentBoard } = useBoardStore();
   const { roomId } = useCollaborationStore();
+  const draggedCardSnapshotRef = useRef<Feature | null>(null);
 
   const fetchBoard = useCallback(async () => {
     if (!currentBoard) return;
@@ -161,24 +166,84 @@ export default function KanbanView() {
 
   const handleDataChange = useCallback(
     async (newFeatures: Feature[]) => {
-      for (const newFeature of newFeatures) {
-        try {
-          await UpdateCardColumn(newFeature.id, newFeature.column);
-        } catch (err) {
-          console.error("Failed to update card column", err);
-          return;
+      const draggedSnapshot = draggedCardSnapshotRef.current;
+
+      if (draggedSnapshot) {
+        const updatedFeature = newFeatures.find(
+          (feature) => feature.id === draggedSnapshot.id
+        );
+
+        if (updatedFeature) {
+          const columnChanged =
+            draggedSnapshot.column !== updatedFeature.column;
+
+          try {
+            if (columnChanged) {
+              await UpdateCardColumn(updatedFeature.id, updatedFeature.column);
+
+              const oldColumn = columns.find(
+                (col) => col.id === draggedSnapshot.column
+              );
+              const newColumn = columns.find(
+                (col) => col.id === updatedFeature.column
+              );
+
+              if (newColumn) {
+                const cardsInNewColumn = newFeatures.filter(
+                  (f) => f.column === updatedFeature.column
+                );
+                const cardIndex = cardsInNewColumn.findIndex(
+                  (card) => card.id === updatedFeature.id
+                );
+
+                const payload = {
+                  room_id: roomId,
+                  card_id: updatedFeature.id,
+                  old_column: oldColumn
+                    ? {
+                        id: oldColumn.id,
+                        name: oldColumn.name,
+                        position: oldColumn.position,
+                      }
+                    : null,
+                  new_column: {
+                    id: newColumn.id,
+                    board_id: currentBoard?.id,
+                    name: newColumn.name,
+                    position: newColumn.position,
+                  },
+                  index: cardIndex,
+                };
+
+                console.log("Card column changed:", payload);
+
+                const data = JSON.stringify(payload);
+                EventsEmit("card:column", data);
+              }
+            }
+          } catch (err) {
+            console.error("Failed to update card column", err);
+            return;
+          }
         }
       }
 
       setFeatures(newFeatures);
+      draggedCardSnapshotRef.current = null;
     },
-    [features]
+    [columns, roomId, currentBoard]
   );
 
   const handleDragStart = (event: any) => {
     console.log("start dragging...");
     setDragStartTime(Date.now());
-    setDraggedCardId(event.active.id);
+    const activeId = event.active.id;
+    setDraggedCardId(activeId);
+
+    const activeFeature = features.find((feature) => feature.id === activeId);
+    draggedCardSnapshotRef.current = activeFeature
+      ? { ...activeFeature }
+      : null;
   };
 
   const handleDragEnd = () => {
@@ -194,7 +259,10 @@ export default function KanbanView() {
     }
 
     setDragStartTime(null);
-    setDraggedCardId(null);
+
+    setTimeout(() => {
+      setDraggedCardId(null);
+    }, 1000);
   };
 
   const handleAddCard = async (columnId: string) => {
@@ -238,10 +306,6 @@ export default function KanbanView() {
       setEditingColumnId(null);
       setEditingColumnName("");
       fetchBoard();
-
-      console.log(roomId);
-
-      if (!roomId) return;
 
       const payload = {
         room_id: roomId,
@@ -287,13 +351,105 @@ export default function KanbanView() {
     setIsEditingDescription(true);
   };
 
+  const handleStartEditTitle = () => {
+    setEditingTitle(selectedCard?.name || "");
+    setIsEditingTitle(true);
+  };
+
+  const handleSaveTitle = async () => {
+    if (!selectedCard || !editingTitle.trim()) return;
+
+    try {
+      await UpdateCard(selectedCard.id, editingTitle, selectedCard.description);
+      setIsEditingTitle(false);
+      fetchBoard();
+
+      const cardColumn = columns.find((col) => col.id === selectedCard.column);
+
+      if (cardColumn) {
+        const cardsInColumn = features.filter(
+          (f) => f.column === selectedCard.column
+        );
+        const cardIndex = cardsInColumn.findIndex(
+          (c) => c.id === selectedCard.id
+        );
+
+        const payload = {
+          column: {
+            room_id: roomId,
+            id: cardColumn.id,
+            board_id: currentBoard?.id,
+            name: cardColumn.name,
+            position: cardColumn.position,
+          },
+          card: {
+            id: selectedCard.id,
+            name: editingTitle,
+            description: selectedCard.description,
+            column_id: selectedCard.column,
+            index: cardIndex,
+          },
+        };
+
+        console.log(payload);
+
+        const data = JSON.stringify(payload);
+
+        EventsEmit("card:data", data);
+      }
+
+      setSelectedCard({ ...selectedCard, name: editingTitle });
+    } catch (err) {
+      console.error("Failed to update title", err);
+    }
+  };
+
+  const handleCancelEditTitle = () => {
+    setIsEditingTitle(false);
+    setEditingTitle("");
+  };
+
   const handleSaveDescription = async () => {
     if (!selectedCard) return;
 
     try {
       await UpdateCard(selectedCard.id, selectedCard.name, editingDescription);
       setIsEditingDescription(false);
-      fetchBoard();
+      fetchBoard(); // TODO: i dont think i should fetch the entire board, fix later.
+
+      const cardColumn = columns.find((col) => col.id === selectedCard.column);
+
+      if (cardColumn) {
+        const cardsInColumn = features.filter(
+          (f) => f.column === selectedCard.column
+        );
+        const cardIndex = cardsInColumn.findIndex(
+          (c) => c.id === selectedCard.id
+        );
+
+        const payload = {
+          column: {
+            room_id: roomId,
+            id: cardColumn.id,
+            board_id: currentBoard?.id,
+            name: cardColumn.name,
+            position: cardColumn.position,
+          },
+          card: {
+            id: selectedCard.id,
+            name: selectedCard.name,
+            description: editingDescription,
+            column_id: selectedCard.column,
+            index: cardIndex,
+          },
+        };
+
+        console.log(payload);
+
+        const data = JSON.stringify(payload);
+
+        EventsEmit("card:data", data);
+      }
     } catch (err) {
       console.error("Failed to update description", err);
     }
@@ -854,9 +1010,45 @@ export default function KanbanView() {
             <>
               <DialogHeader>
                 <div className="flex items-center justify-between">
-                  <DialogTitle className="text-md font-semibold">
-                    {selectedCard.name}
-                  </DialogTitle>
+                  {isEditingTitle ? (
+                    <div className="flex-1 flex items-center gap-2 mr-2">
+                      <Input
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        className="text-md font-semibold"
+                        autoFocus
+                      />
+                      <Button
+                        size="sm"
+                        onClick={handleSaveTitle}
+                        className="gap-1"
+                      >
+                        <Save className="h-3 w-3" />
+                        Save
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={handleCancelEditTitle}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between flex-1">
+                      <DialogTitle className="text-md font-semibold">
+                        {selectedCard.name}
+                      </DialogTitle>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleStartEditTitle}
+                        className="h-6 w-6 p-0"
+                      >
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"

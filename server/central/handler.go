@@ -18,10 +18,15 @@ import (
 	"seisami/server/centraldb"
 )
 
-// ContextKey is a custom type for context keys to avoid collisions
 type ContextKey string
 
 const UserContextKey ContextKey = "user"
+
+var wsHandler func(http.ResponseWriter, *http.Request)
+
+func SetWebSocketHandler(handler func(http.ResponseWriter, *http.Request)) {
+	wsHandler = handler
+}
 
 func NewRouter(service *AuthService) *gin.Engine {
 	router := gin.Default()
@@ -29,12 +34,34 @@ func NewRouter(service *AuthService) *gin.Engine {
 	corsMiddleware := cors.New(cors.Config{
 		AllowAllOrigins: true,
 		AllowMethods:    []string{"PUT", "PATCH", "GET", "POST", "DELETE", "OPTIONS"},
-		AllowHeaders:    []string{"Origin", "Content-Type", "Authorization"},
+		AllowHeaders:    []string{"Origin", "Content-Type", "Authorization", "Upgrade", "Connection"},
 		MaxAge:          12 * 60 * 60,
 	})
 	router.Use(corsMiddleware)
 
 	h := &handler{service: service}
+
+	router.GET("/ws", func(c *gin.Context) {
+
+		token := c.Query("token")
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authentication token"})
+			return
+		}
+
+		userID, err := validateToken(token, service.jwtSecret)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+
+		c.Request.Header.Set("X-User-ID", userID)
+		if wsHandler != nil {
+			wsHandler(c.Writer, c.Request)
+		} else {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "WebSocket handler not available"})
+		}
+	})
 
 	auth := router.Group("/auth")
 	{
@@ -49,6 +76,14 @@ func NewRouter(service *AuthService) *gin.Engine {
 		{
 			protected.GET("/desktop/start", h.desktopStart)
 		}
+	}
+
+	// Sync endpoints
+	sync := router.Group("/sync")
+	sync.Use(authMiddleware(service))
+	{
+		sync.POST("/upload", h.uploadData)
+		sync.GET("/status", h.getSyncStatus)
 	}
 
 	return router
@@ -301,4 +336,79 @@ func (h *handler) desktopExchange(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"token": token})
+}
+
+func validateToken(tokenString string, jwtSecret []byte) (string, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return jwtSecret, nil
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("invalid token: %w", err)
+	}
+
+	claims, ok := token.Claims.(*jwt.RegisteredClaims)
+	if !ok || !token.Valid {
+		return "", fmt.Errorf("invalid token claims")
+	}
+
+	return claims.Subject, nil
+}
+
+// Data Sync Handlers
+type syncUploadRequest struct {
+	Boards         []map[string]interface{} `json:"boards"`
+	Columns        []map[string]interface{} `json:"columns"`
+	Cards          []map[string]interface{} `json:"cards"`
+	Transcriptions []map[string]interface{} `json:"transcriptions"`
+}
+
+func (h *handler) uploadData(c *gin.Context) {
+	userID, err := h.service.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var req syncUploadRequest
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
+		return
+	}
+
+	// Process upload in background and stream progress updates
+	go h.processSyncUpload(c.Request.Context(), userID, req)
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"status":  "in_progress",
+		"message": "sync upload started",
+	})
+}
+
+func (h *handler) processSyncUpload(ctx context.Context, userID string, req syncUploadRequest) {
+	// This will be called asynchronously
+	// For now, we'll log the request and process it
+	log.Printf("Starting data sync for user %s: %d boards, %d columns, %d cards, %d transcriptions",
+		userID, len(req.Boards), len(req.Columns), len(req.Cards), len(req.Transcriptions))
+
+	// TODO: Implement actual database inserts with conflict handling
+	// Track duplicates, errors, and processed items
+	// Emit WebSocket progress events to client
+}
+
+func (h *handler) getSyncStatus(c *gin.Context) {
+	userID, err := h.service.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	// TODO: Return sync status from cache/database
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "idle",
+		"message": "no active sync",
+	})
 }

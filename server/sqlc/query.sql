@@ -57,3 +57,47 @@ WHERE code = $1;
 DELETE FROM desktop_login_codes
 WHERE expires_at < NOW()
    OR used_at IS NOT NULL;
+
+-- 
+-- Data Sync Queries
+--
+
+-- name: CreateBoard :one
+INSERT INTO boards (id, user_id, name, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;
+
+-- name: CreateColumn :one
+INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING *;
+
+-- name: CreateCard :one
+INSERT INTO cards (id, column_id, title, description, attachments, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING *;
+
+-- name: CreateTranscription :one
+INSERT INTO transcriptions (id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING *;
+
+-- name: GetUserBoards :many
+SELECT * FROM boards
+WHERE user_id = $1
+ORDER BY created_at DESC;
+
+-- name: GetBoardColumns :many
+SELECT * FROM columns
+WHERE board_id = $1
+ORDER BY position ASC;
+
+-- name: GetColumnCards :many
+SELECT * FROM cards
+WHERE column_id = $1
+ORDER BY created_at ASC;
+
+-- name: GetBoardTranscriptions :many
+SELECT * FROM transcriptions
+WHERE board_id = $1
+ORDER BY created_at DESC;

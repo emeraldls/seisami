@@ -40,6 +40,116 @@ func (q *Queries) ConsumeDesktopLoginCode(ctx context.Context, arg ConsumeDeskto
 	return i, err
 }
 
+const createBoard = `-- name: CreateBoard :one
+
+INSERT INTO boards (id, user_id, name, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, user_id, name, created_at, updated_at
+`
+
+type CreateBoardParams struct {
+	ID        string
+	UserID    pgtype.UUID
+	Name      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+// Data Sync Queries
+func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board, error) {
+	row := q.db.QueryRow(ctx, createBoard,
+		arg.ID,
+		arg.UserID,
+		arg.Name,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createCard = `-- name: CreateCard :one
+INSERT INTO cards (id, column_id, title, description, attachments, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, column_id, title, description, attachments, created_at, updated_at
+`
+
+type CreateCardParams struct {
+	ID          string
+	ColumnID    string
+	Title       string
+	Description pgtype.Text
+	Attachments pgtype.Text
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+func (q *Queries) CreateCard(ctx context.Context, arg CreateCardParams) (Card, error) {
+	row := q.db.QueryRow(ctx, createCard,
+		arg.ID,
+		arg.ColumnID,
+		arg.Title,
+		arg.Description,
+		arg.Attachments,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Card
+	err := row.Scan(
+		&i.ID,
+		&i.ColumnID,
+		&i.Title,
+		&i.Description,
+		&i.Attachments,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createColumn = `-- name: CreateColumn :one
+INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, board_id, name, position, created_at, updated_at
+`
+
+type CreateColumnParams struct {
+	ID        string
+	BoardID   string
+	Name      string
+	Position  int32
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) CreateColumn(ctx context.Context, arg CreateColumnParams) (Column, error) {
+	row := q.db.QueryRow(ctx, createColumn,
+		arg.ID,
+		arg.BoardID,
+		arg.Name,
+		arg.Position,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Column
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createDesktopLoginCode = `-- name: CreateDesktopLoginCode :one
 INSERT INTO desktop_login_codes (code, user_id, state, expires_at)
 VALUES ($1, $2, $3, $4)
@@ -68,6 +178,48 @@ func (q *Queries) CreateDesktopLoginCode(ctx context.Context, arg CreateDesktopL
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.UsedAt,
+	)
+	return i, err
+}
+
+const createTranscription = `-- name: CreateTranscription :one
+INSERT INTO transcriptions (id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at
+`
+
+type CreateTranscriptionParams struct {
+	ID                string
+	BoardID           string
+	Transcription     string
+	RecordingPath     pgtype.Text
+	Intent            pgtype.Text
+	AssistantResponse pgtype.Text
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) CreateTranscription(ctx context.Context, arg CreateTranscriptionParams) (Transcription, error) {
+	row := q.db.QueryRow(ctx, createTranscription,
+		arg.ID,
+		arg.BoardID,
+		arg.Transcription,
+		arg.RecordingPath,
+		arg.Intent,
+		arg.AssistantResponse,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Transcription
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Transcription,
+		&i.RecordingPath,
+		&i.Intent,
+		&i.AssistantResponse,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -110,6 +262,108 @@ func (q *Queries) DeleteExpiredDesktopCodes(ctx context.Context) error {
 	return err
 }
 
+const getBoardColumns = `-- name: GetBoardColumns :many
+SELECT id, board_id, name, position, created_at, updated_at FROM columns
+WHERE board_id = $1
+ORDER BY position ASC
+`
+
+func (q *Queries) GetBoardColumns(ctx context.Context, boardID string) ([]Column, error) {
+	rows, err := q.db.Query(ctx, getBoardColumns, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Column
+	for rows.Next() {
+		var i Column
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Name,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getBoardTranscriptions = `-- name: GetBoardTranscriptions :many
+SELECT id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at FROM transcriptions
+WHERE board_id = $1
+ORDER BY created_at DESC
+`
+
+func (q *Queries) GetBoardTranscriptions(ctx context.Context, boardID string) ([]Transcription, error) {
+	rows, err := q.db.Query(ctx, getBoardTranscriptions, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transcription
+	for rows.Next() {
+		var i Transcription
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Transcription,
+			&i.RecordingPath,
+			&i.Intent,
+			&i.AssistantResponse,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getColumnCards = `-- name: GetColumnCards :many
+SELECT id, column_id, title, description, attachments, created_at, updated_at FROM cards
+WHERE column_id = $1
+ORDER BY created_at ASC
+`
+
+func (q *Queries) GetColumnCards(ctx context.Context, columnID string) ([]Card, error) {
+	rows, err := q.db.Query(ctx, getColumnCards, columnID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Card
+	for rows.Next() {
+		var i Card
+		if err := rows.Scan(
+			&i.ID,
+			&i.ColumnID,
+			&i.Title,
+			&i.Description,
+			&i.Attachments,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getDesktopLoginCode = `-- name: GetDesktopLoginCode :one
 SELECT code, user_id, state, created_at, expires_at, used_at
 FROM desktop_login_codes
@@ -128,6 +382,38 @@ func (q *Queries) GetDesktopLoginCode(ctx context.Context, code string) (Desktop
 		&i.UsedAt,
 	)
 	return i, err
+}
+
+const getUserBoards = `-- name: GetUserBoards :many
+SELECT id, user_id, name, created_at, updated_at FROM boards
+WHERE user_id = $1
+ORDER BY created_at DESC
+`
+
+func (q *Queries) GetUserBoards(ctx context.Context, userID pgtype.UUID) ([]Board, error) {
+	rows, err := q.db.Query(ctx, getUserBoards, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Board
+	for rows.Next() {
+		var i Board
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one

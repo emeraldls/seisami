@@ -11,7 +11,7 @@ export function CreateBoard(arg1:string):Promise<query.Board>;
 
 export function CreateCard(arg1:string,arg2:string,arg3:string):Promise<query.Card>;
 
-export function CreateCollaborationRoom():Promise<string>;
+export function CreateCollaborationRoom():Promise<void>;
 
 export function CreateColumn(arg1:string,arg2:string):Promise<query.Column>;
 
@@ -20,6 +20,8 @@ export function DeleteBoard(arg1:string):Promise<void>;
 export function DeleteCard(arg1:string):Promise<void>;
 
 export function DeleteColumn(arg1:string):Promise<void>;
+
+export function ExportDataForSync():Promise<Record<string, any>>;
 
 export function GetBoardByID(arg1:string):Promise<query.Board>;
 
@@ -39,7 +41,7 @@ export function GetTranscriptions(arg1:string,arg2:number,arg3:number):Promise<A
 
 export function Greet(arg1:string):Promise<string>;
 
-export function JoinCollaborationRoom(arg1:string):Promise<string>;
+export function JoinCollaborationRoom(arg1:string):Promise<void>;
 
 export function LeaveCollaborationRoom(arg1:string):Promise<string>;
 

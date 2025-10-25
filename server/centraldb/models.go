@@ -8,6 +8,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Board struct {
+	ID        string
+	UserID    pgtype.UUID
+	Name      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type Card struct {
+	ID          string
+	ColumnID    string
+	Title       string
+	Description pgtype.Text
+	Attachments pgtype.Text
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+type Column struct {
+	ID        string
+	BoardID   string
+	Name      string
+	Position  int32
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
 type DesktopLoginCode struct {
 	Code      string
 	UserID    pgtype.UUID
@@ -15,6 +42,17 @@ type DesktopLoginCode struct {
 	CreatedAt pgtype.Timestamptz
 	ExpiresAt pgtype.Timestamptz
 	UsedAt    pgtype.Timestamptz
+}
+
+type Transcription struct {
+	ID                string
+	BoardID           string
+	Transcription     string
+	RecordingPath     pgtype.Text
+	Intent            pgtype.Text
+	AssistantResponse pgtype.Text
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
 }
 
 type User struct {

@@ -1,10 +1,10 @@
 package client
 
 import (
-	"net"
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 )
 
 type State int
@@ -20,12 +20,12 @@ func (s State) String() string {
 
 type Client struct {
 	state State
-	conn  net.Conn
+	conn  *websocket.Conn
 	id    string
 	mu    sync.Mutex
 }
 
-func NewClient(conn net.Conn) *Client {
+func NewClient(conn *websocket.Conn) *Client {
 	id := uuid.New().String()
 	return &Client{
 		conn:  conn,
@@ -38,7 +38,7 @@ func (c *Client) GetId() string {
 	return c.id
 }
 
-func (c *Client) Conn() net.Conn {
+func (c *Client) Conn() *websocket.Conn {
 	return c.conn
 }
 
@@ -54,8 +54,7 @@ func (c *Client) Send(msg []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	_, err := c.conn.Write(msg)
-	return err
+	return c.conn.WriteMessage(websocket.TextMessage, msg)
 }
 
 func (c *Client) Close() error {

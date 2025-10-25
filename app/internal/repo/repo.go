@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"seisami/app/internal/repo/sqlc/query"
+	"seisami/app/types"
 
 	_ "embed"
 
@@ -359,4 +360,202 @@ func (r *repo) SearchColumnsByBoardAndName(boardId, searchQuery string) ([]query
 	}
 
 	return columns, nil
+}
+
+/*
+	When syncing data, we should filter by record_id & select the most recent record for that particular id within the timestamp
+*/
+
+func (r *repo) CreateOperation(tableName types.TableName, recordId, payload string, opType types.Operation) (query.Operation, error) {
+	id := uuid.New().String()
+	operation, err := r.queries.CreateOperation(r.ctx, query.CreateOperationParams{
+		ID:            id,
+		OperationType: opType.String(),
+		TableName:     tableName.String(),
+		RecordID:      recordId,
+		Payload:       payload,
+	})
+
+	if err != nil {
+		return query.Operation{}, fmt.Errorf("unable to create operation: %v", err)
+	}
+
+	return operation, nil
+}
+
+func (r *repo) GetAllOperations(tableName types.TableName) ([]query.Operation, error) {
+	ops, err := r.queries.GetAllOperations(r.ctx, query.GetAllOperationsParams{TableName: tableName.String(), TableName_2: tableName.String(), TableName_3: tableName.String()})
+	if err != nil {
+		return nil, err
+	}
+
+	return ops, nil
+}
+
+func (r *repo) UpsertSyncState(tableName types.TableName, lastOpID string, lastSyncedAt int64) error {
+	return r.queries.UpsertSyncState(r.ctx, query.UpsertSyncStateParams{
+		TableName:      tableName.String(),
+		LastSyncedAt:   lastSyncedAt,
+		LastSyncedOpID: lastOpID,
+	})
+}
+
+func (r *repo) GetSyncState(tableName types.TableName) (query.SyncState, error) {
+	syncState, err := r.queries.GetSyncState(r.ctx, tableName.String())
+	if err != nil {
+		return query.SyncState{}, fmt.Errorf("unable to get sync state: %v", err)
+	}
+
+	return syncState, nil
+}
+
+func (r *repo) UpdateSyncState(tableName types.TableName, lastOpID string, lastSyncedAt int64) error {
+	err := r.queries.UpdateSyncState(r.ctx, query.UpdateSyncStateParams{
+		TableName:      tableName.String(),
+		LastSyncedAt:   lastSyncedAt,
+		LastSyncedOpID: lastOpID,
+	})
+
+	if err != nil {
+		return fmt.Errorf("unable to update sync state: %v", err)
+	}
+
+	return nil
+}
+
+// ExportAllData exports all local data for cloud sync
+type ExportedData struct {
+	Boards         []ExportedBoard         `json:"boards"`
+	Columns        []ExportedColumn        `json:"columns"`
+	Cards          []ExportedCard          `json:"cards"`
+	Transcriptions []ExportedTranscription `json:"transcriptions"`
+}
+
+type ExportedBoard struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type ExportedColumn struct {
+	ID        string `json:"id"`
+	BoardID   string `json:"board_id"`
+	Name      string `json:"name"`
+	Position  int64  `json:"position"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type ExportedCard struct {
+	ID          string `json:"id"`
+	ColumnID    string `json:"column_id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Attachments string `json:"attachments,omitempty"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+type ExportedTranscription struct {
+	ID                string `json:"id"`
+	BoardID           string `json:"board_id"`
+	Transcription     string `json:"transcription"`
+	RecordingPath     string `json:"recording_path,omitempty"`
+	Intent            string `json:"intent,omitempty"`
+	AssistantResponse string `json:"assistant_response,omitempty"`
+	CreatedAt         string `json:"created_at"`
+	UpdatedAt         string `json:"updated_at"`
+}
+
+type ExportedSettings struct {
+	ID                  string `json:"id"`
+	TranscriptionMethod string `json:"transcription_method"`
+	WhisperBinaryPath   string `json:"whisper_binary_path,omitempty"`
+	WhisperModelPath    string `json:"whisper_model_path,omitempty"`
+	OpenaiAPIKey        string `json:"openai_api_key,omitempty"`
+	CreatedAt           string `json:"created_at"`
+	UpdatedAt           string `json:"updated_at"`
+}
+
+func (r *repo) ExportAllData() (*ExportedData, error) {
+	// Get all boards
+	boards, err := r.queries.ListBoards(r.ctx, query.ListBoardsParams{Limit: 1000, Offset: 0})
+	if err != nil {
+		return nil, fmt.Errorf("error exporting boards: %v", err)
+	}
+
+	exportedBoards := make([]ExportedBoard, len(boards))
+	for i, b := range boards {
+		exportedBoards[i] = ExportedBoard{
+			ID:        b.ID,
+			Name:      b.Name,
+			CreatedAt: b.CreatedAt.String,
+			UpdatedAt: b.UpdatedAt.String,
+		}
+	}
+
+	// Get all columns
+	columns, err := r.queries.ListAllColumns(r.ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error exporting columns: %v", err)
+	}
+
+	exportedColumns := make([]ExportedColumn, len(columns))
+	for i, c := range columns {
+		exportedColumns[i] = ExportedColumn{
+			ID:        c.ID,
+			BoardID:   c.BoardID,
+			Name:      c.Name,
+			Position:  c.Position,
+			CreatedAt: c.CreatedAt.String,
+			UpdatedAt: c.UpdatedAt.String,
+		}
+	}
+
+	// Get all cards
+	cards, err := r.queries.ListAllCards(r.ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error exporting cards: %v", err)
+	}
+
+	exportedCards := make([]ExportedCard, len(cards))
+	for i, card := range cards {
+		exportedCards[i] = ExportedCard{
+			ID:          card.ID,
+			ColumnID:    card.ColumnID,
+			Title:       card.Title,
+			Description: card.Description.String,
+			Attachments: card.Attachments.String,
+			CreatedAt:   card.CreatedAt.String,
+			UpdatedAt:   card.UpdatedAt.String,
+		}
+	}
+
+	// Get all transcriptions
+	transcriptions, err := r.queries.ListAllTranscriptions(r.ctx, query.ListAllTranscriptionsParams{Limit: 1000, Offset: 0})
+	if err != nil {
+		return nil, fmt.Errorf("error exporting transcriptions: %v", err)
+	}
+
+	exportedTranscriptions := make([]ExportedTranscription, len(transcriptions))
+	for i, t := range transcriptions {
+		exportedTranscriptions[i] = ExportedTranscription{
+			ID:                t.ID,
+			BoardID:           t.BoardID,
+			Transcription:     t.Transcription,
+			RecordingPath:     t.RecordingPath.String,
+			Intent:            t.Intent.String,
+			AssistantResponse: t.AssistantResponse.String,
+			CreatedAt:         t.CreatedAt.String,
+			UpdatedAt:         t.UpdatedAt.String,
+		}
+	}
+
+	return &ExportedData{
+		Boards:         exportedBoards,
+		Columns:        exportedColumns,
+		Cards:          exportedCards,
+		Transcriptions: exportedTranscriptions,
+	}, nil
 }

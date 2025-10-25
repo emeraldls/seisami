@@ -1,17 +1,16 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
@@ -25,6 +24,21 @@ import (
 // a client needs to create a room
 // then when a room has been created, client can join any room using the room id
 
+var roomManager *room_manager.RoomManager
+var wsUpgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		// In production, implement proper origin checking
+		return true
+	},
+}
+
+func init() {
+	roomManager = room_manager.NewRoomManager()
+	central.SetWebSocketHandler(HandleWebSocket)
+}
+
 func main() {
 
 	if err := godotenv.Load(".env"); err != nil {
@@ -37,44 +51,40 @@ func main() {
 	}
 	defer shutdownAuth()
 
-	list, err := net.Listen("tcp", "0.0.0.0:2121")
+	log.Println("Collab Server is running - WebSocket endpoint at ws://0.0.0.0:8080/ws")
+
+	select {}
+}
+
+func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Fatalf("unable to setup listener: %v\n", err)
+		log.Printf("WebSocket upgrade error: %v", err)
+		return
 	}
 
-	manager := room_manager.NewRoomManager()
+	cl := client.NewClient(conn)
+	fmt.Println("New client connected:", cl.GetId())
 
-	log.Println("Collab Server is running at 2121")
-
-	for {
-		conn, err := list.Accept()
-		if err != nil {
-			log.Fatalf("unable to accept connections: %v\n", err)
-		}
-
-		cl := client.NewClient(conn)
-
-		go handleConn(cl, manager)
-	}
-
+	go handleConn(cl, roomManager)
 }
 
 func handleConn(c *client.Client, manager *room_manager.RoomManager) {
 	defer c.Close()
-	fmt.Println("New client connected:", c.GetId())
 
-	reader := bufio.NewReader(c.Conn())
 	for {
-		// Read until newline (\n) so clients can send multiple messages
-		line, err := reader.ReadBytes('\n')
+		_, message, err := c.Conn().ReadMessage()
 		if err != nil {
 			fmt.Println("Client disconnected:", c.GetId())
 			return
 		}
 
 		var msg types.Message
-		if err := json.Unmarshal(line, &msg); err != nil {
+		if err := json.Unmarshal(message, &msg); err != nil {
 			fmt.Println("Invalid JSON:", err)
+			response := map[string]string{"error": "invalid JSON"}
+			jsonResp, _ := json.Marshal(response)
+			c.Send(jsonResp)
 			continue
 		}
 
@@ -82,24 +92,39 @@ func handleConn(c *client.Client, manager *room_manager.RoomManager) {
 		case "join":
 			err := manager.JoinRoomById(msg.RoomID, c)
 			if err != nil {
-				c.Send([]byte(fmt.Sprintf("error: %v\n", err)))
+				response := map[string]string{"error": fmt.Sprintf("failed to join room: %v", err)}
+				jsonResp, _ := json.Marshal(response)
+				c.Send(jsonResp)
 			} else {
-				c.Send([]byte("joined " + msg.RoomID + "\n"))
+				response := map[string]string{"status": "joined", "roomId": msg.RoomID}
+				jsonResp, _ := json.Marshal(response)
+				c.Send(jsonResp)
 			}
 		case "create":
 			room := manager.CreateRoom()
-			c.Send([]byte("created " + room.GetRoomId() + "\n"))
+			response := map[string]string{"status": "created", "roomId": room.GetRoomId()}
+			jsonResp, _ := json.Marshal(response)
+			c.Send(jsonResp)
 
 		case "leave":
 			manager.LeaveRoomById(msg.RoomID, c)
-			c.Send([]byte("left " + msg.RoomID + "\n"))
+			response := map[string]string{"status": "left", "roomId": msg.RoomID}
+			jsonResp, _ := json.Marshal(response)
+			c.Send(jsonResp)
 
-			// TODO: bug - a user that's not in a room can broadcast if he has the room id
 		case "broadcast":
-			manager.BroadcastToRoom(msg.RoomID, []byte(fmt.Sprintf("[%s]: %s\n", c.GetId(), msg.Data)))
+			broadcastMsg := map[string]string{
+				"type": "message",
+				"from": c.GetId(),
+				"data": msg.Data,
+			}
+			jsonMsg, _ := json.Marshal(broadcastMsg)
+			manager.BroadcastToRoom(msg.RoomID, jsonMsg)
 
 		default:
-			c.Send([]byte("unknown action\n"))
+			response := map[string]string{"error": "unknown action"}
+			jsonResp, _ := json.Marshal(response)
+			c.Send(jsonResp)
 		}
 	}
 }

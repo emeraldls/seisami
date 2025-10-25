@@ -98,3 +98,20 @@ FOR EACH ROW
 BEGIN
   UPDATE "settings" SET updated_at = datetime('now') WHERE id = OLD.id;
 END;
+
+CREATE TABLE IF NOT EXISTS operations (
+  id TEXT PRIMARY KEY,
+  "table_name" TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  operation_type TEXT NOT NULL,
+  device_id TEXT, -- not really useful for single user
+  payload TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sync_state (
+  "table_name" TEXT PRIMARY KEY,
+  last_synced_at INTEGER NOT NULL,
+  last_synced_op_id TEXT NOT NULL
+)

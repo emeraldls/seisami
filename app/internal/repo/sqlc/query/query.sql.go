@@ -100,6 +100,42 @@ func (q *Queries) CreateColumn(ctx context.Context, arg CreateColumnParams) (Col
 	return i, err
 }
 
+const createOperation = `-- name: CreateOperation :one
+INSERT INTO operations (id, table_name, record_id, operation_type, payload)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id, table_name, record_id, operation_type, device_id, payload, created_at, updated_at
+`
+
+type CreateOperationParams struct {
+	ID            string
+	TableName     string
+	RecordID      string
+	OperationType string
+	Payload       string
+}
+
+func (q *Queries) CreateOperation(ctx context.Context, arg CreateOperationParams) (Operation, error) {
+	row := q.db.QueryRowContext(ctx, createOperation,
+		arg.ID,
+		arg.TableName,
+		arg.RecordID,
+		arg.OperationType,
+		arg.Payload,
+	)
+	var i Operation
+	err := row.Scan(
+		&i.ID,
+		&i.TableName,
+		&i.RecordID,
+		&i.OperationType,
+		&i.DeviceID,
+		&i.Payload,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createSettings = `-- name: CreateSettings :one
 INSERT INTO settings (id, transcription_method, whisper_binary_path, whisper_model_path, openai_api_key)
 VALUES (1, ?, ?, ?, ?)
@@ -211,6 +247,70 @@ func (q *Queries) DeleteTranscription(ctx context.Context, id string) error {
 	return err
 }
 
+const getAllOperations = `-- name: GetAllOperations :many
+
+SELECT o.id, o.table_name, o.record_id, o.operation_type, o.device_id, o.payload, o.created_at, o.updated_at
+FROM operations o
+JOIN (
+    SELECT record_id, MAX(created_at) AS max_created_at
+    FROM operations
+    WHERE created_at > (
+        SELECT COALESCE(last_synced_at, 0)
+        FROM sync_state
+        WHERE sync_state."table_name" = ?
+    )
+    AND sync_state."table_name" = ?
+    GROUP BY record_id
+) latest
+ON o.record_id = latest.record_id
+AND o.created_at = latest.max_created_at
+AND o.table_name = ?
+ORDER BY o.created_at ASC
+`
+
+type GetAllOperationsParams struct {
+	TableName   string
+	TableName_2 string
+	TableName_3 string
+}
+
+//	GetAllOperations The one below is faster & better
+//
+// SELECT * FROM operations
+// WHERE created_at > (SELECT last_synced_at FROM sync_state WHERE sync_state."table_name" = ?)
+// ORDER BY created_at ASC;
+func (q *Queries) GetAllOperations(ctx context.Context, arg GetAllOperationsParams) ([]Operation, error) {
+	rows, err := q.db.QueryContext(ctx, getAllOperations, arg.TableName, arg.TableName_2, arg.TableName_3)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Operation
+	for rows.Next() {
+		var i Operation
+		if err := rows.Scan(
+			&i.ID,
+			&i.TableName,
+			&i.RecordID,
+			&i.OperationType,
+			&i.DeviceID,
+			&i.Payload,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getBoard = `-- name: GetBoard :one
 
 SELECT id, name, created_at, updated_at FROM boards
@@ -299,6 +399,20 @@ func (q *Queries) GetSettings(ctx context.Context) (Setting, error) {
 	return i, err
 }
 
+const getSyncState = `-- name: GetSyncState :one
+SELECT table_name, last_synced_at, last_synced_op_id
+FROM sync_state
+WHERE table_name = ?
+LIMIT 1
+`
+
+func (q *Queries) GetSyncState(ctx context.Context, tableName string) (SyncState, error) {
+	row := q.db.QueryRowContext(ctx, getSyncState, tableName)
+	var i SyncState
+	err := row.Scan(&i.TableName, &i.LastSyncedAt, &i.LastSyncedOpID)
+	return i, err
+}
+
 const getTranscription = `-- name: GetTranscription :one
 
 SELECT id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at FROM transcriptions
@@ -347,6 +461,79 @@ func (q *Queries) GetTranscriptionByRecordingPath(ctx context.Context, arg GetTr
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listAllCards = `-- name: ListAllCards :many
+SELECT id, column_id, title, description, attachments, created_at, updated_at FROM cards
+ORDER BY created_at ASC
+`
+
+func (q *Queries) ListAllCards(ctx context.Context) ([]Card, error) {
+	rows, err := q.db.QueryContext(ctx, listAllCards)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Card
+	for rows.Next() {
+		var i Card
+		if err := rows.Scan(
+			&i.ID,
+			&i.ColumnID,
+			&i.Title,
+			&i.Description,
+			&i.Attachments,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllColumns = `-- name: ListAllColumns :many
+
+SELECT id, board_id, name, position, created_at, updated_at FROM columns
+ORDER BY created_at ASC
+`
+
+// Export/Sync Functionality
+func (q *Queries) ListAllColumns(ctx context.Context) ([]Column, error) {
+	rows, err := q.db.QueryContext(ctx, listAllColumns)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Column
+	for rows.Next() {
+		var i Column
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Name,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAllTranscriptions = `-- name: ListAllTranscriptions :many
@@ -738,6 +925,23 @@ func (q *Queries) UpdateSettings(ctx context.Context, arg UpdateSettingsParams) 
 	return i, err
 }
 
+const updateSyncState = `-- name: UpdateSyncState :exec
+UPDATE sync_state
+SET last_synced_at = ?, last_synced_op_id = ?
+WHERE table_name = ?
+`
+
+type UpdateSyncStateParams struct {
+	LastSyncedAt   int64
+	LastSyncedOpID string
+	TableName      string
+}
+
+func (q *Queries) UpdateSyncState(ctx context.Context, arg UpdateSyncStateParams) error {
+	_, err := q.db.ExecContext(ctx, updateSyncState, arg.LastSyncedAt, arg.LastSyncedOpID, arg.TableName)
+	return err
+}
+
 const updateTranscriptionIntent = `-- name: UpdateTranscriptionIntent :one
 UPDATE transcriptions
 SET intent = ?,
@@ -794,4 +998,24 @@ func (q *Queries) UpdateTranscriptionResponse(ctx context.Context, arg UpdateTra
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const upsertSyncState = `-- name: UpsertSyncState :exec
+INSERT INTO sync_state (table_name, last_synced_at, last_synced_op_id)
+VALUES (?, ?, ?)
+ON CONFLICT(table_name)
+DO UPDATE SET
+  last_synced_at = excluded.last_synced_at,
+  last_synced_op_id = excluded.last_synced_op_id
+`
+
+type UpsertSyncStateParams struct {
+	TableName      string
+	LastSyncedAt   int64
+	LastSyncedOpID string
+}
+
+func (q *Queries) UpsertSyncState(ctx context.Context, arg UpsertSyncStateParams) error {
+	_, err := q.db.ExecContext(ctx, upsertSyncState, arg.TableName, arg.LastSyncedAt, arg.LastSyncedOpID)
+	return err
 }
