@@ -1,7 +1,7 @@
 import { Github, Moon, Sun } from "lucide-react";
 import { useState, useEffect } from "react";
 
-export const Navbar = () => {
+export const NavbarSection = () => {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
