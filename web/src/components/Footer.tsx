@@ -1,6 +1,6 @@
-import { Github, X, Heart } from "lucide-react";
+import { Github } from "lucide-react";
 
-export function Footer() {
+export const Footer = () => {
   const currentYear = new Date().getFullYear();
 
   return (
@@ -59,4 +59,4 @@ export function Footer() {
       </div>
     </footer>
   );
-}
+};

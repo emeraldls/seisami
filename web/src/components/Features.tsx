@@ -1,13 +1,4 @@
-import {
-  Mic,
-  Brain,
-  Zap,
-  Lock,
-  Share2,
-  BarChart3,
-  Code2,
-  Smartphone,
-} from "lucide-react";
+import { Mic, Brain, Zap, Lock, Share2, Code2 } from "lucide-react";
 
 const features = [
   {
@@ -48,7 +39,7 @@ const features = [
   },
 ];
 
-export function Features() {
+export const Features = () => {
   return (
     <section
       id="features"
@@ -88,4 +79,4 @@ export function Features() {
       </div>
     </section>
   );
-}
+};
