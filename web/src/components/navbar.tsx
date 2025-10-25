@@ -1,7 +1,7 @@
 import { Github, Moon, Sun } from "lucide-react";
 import { useState, useEffect } from "react";
 
-export function Header() {
+export const Navbar = () => {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
@@ -76,4 +76,4 @@ export function Header() {
       </div>
     </header>
   );
-}
+};
