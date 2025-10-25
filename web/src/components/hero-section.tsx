@@ -1,7 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import AppUI from "@/assets/seisami-app.png";
 
-export function Hero() {
+export const HeroSection = () => {
   return (
     <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
       <div className="max-w-2xl mx-auto text-center mb-16">
@@ -48,4 +48,4 @@ export function Hero() {
       </div>
     </section>
   );
-}
+};

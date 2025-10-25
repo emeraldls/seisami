@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Hero } from "@/components/hero";
+import { HeroSection } from "@/components/hero-section";
 import { FeatureSet } from "@/components/feature-set";
 import { CallToAction } from "@/components/call-to-action";
 import { Footer } from "@/components/footer";
@@ -11,7 +11,7 @@ function Index() {
   return (
     <div>
       <Navbar />
-      <Hero />
+      <HeroSection />
       <FeatureSet />
       <CallToAction />
       <Footer />

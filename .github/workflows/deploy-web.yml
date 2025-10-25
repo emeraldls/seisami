@@ -30,6 +30,7 @@ jobs:
 
           docker buildx build \
             --platform linux/amd64 \
+            --file web/Dockerfile \
             --tag ghcr.io/emeraldls/seisami-web \
-            --tag ghcr.io/emeraldlsl/seisami-web:${{ github.sha }} \
-            --push .
+            --tag ghcr.io/emeraldls/seisami-web:${{ github.sha }} \
+            --push web
