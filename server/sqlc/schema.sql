@@ -69,3 +69,22 @@ CREATE TABLE IF NOT EXISTS transcriptions (
 );
 
 CREATE INDEX IF NOT EXISTS transcriptions_board_id_idx ON transcriptions(board_id);
+
+CREATE TABLE IF NOT EXISTS operations (
+  id TEXT PRIMARY KEY,
+  "table_name" TEXT NOT NULL,
+  record_id TEXT NOT NULL,
+  operation_type TEXT NOT NULL,
+  device_id TEXT, 
+  payload TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sync_state (
+  "table_name" TEXT PRIMARY KEY,
+  last_synced_at INTEGER NOT NULL,
+  last_synced_op_id TEXT NOT NULL
+);
+
+ALTER TABLE sync_state ADD COLUMN user_id UUID REFERENCES users(id);

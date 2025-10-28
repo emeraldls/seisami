@@ -44,6 +44,24 @@ type DesktopLoginCode struct {
 	UsedAt    pgtype.Timestamptz
 }
 
+type Operation struct {
+	ID            string
+	TableName     string
+	RecordID      string
+	OperationType string
+	DeviceID      pgtype.Text
+	Payload       string
+	CreatedAt     pgtype.Text
+	UpdatedAt     pgtype.Text
+}
+
+type SyncState struct {
+	TableName      string
+	LastSyncedAt   int32
+	LastSyncedOpID string
+	UserID         pgtype.UUID
+}
+
 type Transcription struct {
 	ID                string
 	BoardID           string

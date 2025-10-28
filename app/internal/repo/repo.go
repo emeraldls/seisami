@@ -383,6 +383,34 @@ func (r *repo) CreateOperation(tableName types.TableName, recordId, payload stri
 	return operation, nil
 }
 
+// Operations has to be uploaded to the cloud
+
+/* we're out of version if local sync_state last_synced_at or last_synced_op_id is not the same with cloud sync_state
+then we pull the cloud operations based on it last_synced_at & local operations based on local last_synced_at
+
+This is where the hard problem lies, validating each row
+
+// This will store only
+changed_operations = []
+unchanged_operations = []
+
+
+This would only work if both lengths are equal
+
+loop over both cloud & local
+if cloud.op_id == local.op_id {
+	push into unchanged
+} else {
+	push into changed. even index would be cloud, odd would be local
+}
+
+what if i checked for the one with higher length, cloud or local
+then the one with shorter length is inner & i check if it exist in the one with higher length
+
+or how tf do i do this, im confused
+*/
+
+// the timestamp validation with sync is in the sqlc query
 func (r *repo) GetAllOperations(tableName types.TableName) ([]query.Operation, error) {
 	ops, err := r.queries.GetAllOperations(r.ctx, query.GetAllOperationsParams{TableName: tableName.String(), TableName_2: tableName.String(), TableName_3: tableName.String()})
 	if err != nil {
@@ -558,4 +586,24 @@ func (r *repo) ExportAllData() (*ExportedData, error) {
 		Cards:          exportedCards,
 		Transcriptions: exportedTranscriptions,
 	}, nil
+}
+
+func (r *repo) InsertFullColumnData(data query.Column) error {
+	params := query.InsertFullColumnDataParams(data)
+
+	_, err := r.queries.InsertFullColumnData(r.ctx, params)
+	if err != nil {
+		return fmt.Errorf("unable to insert full column data: %v", err)
+	}
+	return nil
+}
+
+func (r *repo) InsertFullCardData(data query.Card) error {
+	params := query.InsertFullCardDataParams(data)
+	_, err := r.queries.InsertFullCardData(r.ctx, params)
+	if err != nil {
+		return fmt.Errorf("unable to insert full card data: %v", err)
+	}
+
+	return nil
 }

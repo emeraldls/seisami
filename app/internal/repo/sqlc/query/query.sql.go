@@ -463,6 +463,83 @@ func (q *Queries) GetTranscriptionByRecordingPath(ctx context.Context, arg GetTr
 	return i, err
 }
 
+const insertFullCardData = `-- name: InsertFullCardData :one
+INSERT INTO cards (id, column_id, title, description, attachments, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, column_id, title, description, attachments, created_at, updated_at
+`
+
+type InsertFullCardDataParams struct {
+	ID          string
+	ColumnID    string
+	Title       string
+	Description sql.NullString
+	Attachments sql.NullString
+	CreatedAt   sql.NullString
+	UpdatedAt   sql.NullString
+}
+
+func (q *Queries) InsertFullCardData(ctx context.Context, arg InsertFullCardDataParams) (Card, error) {
+	row := q.db.QueryRowContext(ctx, insertFullCardData,
+		arg.ID,
+		arg.ColumnID,
+		arg.Title,
+		arg.Description,
+		arg.Attachments,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Card
+	err := row.Scan(
+		&i.ID,
+		&i.ColumnID,
+		&i.Title,
+		&i.Description,
+		&i.Attachments,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const insertFullColumnData = `-- name: InsertFullColumnData :one
+
+INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING id, board_id, name, position, created_at, updated_at
+`
+
+type InsertFullColumnDataParams struct {
+	ID        string
+	BoardID   string
+	Name      string
+	Position  int64
+	CreatedAt sql.NullString
+	UpdatedAt sql.NullString
+}
+
+// - The queries are for when downloading data ----
+func (q *Queries) InsertFullColumnData(ctx context.Context, arg InsertFullColumnDataParams) (Column, error) {
+	row := q.db.QueryRowContext(ctx, insertFullColumnData,
+		arg.ID,
+		arg.BoardID,
+		arg.Name,
+		arg.Position,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Column
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listAllCards = `-- name: ListAllCards :many
 SELECT id, column_id, title, description, attachments, created_at, updated_at FROM cards
 ORDER BY created_at ASC

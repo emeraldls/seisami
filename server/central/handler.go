@@ -11,11 +11,11 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"seisami/server/centraldb"
+	"seisami/server/utils"
 )
 
 type ContextKey string
@@ -28,7 +28,7 @@ func SetWebSocketHandler(handler func(http.ResponseWriter, *http.Request)) {
 	wsHandler = handler
 }
 
-func NewRouter(service *AuthService) *gin.Engine {
+func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
 	router := gin.Default()
 
 	corsMiddleware := cors.New(cors.Config{
@@ -39,7 +39,7 @@ func NewRouter(service *AuthService) *gin.Engine {
 	})
 	router.Use(corsMiddleware)
 
-	h := &handler{service: service}
+	h := &handler{authService: authService, syncService: syncService}
 
 	router.GET("/ws", func(c *gin.Context) {
 
@@ -49,7 +49,7 @@ func NewRouter(service *AuthService) *gin.Engine {
 			return
 		}
 
-		userID, err := validateToken(token, service.jwtSecret)
+		userID, err := validateToken(token, authService.jwtSecret)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 			return
@@ -72,7 +72,7 @@ func NewRouter(service *AuthService) *gin.Engine {
 		auth.POST("/desktop/exchange", h.desktopExchange)
 
 		protected := auth.Group("")
-		protected.Use(authMiddleware(service))
+		protected.Use(authMiddleware(authService))
 		{
 			protected.GET("/desktop/start", h.desktopStart)
 		}
@@ -80,10 +80,10 @@ func NewRouter(service *AuthService) *gin.Engine {
 
 	// Sync endpoints
 	sync := router.Group("/sync")
-	sync.Use(authMiddleware(service))
+	sync.Use(authMiddleware(authService))
 	{
 		sync.POST("/upload", h.uploadData)
-		sync.GET("/status", h.getSyncStatus)
+		sync.GET("/pull/:table", h.pullData)
 	}
 
 	return router
@@ -129,7 +129,7 @@ func authMiddleware(service *AuthService) gin.HandlerFunc {
 
 		userID := claims.Subject
 
-		c.Request = c.Request.WithContext(setUserContext(c.Request.Context(), &centraldb.User{ID: stringToUUID(userID)}))
+		c.Request = c.Request.WithContext(setUserContext(c.Request.Context(), &centraldb.User{ID: utils.StringToUUID(userID)}))
 		c.Next()
 	}
 }
@@ -138,13 +138,9 @@ func setUserContext(ctx context.Context, user *centraldb.User) context.Context {
 	return context.WithValue(ctx, UserContextKey, user)
 }
 
-func stringToUUID(userID string) pgtype.UUID {
-	parsed, _ := uuid.Parse(userID)
-	return pgtype.UUID{Bytes: parsed, Valid: true}
-}
-
 type handler struct {
-	service *AuthService
+	authService *AuthService
+	syncService *SyncService
 }
 
 type emailPasswordRequest struct {
@@ -165,7 +161,7 @@ func (h *handler) signup(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.Signup(c.Request.Context(), req.Email, req.Password)
+	result, err := h.authService.Signup(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrEmailAlreadyInUse):
@@ -192,7 +188,7 @@ func (h *handler) signin(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.Signin(c.Request.Context(), req.Email, req.Password)
+	result, err := h.authService.Signin(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidCredentials):
@@ -230,7 +226,7 @@ func (h *handler) forgotPassword(c *gin.Context) {
 		return
 	}
 
-	token, expiresAt, err := h.service.ForgotPassword(c.Request.Context(), req.Email)
+	token, expiresAt, err := h.authService.ForgotPassword(c.Request.Context(), req.Email)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrUserNotFound):
@@ -267,7 +263,7 @@ func (h *handler) resetPassword(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.ResetPassword(c.Request.Context(), req.Token, req.NewPassword); err != nil {
+	if err := h.authService.ResetPassword(c.Request.Context(), req.Token, req.NewPassword); err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidResetToken):
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -287,13 +283,13 @@ func (h *handler) desktopStart(c *gin.Context) {
 		return
 	}
 
-	userID, err := h.service.GetUserIDFromContext(c.Request.Context())
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
 	if err != nil || userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	code, expiresAt, err := h.service.CreateDesktopLoginCode(c.Request.Context(), userID, state)
+	code, expiresAt, err := h.authService.CreateDesktopLoginCode(c.Request.Context(), userID, state)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create desktop login code"})
 		return
@@ -324,7 +320,7 @@ func (h *handler) desktopExchange(c *gin.Context) {
 		return
 	}
 
-	token, err := h.service.ExchangeDesktopLoginCode(c.Request.Context(), req.Code, req.State)
+	token, err := h.authService.ExchangeDesktopLoginCode(c.Request.Context(), req.Code, req.State)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidOrExpiredCode):
@@ -358,57 +354,71 @@ func validateToken(tokenString string, jwtSecret []byte) (string, error) {
 	return claims.Subject, nil
 }
 
-// Data Sync Handlers
-type syncUploadRequest struct {
-	Boards         []map[string]interface{} `json:"boards"`
-	Columns        []map[string]interface{} `json:"columns"`
-	Cards          []map[string]interface{} `json:"cards"`
-	Transcriptions []map[string]interface{} `json:"transcriptions"`
-}
-
 func (h *handler) uploadData(c *gin.Context) {
-	userID, err := h.service.GetUserIDFromContext(c.Request.Context())
+	if h.syncService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "sync service unavailable"})
+		return
+	}
+
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
 	if err != nil || userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	var req syncUploadRequest
+	var req SyncOperation
 	if err := c.BindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
 		return
 	}
 
-	// Process upload in background and stream progress updates
-	go h.processSyncUpload(c.Request.Context(), userID, req)
+	validate := validator.New()
+	if err := validate.Struct(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing fields", "data": err.Error()})
+		return
+	}
 
-	c.JSON(http.StatusAccepted, gin.H{
-		"status":  "in_progress",
-		"message": "sync upload started",
+	if err := h.syncService.ProcessOperation(c.Request.Context(), userID, req); err != nil {
+		log.Printf("sync upload failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process sync operation"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"status":       "stored",
+		"record_id":    req.RecordID,
+		"operation_id": req.ID,
 	})
 }
 
-func (h *handler) processSyncUpload(ctx context.Context, userID string, req syncUploadRequest) {
-	// This will be called asynchronously
-	// For now, we'll log the request and process it
-	log.Printf("Starting data sync for user %s: %d boards, %d columns, %d cards, %d transcriptions",
-		userID, len(req.Boards), len(req.Columns), len(req.Cards), len(req.Transcriptions))
+func (h *handler) pullData(c *gin.Context) {
+	if h.syncService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "sync service unavailable"})
+		return
+	}
 
-	// TODO: Implement actual database inserts with conflict handling
-	// Track duplicates, errors, and processed items
-	// Emit WebSocket progress events to client
-}
-
-func (h *handler) getSyncStatus(c *gin.Context) {
-	userID, err := h.service.GetUserIDFromContext(c.Request.Context())
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
 	if err != nil || userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	// TODO: Return sync status from cache/database
+	tableName := c.Param("table")
+	if tableName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "table name is required"})
+		return
+	}
+
+	operations, err := h.syncService.PullOperations(c.Request.Context(), userID, tableName)
+	if err != nil {
+		log.Printf("sync pull failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to pull sync data"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"status":  "idle",
-		"message": "no active sync",
+		"table":      tableName,
+		"count":      len(operations),
+		"operations": operations,
 	})
 }

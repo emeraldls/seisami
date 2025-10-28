@@ -101,3 +101,105 @@ ORDER BY created_at ASC;
 SELECT * FROM transcriptions
 WHERE board_id = $1
 ORDER BY created_at DESC;
+
+---- Operations -------
+
+-- name: SyncUpsertColumn :exec
+INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (id) DO UPDATE SET
+    board_id = EXCLUDED.board_id,
+    name = EXCLUDED.name,
+    position = EXCLUDED.position,
+    updated_at = EXCLUDED.updated_at;
+
+-- name: SyncDeleteColumn :exec
+DELETE FROM columns c
+USING boards b
+WHERE c.id = $1
+  AND b.id = c.board_id
+  AND b.user_id = $2;
+
+-- name: SyncUpsertCard :exec
+INSERT INTO cards (id, column_id, title, description, attachments, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (id) DO UPDATE SET
+    column_id = EXCLUDED.column_id,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    attachments = EXCLUDED.attachments,
+    updated_at = EXCLUDED.updated_at;
+
+-- name: SyncDeleteCard :exec
+DELETE FROM cards c
+USING columns col
+JOIN boards b ON b.id = col.board_id
+WHERE c.id = $1
+  AND c.column_id = col.id
+  AND b.user_id = $2;
+
+-- name: SyncUpdateCardColumn :exec
+UPDATE cards c
+SET column_id = $1,
+    updated_at = $2
+FROM columns col
+JOIN boards b ON b.id = col.board_id
+WHERE c.id = $3
+  AND col.id = $1
+  AND b.user_id = $4;
+
+-- name: SyncPullColumns :many
+SELECT c.id, c.board_id, c.name, c.position, c.created_at, c.updated_at
+  FROM columns c
+  JOIN boards b ON b.id = c.board_id
+  WHERE b.user_id = $1;
+
+
+-- name: GetAllOperations :many
+SELECT o.*
+FROM operations o
+JOIN (
+    SELECT record_id, MAX(created_at) AS max_created_at
+    FROM operations
+    WHERE created_at > (
+        SELECT COALESCE(last_synced_at, '1970-01-01'::timestamp)
+        FROM sync_state
+        WHERE sync_state."table_name" = $1
+          AND sync_state."user_id" = $4
+    )
+    AND sync_state."table_name" = $2
+    GROUP BY record_id
+) latest
+  ON o.record_id = latest.record_id
+  AND o.created_at = latest.max_created_at
+  AND o."table_name" = $3
+-- join through columns → boards to scope to user
+JOIN columns c ON c.id = o.record_id
+JOIN boards b ON b.id = c.board_id
+WHERE b.user_id = $4
+ORDER BY o.created_at ASC;
+
+
+-- name: UpsertSyncState :exec
+INSERT INTO sync_state (table_name, last_synced_at, last_synced_op_id, user_id)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT(table_name, user_id)
+DO UPDATE SET
+  last_synced_at = EXCLUDED.last_synced_at,
+  last_synced_op_id = EXCLUDED.last_synced_op_id;
+
+-- name: GetSyncState :one
+SELECT ss.*
+FROM sync_state ss
+JOIN columns c ON c.id = ss.record_id
+JOIN boards b ON b.id = c.board_id
+WHERE ss.table_name = $1
+  AND b.user_id = $2
+LIMIT 1;
+
+
+-- name: UpdateSyncState :exec
+UPDATE sync_state
+SET last_synced_at = $1, last_synced_op_id = $2
+WHERE table_name = $3
+  AND user_id = $4;

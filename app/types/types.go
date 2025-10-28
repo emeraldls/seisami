@@ -1,5 +1,7 @@
 package types
 
+import "fmt"
+
 type Message struct {
 	Action string `json:"action" validate:"required"`
 	RoomID string `json:"roomId,omitempty"`
@@ -24,6 +26,8 @@ type CardEvent struct {
 		Description string `json:"description"`
 		ColumnID    string `json:"column_id"`
 		Index       int    `json:"index"`
+		CreatedAt   string `json:"created_at"`
+		UpdatedAt   string `json:"updated_at"`
 	}
 }
 
@@ -71,4 +75,36 @@ const (
 
 func (t TableName) String() string {
 	return [...]string{"boards", "columns", "cards", "transcriptions"}[t-1]
+}
+
+func TableNameFromString(s string) (TableName, error) {
+	switch s {
+	case "boards":
+		return BoardTable, nil
+	case "columns":
+		return ColumnTable, nil
+	case "cards":
+		return CardTable, nil
+	case "transcriptions":
+		return TranscriptionTable, nil
+	default:
+		return 0, fmt.Errorf("unknown table name: %s", s)
+	}
+}
+
+type OperationSync struct {
+	ID            string `json:"id"`
+	TableName     string `json:"table_name"`
+	RecordID      string `json:"record_id"`
+	OperationType string `json:"operation_type"`
+	DeviceID      string `json:"device_id"`
+	PayloadData   string `json:"payload"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
+}
+
+type SyncStatePayload struct {
+	TableName      string `json:"table_name"`
+	LastSyncedAt   int64  `json:"last_synced_at"`
+	LastSyncedOpID string `json:"last_synced_operation_id"`
 }

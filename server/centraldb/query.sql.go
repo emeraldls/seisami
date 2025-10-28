@@ -262,6 +262,72 @@ func (q *Queries) DeleteExpiredDesktopCodes(ctx context.Context) error {
 	return err
 }
 
+const getAllOperations = `-- name: GetAllOperations :many
+SELECT o.id, o.table_name, o.record_id, o.operation_type, o.device_id, o.payload, o.created_at, o.updated_at
+FROM operations o
+JOIN (
+    SELECT record_id, MAX(created_at) AS max_created_at
+    FROM operations
+    WHERE created_at > (
+        SELECT COALESCE(last_synced_at, '1970-01-01'::timestamp)
+        FROM sync_state
+        WHERE sync_state."table_name" = $1
+          AND sync_state."user_id" = $4
+    )
+    AND sync_state."table_name" = $2
+    GROUP BY record_id
+) latest
+  ON o.record_id = latest.record_id
+  AND o.created_at = latest.max_created_at
+  AND o."table_name" = $3
+JOIN columns c ON c.id = o.record_id
+JOIN boards b ON b.id = c.board_id
+WHERE b.user_id = $4
+ORDER BY o.created_at ASC
+`
+
+type GetAllOperationsParams struct {
+	TableName   string
+	TableName_2 string
+	TableName_3 string
+	UserID      pgtype.UUID
+}
+
+// join through columns → boards to scope to user
+func (q *Queries) GetAllOperations(ctx context.Context, arg GetAllOperationsParams) ([]Operation, error) {
+	rows, err := q.db.Query(ctx, getAllOperations,
+		arg.TableName,
+		arg.TableName_2,
+		arg.TableName_3,
+		arg.UserID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Operation
+	for rows.Next() {
+		var i Operation
+		if err := rows.Scan(
+			&i.ID,
+			&i.TableName,
+			&i.RecordID,
+			&i.OperationType,
+			&i.DeviceID,
+			&i.Payload,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getBoardColumns = `-- name: GetBoardColumns :many
 SELECT id, board_id, name, position, created_at, updated_at FROM columns
 WHERE board_id = $1
@@ -384,6 +450,33 @@ func (q *Queries) GetDesktopLoginCode(ctx context.Context, code string) (Desktop
 	return i, err
 }
 
+const getSyncState = `-- name: GetSyncState :one
+SELECT ss.table_name, ss.last_synced_at, ss.last_synced_op_id, ss.user_id
+FROM sync_state ss
+JOIN columns c ON c.id = ss.record_id
+JOIN boards b ON b.id = c.board_id
+WHERE ss.table_name = $1
+  AND b.user_id = $2
+LIMIT 1
+`
+
+type GetSyncStateParams struct {
+	TableName string
+	UserID    pgtype.UUID
+}
+
+func (q *Queries) GetSyncState(ctx context.Context, arg GetSyncStateParams) (SyncState, error) {
+	row := q.db.QueryRow(ctx, getSyncState, arg.TableName, arg.UserID)
+	var i SyncState
+	err := row.Scan(
+		&i.TableName,
+		&i.LastSyncedAt,
+		&i.LastSyncedOpID,
+		&i.UserID,
+	)
+	return i, err
+}
+
 const getUserBoards = `-- name: GetUserBoards :many
 SELECT id, user_id, name, created_at, updated_at FROM boards
 WHERE user_id = $1
@@ -499,6 +592,172 @@ func (q *Queries) SetPasswordResetToken(ctx context.Context, arg SetPasswordRese
 	return err
 }
 
+const syncDeleteCard = `-- name: SyncDeleteCard :exec
+DELETE FROM cards c
+USING columns col
+JOIN boards b ON b.id = col.board_id
+WHERE c.id = $1
+  AND c.column_id = col.id
+  AND b.user_id = $2
+`
+
+type SyncDeleteCardParams struct {
+	ID     string
+	UserID pgtype.UUID
+}
+
+func (q *Queries) SyncDeleteCard(ctx context.Context, arg SyncDeleteCardParams) error {
+	_, err := q.db.Exec(ctx, syncDeleteCard, arg.ID, arg.UserID)
+	return err
+}
+
+const syncDeleteColumn = `-- name: SyncDeleteColumn :exec
+DELETE FROM columns c
+USING boards b
+WHERE c.id = $1
+  AND b.id = c.board_id
+  AND b.user_id = $2
+`
+
+type SyncDeleteColumnParams struct {
+	ID     string
+	UserID pgtype.UUID
+}
+
+func (q *Queries) SyncDeleteColumn(ctx context.Context, arg SyncDeleteColumnParams) error {
+	_, err := q.db.Exec(ctx, syncDeleteColumn, arg.ID, arg.UserID)
+	return err
+}
+
+const syncPullColumns = `-- name: SyncPullColumns :many
+SELECT c.id, c.board_id, c.name, c.position, c.created_at, c.updated_at
+  FROM columns c
+  JOIN boards b ON b.id = c.board_id
+  WHERE b.user_id = $1
+`
+
+func (q *Queries) SyncPullColumns(ctx context.Context, userID pgtype.UUID) ([]Column, error) {
+	rows, err := q.db.Query(ctx, syncPullColumns, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Column
+	for rows.Next() {
+		var i Column
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Name,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const syncUpdateCardColumn = `-- name: SyncUpdateCardColumn :exec
+UPDATE cards c
+SET column_id = $1,
+    updated_at = $2
+FROM columns col
+JOIN boards b ON b.id = col.board_id
+WHERE c.id = $3
+  AND col.id = $1
+  AND b.user_id = $4
+`
+
+type SyncUpdateCardColumnParams struct {
+	ColumnID  string
+	UpdatedAt pgtype.Timestamptz
+	ID        string
+	UserID    pgtype.UUID
+}
+
+func (q *Queries) SyncUpdateCardColumn(ctx context.Context, arg SyncUpdateCardColumnParams) error {
+	_, err := q.db.Exec(ctx, syncUpdateCardColumn,
+		arg.ColumnID,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.UserID,
+	)
+	return err
+}
+
+const syncUpsertCard = `-- name: SyncUpsertCard :exec
+INSERT INTO cards (id, column_id, title, description, attachments, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+ON CONFLICT (id) DO UPDATE SET
+    column_id = EXCLUDED.column_id,
+    title = EXCLUDED.title,
+    description = EXCLUDED.description,
+    attachments = EXCLUDED.attachments,
+    updated_at = EXCLUDED.updated_at
+`
+
+type SyncUpsertCardParams struct {
+	ID          string
+	ColumnID    string
+	Title       string
+	Description pgtype.Text
+	Attachments pgtype.Text
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
+}
+
+func (q *Queries) SyncUpsertCard(ctx context.Context, arg SyncUpsertCardParams) error {
+	_, err := q.db.Exec(ctx, syncUpsertCard,
+		arg.ID,
+		arg.ColumnID,
+		arg.Title,
+		arg.Description,
+		arg.Attachments,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
+const syncUpsertColumn = `-- name: SyncUpsertColumn :exec
+
+INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (id) DO UPDATE SET
+    board_id = EXCLUDED.board_id,
+    name = EXCLUDED.name,
+    position = EXCLUDED.position,
+    updated_at = EXCLUDED.updated_at
+`
+
+type SyncUpsertColumnParams struct {
+	ID        string
+	BoardID   string
+	Name      string
+	Position  int32
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+// -- Operations -------
+func (q *Queries) SyncUpsertColumn(ctx context.Context, arg SyncUpsertColumnParams) error {
+	_, err := q.db.Exec(ctx, syncUpsertColumn,
+		arg.ID,
+		arg.BoardID,
+		arg.Name,
+		arg.Position,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const updatePassword = `-- name: UpdatePassword :exec
 UPDATE users
 SET password_hash = $2,
@@ -515,5 +774,55 @@ type UpdatePasswordParams struct {
 
 func (q *Queries) UpdatePassword(ctx context.Context, arg UpdatePasswordParams) error {
 	_, err := q.db.Exec(ctx, updatePassword, arg.ID, arg.PasswordHash)
+	return err
+}
+
+const updateSyncState = `-- name: UpdateSyncState :exec
+UPDATE sync_state
+SET last_synced_at = $1, last_synced_op_id = $2
+WHERE table_name = $3
+  AND user_id = $4
+`
+
+type UpdateSyncStateParams struct {
+	LastSyncedAt   int32
+	LastSyncedOpID string
+	TableName      string
+	UserID         pgtype.UUID
+}
+
+func (q *Queries) UpdateSyncState(ctx context.Context, arg UpdateSyncStateParams) error {
+	_, err := q.db.Exec(ctx, updateSyncState,
+		arg.LastSyncedAt,
+		arg.LastSyncedOpID,
+		arg.TableName,
+		arg.UserID,
+	)
+	return err
+}
+
+const upsertSyncState = `-- name: UpsertSyncState :exec
+INSERT INTO sync_state (table_name, last_synced_at, last_synced_op_id, user_id)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT(table_name, user_id)
+DO UPDATE SET
+  last_synced_at = EXCLUDED.last_synced_at,
+  last_synced_op_id = EXCLUDED.last_synced_op_id
+`
+
+type UpsertSyncStateParams struct {
+	TableName      string
+	LastSyncedAt   int32
+	LastSyncedOpID string
+	UserID         pgtype.UUID
+}
+
+func (q *Queries) UpsertSyncState(ctx context.Context, arg UpsertSyncStateParams) error {
+	_, err := q.db.Exec(ctx, upsertSyncState,
+		arg.TableName,
+		arg.LastSyncedAt,
+		arg.LastSyncedOpID,
+		arg.UserID,
+	)
 	return err
 }

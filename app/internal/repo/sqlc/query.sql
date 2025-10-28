@@ -236,3 +236,15 @@ LIMIT 1;
 UPDATE sync_state
 SET last_synced_at = ?, last_synced_op_id = ?
 WHERE table_name = ?;
+
+--- The queries are for when downloading data ----
+
+-- name: InsertFullColumnData :one
+INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: InsertFullCardData :one
+INSERT INTO cards (id, column_id, title, description, attachments, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING *;

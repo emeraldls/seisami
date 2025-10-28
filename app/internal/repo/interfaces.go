@@ -44,4 +44,7 @@ type Repository interface {
 	UpdateSyncState(tableName types.TableName, lastOpID string, lastSyncedAt int64) error
 
 	ExportAllData() (*ExportedData, error)
+
+	InsertFullColumnData(data query.Column) error
+	InsertFullCardData(data query.Card) error
 }

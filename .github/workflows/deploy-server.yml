@@ -1,4 +1,4 @@
-name: Website Deployment
+name: Seisami Cloud
 
 on:
   push:
@@ -30,7 +30,7 @@ jobs:
 
           docker buildx build \
             --platform linux/amd64 \
-            --file web/Dockerfile \
-            --tag ghcr.io/emeraldls/seisami-web \
-            --tag ghcr.io/emeraldls/seisami-web:${{ github.sha }} \
-            --push web
+            --file server/Dockerfile \
+            --tag ghcr.io/emeraldls/seisami-cloud \
+            --tag ghcr.io/emeraldls/seisami-cloud:${{ github.sha }} \
+            --push server
