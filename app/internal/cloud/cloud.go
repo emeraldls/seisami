@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"seisami/app/internal/repo"
 	"seisami/app/internal/repo/sqlc/query"
 	"seisami/app/types"
+	"strings"
 	"time"
 )
 
@@ -22,10 +22,10 @@ type cloudFuncs struct {
 	httpClient   http.Client
 }
 
-func NewCloud(repo repo.Repository, sessionToken string, ctx context.Context, cloudApiUrl string) *cloudFuncs {
+func NewCloudFuncs(repo repo.Repository, sessionToken string, ctx context.Context, cloudApiUrl string) cloudFuncs {
 	httpClient := http.Client{Timeout: 30 * time.Second}
 
-	return &cloudFuncs{
+	return cloudFuncs{
 		repo,
 		sessionToken,
 		ctx,
@@ -34,7 +34,7 @@ func NewCloud(repo repo.Repository, sessionToken string, ctx context.Context, cl
 	}
 }
 
-func (cf *cloudFuncs) GetAllOperations(tableName types.TableName) ([]types.OperationSync, error) {
+func (cf cloudFuncs) GetAllOperations(tableName types.TableName) ([]types.OperationSync, error) {
 	// Get all operations without filters - this will return all operations for the user
 	operations, err := cf.PullRecords(tableName)
 	if err != nil {
@@ -49,25 +49,38 @@ type HttpResponse struct {
 	Data     any
 }
 
-func (cf cloudFuncs) PushRecord(payload types.OperationSync) HttpResponse {
-	jBody, err := json.Marshal(payload)
-	if err != nil {
-		return HttpResponse{
-			HasError: true,
-			Message:  "unable to serialize data",
-			Data:     err.Error(),
-		}
+func (cf cloudFuncs) buildURL(path string) string {
+	if strings.HasPrefix(path, "http") {
+		return path
 	}
 
-	// TODO: include path to api
-	req, err := http.NewRequestWithContext(cf.ctx, "POST", cf.cloudApiUrl+"/sync/upload", bytes.NewBuffer(jBody))
+	base := strings.TrimRight(cf.cloudApiUrl, "/")
+	suffix := strings.TrimLeft(path, "/")
+	if suffix == "" {
+		return base
+	}
 
-	if err != nil {
-		return HttpResponse{
-			HasError: true,
-			Message:  "unable to prepare api call",
-			Data:     err.Error(),
+	return base + "/" + suffix
+}
+
+func (cf cloudFuncs) doJSONRequest(method, path string, payload any) (int, []byte, error) {
+	ctx := cf.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	var body io.Reader
+	if payload != nil {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return 0, nil, fmt.Errorf("serialize payload: %w", err)
 		}
+		body = bytes.NewBuffer(data)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, cf.buildURL(path), body)
+	if err != nil {
+		return 0, nil, fmt.Errorf("prepare request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -75,25 +88,42 @@ func (cf cloudFuncs) PushRecord(payload types.OperationSync) HttpResponse {
 
 	res, err := cf.httpClient.Do(req)
 	if err != nil {
-		return HttpResponse{
-			HasError: true,
-			Message:  "unable to make api call",
-			Data:     err.Error(),
-		}
+		return 0, nil, fmt.Errorf("execute request: %w", err)
 	}
-
 	defer res.Body.Close()
 
 	resBody, err := io.ReadAll(res.Body)
 	if err != nil {
+		return res.StatusCode, nil, fmt.Errorf("read response body: %w", err)
+	}
+
+	return res.StatusCode, resBody, nil
+}
+
+func (cf cloudFuncs) postSyncResource(path string, payload any) error {
+	status, body, err := cf.doJSONRequest(http.MethodPost, path, payload)
+	if err != nil {
+		return err
+	}
+
+	if status != http.StatusOK && status != http.StatusCreated {
+		return fmt.Errorf("sync api returned status %d: %s", status, string(body))
+	}
+
+	return nil
+}
+
+func (cf cloudFuncs) PushRecord(payload types.OperationSync) HttpResponse {
+	status, resBody, err := cf.doJSONRequest(http.MethodPost, "/sync/upload", payload)
+	if err != nil {
 		return HttpResponse{
 			HasError: true,
-			Message:  "unable to read response body",
+			Message:  "unable to sync data",
 			Data:     err.Error(),
 		}
 	}
 
-	if res.StatusCode != http.StatusCreated {
+	if status != http.StatusCreated {
 		return HttpResponse{
 			HasError: true,
 			Message:  "error syncing data",
@@ -108,7 +138,7 @@ func (cf cloudFuncs) PushRecord(payload types.OperationSync) HttpResponse {
 	}
 }
 
-func (cf cloudFuncs) PullRecord(tableName types.TableName, syncState query.SyncState) (types.OperationSync, error) {
+func (cf cloudFuncs) PullRecord(tableName types.TableName) (types.OperationSync, error) {
 	operations, err := cf.PullRecords(tableName)
 	if err != nil {
 		return types.OperationSync{}, err
@@ -122,29 +152,13 @@ func (cf cloudFuncs) PullRecord(tableName types.TableName, syncState query.SyncS
 }
 
 func (cf cloudFuncs) PullRecords(tableName types.TableName) ([]types.OperationSync, error) {
-	url := fmt.Sprintf("%s/sync/pull/%s", cf.cloudApiUrl, tableName.String())
-
-	req, err := http.NewRequestWithContext(cf.ctx, "GET", url, nil)
+	status, resBody, err := cf.doJSONRequest(http.MethodGet, fmt.Sprintf("/sync/pull/%s", tableName.String()), nil)
 	if err != nil {
-		return nil, fmt.Errorf("unable to prepare request: %w", err)
+		return nil, fmt.Errorf("unable to pull records: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cf.sessionToken))
-
-	res, err := cf.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("unable to make request: %w", err)
-	}
-	defer res.Body.Close()
-
-	resBody, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("unable to read response body: %w", err)
-	}
-
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("api request failed with status %d: %s", res.StatusCode, string(resBody))
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("api request failed with status %d: %s", status, string(resBody))
 	}
 
 	var response struct {
@@ -160,68 +174,60 @@ func (cf cloudFuncs) PullRecords(tableName types.TableName) ([]types.OperationSy
 	return response.Operations, nil
 }
 
-// TODO: work on this function to return HttpResponse also
+// TODO: work on this function  in cloud & return HttpResponse also
 func (cf cloudFuncs) GetSyncState(tableName types.TableName) (query.SyncState, error) {
-	req, err := http.NewRequest("GET", cf.cloudApiUrl+"/state/"+tableName.String(), nil)
+	status, resBody, err := cf.doJSONRequest(http.MethodGet, "/sync/state/"+tableName.String(), nil)
 	if err != nil {
-		return query.SyncState{}, fmt.Errorf("unable to prepare request: %v", err)
+		return query.SyncState{}, fmt.Errorf("unable to get sync state: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cf.sessionToken))
-
-	res, err := cf.httpClient.Do(req)
-	if err != nil {
-		return query.SyncState{}, fmt.Errorf("unable to make request: %v", err)
+	if status != http.StatusOK {
+		return query.SyncState{}, fmt.Errorf("api request failed with status %d: %s", status, string(resBody))
 	}
 
 	var syncState types.SyncStatePayload
-
-	resBody, err := io.ReadAll(res.Body)
-	if err != nil {
-		return query.SyncState{}, fmt.Errorf("unable to read response body:%v", err)
-	}
-
-	err = json.Unmarshal(resBody, &syncState)
-	if err != nil {
-		return query.SyncState{}, fmt.Errorf("unable to deserialize data: %v", err)
-	}
-
-	if res.StatusCode != http.StatusOK {
-		fmt.Println("request wasnt successful: ", err)
-		return query.SyncState{}, errors.New("something went wrong")
+	if err := json.Unmarshal(resBody, &syncState); err != nil {
+		return query.SyncState{}, fmt.Errorf("unable to deserialize data: %w", err)
 	}
 
 	return query.SyncState(syncState), nil
 }
 
 func (cf cloudFuncs) UpdateSyncState(state query.SyncState) error {
-	jBytes, err := json.Marshal(state)
-	if err != nil {
-		return fmt.Errorf("unable to serialize data: %v", err)
+	if err := cf.postSyncResource("/sync/state", state); err != nil {
+		return fmt.Errorf("unable to update sync state: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", cf.cloudApiUrl+"/state", bytes.NewBuffer(jBytes))
-	if err != nil {
-		return fmt.Errorf("unable to prepare request: %v", err)
+	return nil
+}
+
+func (cf cloudFuncs) UpsertBoard(board types.ExportedBoard) error {
+	if err := cf.postSyncResource("/sync/board", board); err != nil {
+		return fmt.Errorf("unable to upsert board: %w", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cf.sessionToken))
+	return nil
+}
 
-	res, err := cf.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("unable to make request: %v", err)
+func (cf cloudFuncs) UpsertColumn(column types.ExportedColumn) error {
+	if err := cf.postSyncResource("/sync/column", column); err != nil {
+		return fmt.Errorf("unable to upsert column: %w", err)
 	}
 
-	resBody, err := io.ReadAll(res.Body)
-	if err != nil {
-		return fmt.Errorf("unable to read response body: %v", err)
+	return nil
+}
+
+func (cf cloudFuncs) UpsertCard(card types.ExportedCard) error {
+	if err := cf.postSyncResource("/sync/card", card); err != nil {
+		return fmt.Errorf("unable to upsert card: %w", err)
 	}
 
-	if res.StatusCode != http.StatusOK {
-		fmt.Println(string(resBody))
-		return errors.New("something went wrong")
+	return nil
+}
+
+func (cf cloudFuncs) InitializeSyncStateForUser() error {
+	if err := cf.postSyncResource("/sync/init", nil); err != nil {
+		return fmt.Errorf("unable to init sync state: %w", err)
 	}
 
 	return nil

@@ -6,7 +6,6 @@ type Message struct {
 	Data   string `json:"data,omitempty"`
 }
 
-// Data Sync Types
 type SyncBoard struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -72,4 +71,10 @@ type SyncResponse struct {
 	DuplicateBoards  int    `json:"duplicate_boards,omitempty"`
 	DuplicateColumns int    `json:"duplicate_columns,omitempty"`
 	DuplicateCards   int    `json:"duplicate_cards,omitempty"`
+}
+
+type SyncStatePayload struct {
+	TableName      string `json:"table_name"`
+	LastSyncedAt   int64  `json:"last_synced_at"`
+	LastSyncedOpID string `json:"last_synced_operation_id"`
 }

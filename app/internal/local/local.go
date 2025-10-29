@@ -76,3 +76,11 @@ func (lf localFuncs) UpdateSyncState(state query.SyncState) error {
 	}
 	return lf.repo.UpsertSyncState(tableName, state.LastSyncedOpID, state.LastSyncedAt)
 }
+
+func (lf localFuncs) UpsertSyncState(state query.SyncState) error {
+	tableName, err := types.TableNameFromString(state.TableName)
+	if err != nil {
+		return err
+	}
+	return lf.repo.UpsertSyncState(tableName, state.LastSyncedOpID, state.LastSyncedAt)
+}

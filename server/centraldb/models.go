@@ -57,7 +57,7 @@ type Operation struct {
 
 type SyncState struct {
 	TableName      string
-	LastSyncedAt   int32
+	LastSyncedAt   int64
 	LastSyncedOpID string
 	UserID         pgtype.UUID
 }
@@ -81,4 +81,5 @@ type User struct {
 	UpdatedAt           pgtype.Timestamptz
 	ResetToken          pgtype.Text
 	ResetTokenExpiresAt pgtype.Timestamptz
+	CloudInitialized    pgtype.Bool
 }

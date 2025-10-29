@@ -104,6 +104,13 @@ ORDER BY created_at DESC;
 
 ---- Operations -------
 
+-- name: SyncUpsertBoard :exec
+INSERT INTO boards (id, user_id, name, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    updated_at = EXCLUDED.updated_at;
+
 -- name: SyncUpsertColumn :exec
 INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -203,3 +210,23 @@ UPDATE sync_state
 SET last_synced_at = $1, last_synced_op_id = $2
 WHERE table_name = $3
   AND user_id = $4;
+
+-- name: InitCloud :exec
+UPDATE "users"
+SET cloud_initialized = true
+WHERE id = $1;
+
+-- name: GetCloudInitStatus :one
+SELECT cloud_initialized 
+FROM "users"
+WHERE id = $1;
+
+-- name: InitializeSyncStateForUser :exec
+INSERT INTO sync_state (user_id, table_name, last_synced_at, last_synced_op_id)
+VALUES 
+    ($1, 'boards', EXTRACT(EPOCH FROM NOW())::BIGINT, NULL),
+    ($1, 'columns', EXTRACT(EPOCH FROM NOW())::BIGINT, NULL),
+    ($1, 'cards', EXTRACT(EPOCH FROM NOW())::BIGINT, NULL),
+    ($1, 'transcriptions', EXTRACT(EPOCH FROM NOW())::BIGINT, NULL)
+ON CONFLICT (user_id, table_name)
+DO NOTHING;

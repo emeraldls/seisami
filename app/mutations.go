@@ -42,18 +42,19 @@ func (a *App) handleMutations() {
 				return
 			}
 
+			columnBytes, err := json.Marshal(columnData)
+			if err != nil {
+				fmt.Println("unable to serialize column data: ", err)
+				return
+			}
+
 			go func(ctx context.Context, column types.ColumnEvent) {
 				select {
 				case <-ctx.Done():
 					return
 				default:
 
-					b, err := json.Marshal(columnData)
-					if err != nil {
-						fmt.Println("unable to serialize column data: ", err)
-						return
-					}
-					op, err := a.repository.CreateOperation(types.ColumnTable, columnData.ID, string(b), types.UpdateOperation)
+					op, err := a.repository.CreateOperation(types.ColumnTable, columnData.ID, string(columnBytes), types.UpdateOperation)
 					if err != nil {
 						fmt.Println(err)
 						return
@@ -69,6 +70,22 @@ func (a *App) handleMutations() {
 						err = a.repository.UpsertSyncState(types.ColumnTable, op.ID, t.Unix())
 						if err != nil {
 							fmt.Println(err)
+						}
+
+						httpResponse := a.cloud.PushRecord(types.OperationSync{
+							ID:            op.ID,
+							TableName:     op.TableName,
+							RecordID:      op.RecordID,
+							OperationType: op.OperationType,
+							DeviceID:      op.DeviceID.String,
+							PayloadData:   op.Payload,
+							CreatedAt:     op.CreatedAt.String,
+							UpdatedAt:     op.UpdatedAt.String,
+						})
+
+						if httpResponse.HasError {
+							fmt.Printf("[Message]: %v\nData: %v", httpResponse.Message, httpResponse.Data)
+							return
 						}
 
 						// syncState, err := a.repository.GetSyncState("column")
@@ -90,7 +107,7 @@ func (a *App) handleMutations() {
 
 			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data}
 
-			err := a.sendCollabCommand(msg)
+			err = a.sendCollabCommand(msg)
 			if err != nil {
 				fmt.Printf("unable to broadcast the command: %v\n", err)
 				return
@@ -129,6 +146,22 @@ func (a *App) handleMutations() {
 					op, err := a.repository.CreateOperation(types.CardTable, cardData.Card.ID, string(b), types.UpdateOperation)
 					if err != nil {
 						fmt.Println(err)
+						return
+					}
+
+					httpResponse := a.cloud.PushRecord(types.OperationSync{
+						ID:            op.ID,
+						TableName:     op.TableName,
+						RecordID:      op.RecordID,
+						OperationType: op.OperationType,
+						DeviceID:      op.DeviceID.String,
+						PayloadData:   op.Payload,
+						CreatedAt:     op.CreatedAt.String,
+						UpdatedAt:     op.UpdatedAt.String,
+					})
+
+					if httpResponse.HasError {
+						fmt.Printf("[Message]: %v\nData: %v", httpResponse.Message, httpResponse.Data)
 						return
 					}
 
@@ -192,6 +225,22 @@ func (a *App) handleMutations() {
 					op, err := a.repository.CreateOperation(types.CardTable, cardColumnData.CardID, string(b), types.UpdateOperation)
 					if err != nil {
 						fmt.Println(err)
+						return
+					}
+
+					httpResponse := a.cloud.PushRecord(types.OperationSync{
+						ID:            op.ID,
+						TableName:     op.TableName,
+						RecordID:      op.RecordID,
+						OperationType: op.OperationType,
+						DeviceID:      op.DeviceID.String,
+						PayloadData:   op.Payload,
+						CreatedAt:     op.CreatedAt.String,
+						UpdatedAt:     op.UpdatedAt.String,
+					})
+
+					if httpResponse.HasError {
+						fmt.Printf("[Message]: %v\nData: %v", httpResponse.Message, httpResponse.Data)
 						return
 					}
 

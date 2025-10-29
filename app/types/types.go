@@ -108,3 +108,40 @@ type SyncStatePayload struct {
 	LastSyncedAt   int64  `json:"last_synced_at"`
 	LastSyncedOpID string `json:"last_synced_operation_id"`
 }
+
+type ExportedBoard struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type ExportedColumn struct {
+	ID        string `json:"id"`
+	BoardID   string `json:"board_id"`
+	Name      string `json:"name"`
+	Position  int64  `json:"position"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+type ExportedCard struct {
+	ID          string `json:"id"`
+	ColumnID    string `json:"column_id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Attachments string `json:"attachments,omitempty"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+type ExportedTranscription struct {
+	ID                string `json:"id"`
+	BoardID           string `json:"board_id"`
+	Transcription     string `json:"transcription"`
+	RecordingPath     string `json:"recording_path,omitempty"`
+	Intent            string `json:"intent,omitempty"`
+	AssistantResponse string `json:"assistant_response,omitempty"`
+	CreatedAt         string `json:"created_at"`
+	UpdatedAt         string `json:"updated_at"`
+}

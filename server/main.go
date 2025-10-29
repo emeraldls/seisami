@@ -151,7 +151,7 @@ func startCentralHTTPServer() (func(), error) {
 
 	queries := centraldb.New(pool)
 	authService := central.NewAuthService(queries, cfg)
-	syncService := central.NewSyncService(pool)
+	syncService := central.NewSyncService(pool, queries)
 	router := central.NewRouter(authService, syncService)
 
 	server := &http.Server{

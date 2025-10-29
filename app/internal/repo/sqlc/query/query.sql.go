@@ -247,6 +247,41 @@ func (q *Queries) DeleteTranscription(ctx context.Context, id string) error {
 	return err
 }
 
+const getAllColumns = `-- name: GetAllColumns :many
+SELECT id, board_id, name, position, created_at, updated_at FROM columns 
+ORDER BY created_at ASC
+`
+
+func (q *Queries) GetAllColumns(ctx context.Context) ([]Column, error) {
+	rows, err := q.db.QueryContext(ctx, getAllColumns)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Column
+	for rows.Next() {
+		var i Column
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Name,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllOperations = `-- name: GetAllOperations :many
 
 SELECT o.id, o.table_name, o.record_id, o.operation_type, o.device_id, o.payload, o.created_at, o.updated_at

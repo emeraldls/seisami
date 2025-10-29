@@ -7,6 +7,8 @@ export function CheckAccessibilityPermission():Promise<number>;
 
 export function CheckMicrophonePermission():Promise<number>;
 
+export function ClearLoginToken():Promise<void>;
+
 export function CreateBoard(arg1:string):Promise<query.Board>;
 
 export function CreateCard(arg1:string,arg2:string,arg3:string):Promise<query.Card>;
@@ -32,6 +34,8 @@ export function GetCard(arg1:string):Promise<query.Card>;
 export function GetCollaborationRoomId():Promise<string>;
 
 export function GetColumn(arg1:string):Promise<query.Column>;
+
+export function GetLoginToken():Promise<string>;
 
 export function GetSettings():Promise<query.Setting>;
 
@@ -60,6 +64,10 @@ export function RequestAccessibilityPermission():Promise<void>;
 export function RequestMicrophonePermission():Promise<boolean>;
 
 export function SaveSettings(arg1:string,arg2:any,arg3:any,arg4:any):Promise<query.Setting>;
+
+export function SetLoginToken(arg1:string):Promise<void>;
+
+export function StartDataSyncing(arg1:string):Promise<void>;
 
 export function UpdateBoard(arg1:string,arg2:string):Promise<query.Board>;
 

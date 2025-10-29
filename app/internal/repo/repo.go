@@ -453,69 +453,21 @@ func (r *repo) UpdateSyncState(tableName types.TableName, lastOpID string, lastS
 
 // ExportAllData exports all local data for cloud sync
 type ExportedData struct {
-	Boards         []ExportedBoard         `json:"boards"`
-	Columns        []ExportedColumn        `json:"columns"`
-	Cards          []ExportedCard          `json:"cards"`
-	Transcriptions []ExportedTranscription `json:"transcriptions"`
-}
-
-type ExportedBoard struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
-}
-
-type ExportedColumn struct {
-	ID        string `json:"id"`
-	BoardID   string `json:"board_id"`
-	Name      string `json:"name"`
-	Position  int64  `json:"position"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
-}
-
-type ExportedCard struct {
-	ID          string `json:"id"`
-	ColumnID    string `json:"column_id"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
-	Attachments string `json:"attachments,omitempty"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
-}
-
-type ExportedTranscription struct {
-	ID                string `json:"id"`
-	BoardID           string `json:"board_id"`
-	Transcription     string `json:"transcription"`
-	RecordingPath     string `json:"recording_path,omitempty"`
-	Intent            string `json:"intent,omitempty"`
-	AssistantResponse string `json:"assistant_response,omitempty"`
-	CreatedAt         string `json:"created_at"`
-	UpdatedAt         string `json:"updated_at"`
-}
-
-type ExportedSettings struct {
-	ID                  string `json:"id"`
-	TranscriptionMethod string `json:"transcription_method"`
-	WhisperBinaryPath   string `json:"whisper_binary_path,omitempty"`
-	WhisperModelPath    string `json:"whisper_model_path,omitempty"`
-	OpenaiAPIKey        string `json:"openai_api_key,omitempty"`
-	CreatedAt           string `json:"created_at"`
-	UpdatedAt           string `json:"updated_at"`
+	Boards         []types.ExportedBoard         `json:"boards"`
+	Columns        []types.ExportedColumn        `json:"columns"`
+	Cards          []types.ExportedCard          `json:"cards"`
+	Transcriptions []types.ExportedTranscription `json:"transcriptions"`
 }
 
 func (r *repo) ExportAllData() (*ExportedData, error) {
-	// Get all boards
 	boards, err := r.queries.ListBoards(r.ctx, query.ListBoardsParams{Limit: 1000, Offset: 0})
 	if err != nil {
 		return nil, fmt.Errorf("error exporting boards: %v", err)
 	}
 
-	exportedBoards := make([]ExportedBoard, len(boards))
+	exportedBoards := make([]types.ExportedBoard, len(boards))
 	for i, b := range boards {
-		exportedBoards[i] = ExportedBoard{
+		exportedBoards[i] = types.ExportedBoard{
 			ID:        b.ID,
 			Name:      b.Name,
 			CreatedAt: b.CreatedAt.String,
@@ -523,15 +475,14 @@ func (r *repo) ExportAllData() (*ExportedData, error) {
 		}
 	}
 
-	// Get all columns
 	columns, err := r.queries.ListAllColumns(r.ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error exporting columns: %v", err)
 	}
 
-	exportedColumns := make([]ExportedColumn, len(columns))
+	exportedColumns := make([]types.ExportedColumn, len(columns))
 	for i, c := range columns {
-		exportedColumns[i] = ExportedColumn{
+		exportedColumns[i] = types.ExportedColumn{
 			ID:        c.ID,
 			BoardID:   c.BoardID,
 			Name:      c.Name,
@@ -547,9 +498,9 @@ func (r *repo) ExportAllData() (*ExportedData, error) {
 		return nil, fmt.Errorf("error exporting cards: %v", err)
 	}
 
-	exportedCards := make([]ExportedCard, len(cards))
+	exportedCards := make([]types.ExportedCard, len(cards))
 	for i, card := range cards {
-		exportedCards[i] = ExportedCard{
+		exportedCards[i] = types.ExportedCard{
 			ID:          card.ID,
 			ColumnID:    card.ColumnID,
 			Title:       card.Title,
@@ -560,15 +511,14 @@ func (r *repo) ExportAllData() (*ExportedData, error) {
 		}
 	}
 
-	// Get all transcriptions
 	transcriptions, err := r.queries.ListAllTranscriptions(r.ctx, query.ListAllTranscriptionsParams{Limit: 1000, Offset: 0})
 	if err != nil {
 		return nil, fmt.Errorf("error exporting transcriptions: %v", err)
 	}
 
-	exportedTranscriptions := make([]ExportedTranscription, len(transcriptions))
+	exportedTranscriptions := make([]types.ExportedTranscription, len(transcriptions))
 	for i, t := range transcriptions {
-		exportedTranscriptions[i] = ExportedTranscription{
+		exportedTranscriptions[i] = types.ExportedTranscription{
 			ID:                t.ID,
 			BoardID:           t.BoardID,
 			Transcription:     t.Transcription,

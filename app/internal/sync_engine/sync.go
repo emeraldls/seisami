@@ -1,6 +1,7 @@
-package sync
+package sync_engine
 
 import (
+	"context"
 	"fmt"
 	"seisami/app/internal/cloud"
 	"seisami/app/internal/local"
@@ -10,9 +11,31 @@ import (
 )
 
 type SyncEngine struct {
-	local local.Local
-	cloud cloud.Cloud
-	repo  repo.Repository
+	local        local.Local
+	cloud        cloud.Cloud
+	repo         repo.Repository
+	appCtx       context.Context
+	sessionToken string
+	apiUrl       string
+}
+
+func NewSyncEngine(repo repo.Repository, sessionToken string, appCtx context.Context, apiUrl string) *SyncEngine {
+	local := local.NewLocalFuncs(repo)
+	cloud := cloud.NewCloudFuncs(repo, sessionToken, appCtx, apiUrl)
+
+	return &SyncEngine{
+		local:        local,
+		cloud:        cloud,
+		appCtx:       appCtx,
+		repo:         repo,
+		sessionToken: sessionToken,
+		apiUrl:       apiUrl,
+	}
+}
+
+func (s *SyncEngine) UpdateSessionToken(token string) {
+	s.sessionToken = token
+	s.cloud = cloud.NewCloudFuncs(s.repo, token, s.appCtx, s.apiUrl)
 }
 
 const layout = "2006-01-02 15:04:05"
@@ -26,7 +49,12 @@ we're to run sql update, then what if the data we're updating locally doesnt exi
 ----
 Something is wrong
 */
-func (s *SyncEngine) syncData(tableName types.TableName) error {
+
+/*
+	This reason why we have pull record is for when you're team,
+*/
+
+func (s *SyncEngine) SyncData(tableName types.TableName) error {
 	localOps, err := s.local.GetAllOperations(tableName)
 	if err != nil {
 		return err
@@ -138,6 +166,61 @@ func (s *SyncEngine) syncData(tableName types.TableName) error {
 			if err := s.local.UpdateSyncState(newState); err != nil {
 				fmt.Printf("error updating local sync state: %v\n", err)
 			}
+		}
+	}
+
+	return nil
+}
+
+func (s *SyncEngine) BootstrapCloud() error {
+	data, err := s.repo.ExportAllData()
+	if err != nil {
+		return err
+	}
+
+	for _, b := range data.Boards {
+		if err := s.cloud.UpsertBoard(b); err != nil {
+			fmt.Printf("failed uploading board %v: %v\n", b.ID, err)
+		}
+	}
+
+	for _, c := range data.Columns {
+		if err := s.cloud.UpsertColumn(c); err != nil {
+			fmt.Printf("failed uploading column %v: %v\n", c.ID, err)
+		}
+	}
+
+	for _, card := range data.Cards {
+		if err := s.cloud.UpsertCard(card); err != nil {
+			fmt.Printf("failed uploading card %v: %v\n", card.ID, err)
+		}
+	}
+
+	if err := s.cloud.InitializeSyncStateForUser(); err != nil {
+		fmt.Printf("failed initializing cloud sync state: %v\n", err)
+	}
+
+	state, err := s.cloud.GetSyncState(types.BoardTable)
+	if err == nil {
+		err = s.local.UpsertSyncState(state)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+
+	state, err = s.cloud.GetSyncState(types.ColumnTable)
+	if err == nil {
+		err = s.local.UpsertSyncState(state)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+
+	state, err = s.cloud.GetSyncState(types.CardTable)
+	if err == nil {
+		err = s.local.UpsertSyncState(state)
+		if err != nil {
+			fmt.Println(err)
 		}
 	}
 

@@ -227,7 +227,7 @@ func (q *Queries) CreateTranscription(ctx context.Context, arg CreateTranscripti
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, email, password_hash)
 VALUES ($1, $2, $3)
-RETURNING id, email, password_hash, created_at, updated_at, reset_token, reset_token_expires_at
+RETURNING id, email, password_hash, created_at, updated_at, reset_token, reset_token_expires_at, cloud_initialized
 `
 
 type CreateUserParams struct {
@@ -247,6 +247,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.UpdatedAt,
 		&i.ResetToken,
 		&i.ResetTokenExpiresAt,
+		&i.CloudInitialized,
 	)
 	return i, err
 }
@@ -396,6 +397,19 @@ func (q *Queries) GetBoardTranscriptions(ctx context.Context, boardID string) ([
 	return items, nil
 }
 
+const getCloudInitStatus = `-- name: GetCloudInitStatus :one
+SELECT cloud_initialized 
+FROM "users"
+WHERE id = $1
+`
+
+func (q *Queries) GetCloudInitStatus(ctx context.Context, id pgtype.UUID) (pgtype.Bool, error) {
+	row := q.db.QueryRow(ctx, getCloudInitStatus, id)
+	var cloud_initialized pgtype.Bool
+	err := row.Scan(&cloud_initialized)
+	return cloud_initialized, err
+}
+
 const getColumnCards = `-- name: GetColumnCards :many
 SELECT id, column_id, title, description, attachments, created_at, updated_at FROM cards
 WHERE column_id = $1
@@ -510,7 +524,7 @@ func (q *Queries) GetUserBoards(ctx context.Context, userID pgtype.UUID) ([]Boar
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, created_at, updated_at, reset_token, reset_token_expires_at
+SELECT id, email, password_hash, created_at, updated_at, reset_token, reset_token_expires_at, cloud_initialized
 FROM users
 WHERE email = $1
 `
@@ -526,12 +540,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.UpdatedAt,
 		&i.ResetToken,
 		&i.ResetTokenExpiresAt,
+		&i.CloudInitialized,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, password_hash, created_at, updated_at, reset_token, reset_token_expires_at
+SELECT id, email, password_hash, created_at, updated_at, reset_token, reset_token_expires_at, cloud_initialized
 FROM users
 WHERE id = $1
 `
@@ -547,12 +562,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.UpdatedAt,
 		&i.ResetToken,
 		&i.ResetTokenExpiresAt,
+		&i.CloudInitialized,
 	)
 	return i, err
 }
 
 const getUserByResetToken = `-- name: GetUserByResetToken :one
-SELECT id, email, password_hash, created_at, updated_at, reset_token, reset_token_expires_at
+SELECT id, email, password_hash, created_at, updated_at, reset_token, reset_token_expires_at, cloud_initialized
 FROM users
 WHERE reset_token = $1
   AND reset_token_expires_at > NOW()
@@ -569,8 +585,36 @@ func (q *Queries) GetUserByResetToken(ctx context.Context, resetToken pgtype.Tex
 		&i.UpdatedAt,
 		&i.ResetToken,
 		&i.ResetTokenExpiresAt,
+		&i.CloudInitialized,
 	)
 	return i, err
+}
+
+const initCloud = `-- name: InitCloud :exec
+UPDATE "users"
+SET cloud_initialized = true
+WHERE id = $1
+`
+
+func (q *Queries) InitCloud(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, initCloud, id)
+	return err
+}
+
+const initializeSyncStateForUser = `-- name: InitializeSyncStateForUser :exec
+INSERT INTO sync_state (user_id, table_name, last_synced_at, last_synced_op_id)
+VALUES 
+    ($1, 'boards', EXTRACT(EPOCH FROM NOW())::BIGINT, NULL),
+    ($1, 'columns', EXTRACT(EPOCH FROM NOW())::BIGINT, NULL),
+    ($1, 'cards', EXTRACT(EPOCH FROM NOW())::BIGINT, NULL),
+    ($1, 'transcriptions', EXTRACT(EPOCH FROM NOW())::BIGINT, NULL)
+ON CONFLICT (user_id, table_name)
+DO NOTHING
+`
+
+func (q *Queries) InitializeSyncStateForUser(ctx context.Context, userID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, initializeSyncStateForUser, userID)
+	return err
 }
 
 const setPasswordResetToken = `-- name: SetPasswordResetToken :exec
@@ -691,6 +735,35 @@ func (q *Queries) SyncUpdateCardColumn(ctx context.Context, arg SyncUpdateCardCo
 	return err
 }
 
+const syncUpsertBoard = `-- name: SyncUpsertBoard :exec
+
+INSERT INTO boards (id, user_id, name, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (id) DO UPDATE SET
+    name = EXCLUDED.name,
+    updated_at = EXCLUDED.updated_at
+`
+
+type SyncUpsertBoardParams struct {
+	ID        string
+	UserID    pgtype.UUID
+	Name      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+// -- Operations -------
+func (q *Queries) SyncUpsertBoard(ctx context.Context, arg SyncUpsertBoardParams) error {
+	_, err := q.db.Exec(ctx, syncUpsertBoard,
+		arg.ID,
+		arg.UserID,
+		arg.Name,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const syncUpsertCard = `-- name: SyncUpsertCard :exec
 INSERT INTO cards (id, column_id, title, description, attachments, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -726,7 +799,6 @@ func (q *Queries) SyncUpsertCard(ctx context.Context, arg SyncUpsertCardParams) 
 }
 
 const syncUpsertColumn = `-- name: SyncUpsertColumn :exec
-
 INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (id) DO UPDATE SET
@@ -745,7 +817,6 @@ type SyncUpsertColumnParams struct {
 	UpdatedAt pgtype.Timestamptz
 }
 
-// -- Operations -------
 func (q *Queries) SyncUpsertColumn(ctx context.Context, arg SyncUpsertColumnParams) error {
 	_, err := q.db.Exec(ctx, syncUpsertColumn,
 		arg.ID,
@@ -785,7 +856,7 @@ WHERE table_name = $3
 `
 
 type UpdateSyncStateParams struct {
-	LastSyncedAt   int32
+	LastSyncedAt   int64
 	LastSyncedOpID string
 	TableName      string
 	UserID         pgtype.UUID
@@ -812,7 +883,7 @@ DO UPDATE SET
 
 type UpsertSyncStateParams struct {
 	TableName      string
-	LastSyncedAt   int32
+	LastSyncedAt   int64
 	LastSyncedOpID string
 	UserID         pgtype.UUID
 }

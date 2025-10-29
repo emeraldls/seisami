@@ -10,6 +10,10 @@ export function CheckMicrophonePermission() {
   return window['go']['main']['App']['CheckMicrophonePermission']();
 }
 
+export function ClearLoginToken() {
+  return window['go']['main']['App']['ClearLoginToken']();
+}
+
 export function CreateBoard(arg1) {
   return window['go']['main']['App']['CreateBoard'](arg1);
 }
@@ -60,6 +64,10 @@ export function GetCollaborationRoomId() {
 
 export function GetColumn(arg1) {
   return window['go']['main']['App']['GetColumn'](arg1);
+}
+
+export function GetLoginToken() {
+  return window['go']['main']['App']['GetLoginToken']();
 }
 
 export function GetSettings() {
@@ -116,6 +124,14 @@ export function RequestMicrophonePermission() {
 
 export function SaveSettings(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveSettings'](arg1, arg2, arg3, arg4);
+}
+
+export function SetLoginToken(arg1) {
+  return window['go']['main']['App']['SetLoginToken'](arg1);
+}
+
+export function StartDataSyncing(arg1) {
+  return window['go']['main']['App']['StartDataSyncing'](arg1);
 }
 
 export function UpdateBoard(arg1, arg2) {

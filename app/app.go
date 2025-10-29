@@ -11,8 +11,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"seisami/app/internal/actions"
+	"seisami/app/internal/cloud"
 	"seisami/app/internal/repo"
 	"seisami/app/internal/repo/sqlc/query"
+	"seisami/app/internal/sync_engine"
 	"seisami/app/types"
 
 	"sort"
@@ -47,6 +49,8 @@ const defaultCollabServerAddr = "127.0.0.1:8080"
 // App struct
 type App struct {
 	ctx              context.Context
+	loginToken       string
+	cloudApiUrl      string
 	isRecording      bool
 	stopChan         chan bool
 	recordingPath    string
@@ -59,6 +63,8 @@ type App struct {
 	collabServerAddr string
 	collabRoomId     string
 	collabCloseChan  chan bool
+	cloud            cloud.Cloud
+	syncEngine       *sync_engine.SyncEngine
 }
 
 // NewApp creates a new App application struct
@@ -68,10 +74,12 @@ func NewApp() *App {
 	if addr == "" {
 		addr = defaultCollabServerAddr
 	}
+
 	return &App{
 		stopChan:         make(chan bool),
 		repository:       repo,
 		collabServerAddr: addr,
+		cloudApiUrl:      CLOUD_API_URL,
 	}
 }
 
@@ -80,6 +88,8 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.action = actions.NewAction(ctx, a.repository)
+
+	a.syncEngine = sync_engine.NewSyncEngine(a.repository, a.loginToken, a.ctx, a.cloudApiUrl)
 
 	go a.handleMutations()
 	go startListener()
@@ -179,6 +189,44 @@ func (a *App) OpenFileDialog(title string, filters []runtime.FileFilter) (string
 	return runtime.OpenFileDialog(a.ctx, options)
 }
 
+func (a *App) bootstrapCloud() error {
+	if a.syncEngine == nil {
+		return fmt.Errorf("sync engine not initialized")
+	}
+	return a.syncEngine.BootstrapCloud()
+}
+
+func (a *App) StartDataSyncing(table string) error {
+	tableName, err := types.TableNameFromString(table)
+	if err != nil {
+		return fmt.Errorf("invalid table name")
+	}
+
+	if a.syncEngine == nil {
+		return fmt.Errorf("sync engine not initialized")
+	}
+
+	return a.syncEngine.SyncData(tableName)
+}
+
+func (a *App) SetLoginToken(token string) {
+	a.loginToken = token
+	if a.syncEngine != nil {
+		a.syncEngine.UpdateSessionToken(token)
+	}
+}
+
+func (a *App) ClearLoginToken() {
+	a.loginToken = ""
+	if a.syncEngine != nil {
+		a.syncEngine.UpdateSessionToken("")
+	}
+}
+
+func (a *App) GetLoginToken() string {
+	return a.loginToken
+}
+
 func (a *App) ensureCollabConnectionLocked() error {
 	if a.collabConn != nil {
 		return nil
@@ -221,7 +269,7 @@ func (a *App) resetCollabConnectionLocked() {
 
 func (a *App) sendCollabCommand(msg types.Message) error {
 
-	// block if there's no current roomId
+	go func() {}()
 
 	if a.collabRoomId == "" {
 		return nil

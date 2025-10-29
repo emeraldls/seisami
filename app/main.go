@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"embed"
 	"fmt"
 	"net/url"
@@ -36,7 +35,17 @@ func main() {
 		},
 		Mac: &mac.Options{
 			OnUrlOpen: func(url string) {
-				handleDeepLink(app.ctx, url)
+				handleDeepLink(app, url)
+
+				runtime.EventsEmit(app.ctx, "cloud:setup_started")
+				go func() {
+					err := app.bootstrapCloud()
+					if err != nil {
+						runtime.EventsEmit(app.ctx, "cloud:setup_failed", err.Error())
+						return
+					}
+					runtime.EventsEmit(app.ctx, "cloud:setup_success")
+				}()
 			},
 		},
 	})
@@ -46,7 +55,16 @@ func main() {
 	}
 }
 
-func handleDeepLink(ctx context.Context, deepLink string) {
+func handleDeepLink(app *App, deepLink string) {
+	if app == nil {
+		fmt.Println("App instance not ready for deep link handling")
+		return
+	}
+
+	ctx := app.ctx
+	if ctx == nil {
+		fmt.Println("App context not ready; deferring event emission")
+	}
 	u, err := url.Parse(deepLink)
 	if err != nil {
 		fmt.Println("Failed to parse deep link:", err)
@@ -68,12 +86,15 @@ func handleDeepLink(ctx context.Context, deepLink string) {
 	}
 
 	fmt.Println("Auth callback received")
+	app.SetLoginToken(token)
 
-	go func() {
-		runtime.EventsEmit(ctx, "auth:desktop_callback", map[string]string{
-			"token": token,
-			"code":  code,
-			"state": state,
-		})
-	}()
+	if ctx != nil {
+		go func() {
+			runtime.EventsEmit(ctx, "auth:desktop_callback", map[string]string{
+				"token": token,
+				"code":  code,
+				"state": state,
+			})
+		}()
+	}
 }

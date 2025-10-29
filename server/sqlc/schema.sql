@@ -83,8 +83,18 @@ CREATE TABLE IF NOT EXISTS operations (
 
 CREATE TABLE IF NOT EXISTS sync_state (
   "table_name" TEXT PRIMARY KEY,
-  last_synced_at INTEGER NOT NULL,
+  last_synced_at BIGINT NOT NULL,
   last_synced_op_id TEXT NOT NULL
 );
 
-ALTER TABLE sync_state ADD COLUMN user_id UUID REFERENCES users(id);
+ALTER TABLE sync_state ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id);
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cloud_initialized BOOLEAN;
+
+ALTER TABLE sync_state DROP CONSTRAINT sync_state_pkey;
+
+ALTER TABLE sync_state
+    ADD CONSTRAINT sync_state_pkey PRIMARY KEY (user_id, table_name);
+
+ALTER TABLE sync_state 
+ALTER COLUMN last_synced_op_id DROP NOT NULL;

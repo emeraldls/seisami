@@ -1,7 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "~/components/sidebar";
 import { CloudSyncProgress } from "~/components/cloud-sync-progress";
-import { useState, useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useSidebar } from "~/contexts/sidebar-context";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import { Info, MessageCircle } from "lucide-react";
 
 export const AppLayout = () => {
   const { collapsed } = useSidebar();
+  const cloudToastIdRef = useRef<string | number | null>(null);
 
   useEffect(() => {
     const unsubscribeProcessingStart = EventsOn(
@@ -66,12 +67,49 @@ export const AppLayout = () => {
       });
     });
 
+    const unsubscribeCloudSetupStarted = EventsOn("cloud:setup_started", () => {
+      cloudToastIdRef.current = toast.loading("☁️ Connecting to cloud...", {
+        description: "Setting up your workspace",
+      });
+    });
+
+    const unsubscribeCloudSetupSuccess = EventsOn("cloud:setup_success", () => {
+      const toastId = cloudToastIdRef.current ?? undefined;
+      toast.success("☁️ Cloud ready", {
+        id: toastId,
+        description: "Your workspace is connected to Seisami Cloud.",
+      });
+      cloudToastIdRef.current = null;
+    });
+
+    const unsubscribeCloudSetupFailed = EventsOn(
+      "cloud:setup_failed",
+      (error: unknown) => {
+        const description =
+          typeof error === "string"
+            ? error
+            : (error as { message?: string })?.message ??
+              "Unable to complete cloud setup.";
+
+        const toastId = cloudToastIdRef.current ?? undefined;
+        toast.error("☁️ Cloud setup failed", {
+          id: toastId,
+          description,
+          duration: 4000,
+        });
+        cloudToastIdRef.current = null;
+      }
+    );
+
     return () => {
       unsubscribeProcessingStart();
       unsubscribeToolComplete();
       unsubscribeToolError();
       unsubscribeProcessingComplete();
       unsubscribeAiError();
+      unsubscribeCloudSetupStarted();
+      unsubscribeCloudSetupSuccess();
+      unsubscribeCloudSetupFailed();
     };
   }, []);
 

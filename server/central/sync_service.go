@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"seisami/server/centraldb"
+	"seisami/server/types"
 	"strconv"
 	"strings"
 	"time"
@@ -20,11 +21,12 @@ import (
 
 type SyncService struct {
 	pool    *pgxpool.Pool
-	queries centraldb.Queries
+	queries *centraldb.Queries
 }
 
-func NewSyncService(pool *pgxpool.Pool) *SyncService {
-	return &SyncService{pool: pool}
+func NewSyncService(pool *pgxpool.Pool, queries *centraldb.Queries) *SyncService {
+
+	return &SyncService{pool, queries}
 }
 
 type SyncOperation struct {
@@ -164,7 +166,7 @@ func (s *SyncService) handleCardOperation(ctx context.Context, userUUID uuid.UUI
 	case "create", "update":
 		var payload cardPayload
 
-		cardID := payload.Card.ID
+		cardID := payload.ID
 		if cardID == "" {
 			cardID = op.RecordID
 		}
@@ -172,9 +174,9 @@ func (s *SyncService) handleCardOperation(ctx context.Context, userUUID uuid.UUI
 			return fmt.Errorf("card payload missing id")
 		}
 
-		columnID := payload.Card.ColumnID
+		columnID := payload.ColumnID
 		if columnID == "" {
-			columnID = payload.Column.ID
+			columnID = payload.ColumnID
 		}
 		if columnID == "" {
 			return fmt.Errorf("card payload missing column id")
@@ -184,15 +186,15 @@ func (s *SyncService) handleCardOperation(ctx context.Context, userUUID uuid.UUI
 			return err
 		}
 
-		createdAt := selectTimestamp(payload.Card.CreatedAt, op.CreatedAt)
-		updatedAt := selectTimestamp(payload.Card.UpdatedAt, op.UpdatedAt)
+		createdAt := selectTimestamp(payload.CreatedAt, op.CreatedAt)
+		updatedAt := selectTimestamp(payload.UpdatedAt, op.UpdatedAt)
 
 		err := s.queries.SyncUpsertCard(ctx, centraldb.SyncUpsertCardParams{
 			ID:       cardID,
 			ColumnID: columnID,
-			Title:    payload.Card.Name,
+			Title:    payload.Name,
 			Description: pgtype.Text{
-				String: payload.Card.Description,
+				String: payload.Description,
 				Valid:  true,
 			},
 			CreatedAt: pgtype.Timestamptz{
@@ -409,6 +411,175 @@ func (s *SyncService) ensureColumnOwnership(ctx context.Context, columnID string
 	return nil
 }
 
+func (s *SyncService) initCloud(ctx context.Context, userUUID uuid.UUID) error {
+	status, err := s.queries.GetCloudInitStatus(ctx, pgtype.UUID{Bytes: userUUID, Valid: true})
+	if err != nil {
+		return fmt.Errorf("unable to get cloud init status: %v", err)
+	}
+
+	if !status.Bool && status.Valid {
+		err = s.queries.InitCloud(ctx, pgtype.UUID{Bytes: userUUID, Valid: true})
+		if err != nil {
+			return fmt.Errorf("unable to init cloud status: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *SyncService) getCloudStatus(ctx context.Context, userUUID uuid.UUID) (bool, error) {
+	status, err := s.queries.GetCloudInitStatus(ctx, pgtype.UUID{Bytes: userUUID, Valid: true})
+	if err != nil {
+		return false, fmt.Errorf("unable to get cloud init status: %v", err)
+	}
+
+	return status.Bool, nil
+}
+
+const layout = "2006-01-02 15:04:05"
+
+func (s *SyncService) upsertBoard(ctx context.Context, userUUID uuid.UUID, board boardPayload) error {
+	createdAt, err := time.Parse(layout, board.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("unable to parse created_art into that layout: %v", err)
+	}
+	updatedAt, err := time.Parse(layout, board.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("unable to parse updated_at into that layout: %v", err)
+	}
+	err = s.queries.SyncUpsertBoard(ctx, centraldb.SyncUpsertBoardParams{
+		ID:   board.ID,
+		Name: board.Name,
+		UserID: pgtype.UUID{
+			Bytes: userUUID,
+			Valid: true,
+		},
+		CreatedAt: pgtype.Timestamptz{
+			Time:  createdAt,
+			Valid: true,
+		},
+		UpdatedAt: pgtype.Timestamptz{
+			Time:  updatedAt,
+			Valid: true,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("unable to upsert board: %v", err)
+	}
+
+	return nil
+}
+
+func (s *SyncService) upsertColumn(ctx context.Context, userUUID uuid.UUID, column columnPayload) error {
+	createdAt, err := time.Parse(layout, column.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("unable to parse created_art into that layout: %v", err)
+	}
+	updatedAt, err := time.Parse(layout, column.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("unable to parse updated_at into that layout: %v", err)
+	}
+
+	err = s.queries.SyncUpsertColumn(ctx, centraldb.SyncUpsertColumnParams{
+		ID:       column.ID,
+		BoardID:  column.BoardID,
+		Name:     column.Name,
+		Position: column.Position,
+		CreatedAt: pgtype.Timestamptz{
+			Time:  createdAt,
+			Valid: true,
+		},
+		UpdatedAt: pgtype.Timestamptz{
+			Time:  updatedAt,
+			Valid: true,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("unable to upsert column: %v", err)
+	}
+
+	return nil
+}
+
+func (s *SyncService) upsertCard(ctx context.Context, card cardPayload) error {
+	createdAt, err := time.Parse(layout, card.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("unable to parse created_art into that layout: %v", err)
+	}
+	updatedAt, err := time.Parse(layout, card.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("unable to parse updated_at into that layout: %v", err)
+	}
+
+	err = s.queries.SyncUpsertCard(ctx, centraldb.SyncUpsertCardParams{
+		ID:       card.ID,
+		ColumnID: card.ColumnID,
+		Title:    card.Name,
+		Description: pgtype.Text{
+			String: card.Description,
+			Valid:  true,
+		},
+		CreatedAt: pgtype.Timestamptz{
+			Time:  createdAt,
+			Valid: true,
+		},
+		UpdatedAt: pgtype.Timestamptz{
+			Time:  updatedAt,
+			Valid: true,
+		},
+		// TODO: attachments isnt here yet
+	})
+
+	if err != nil {
+		return fmt.Errorf("unable to upsert card: %v", err)
+	}
+
+	return nil
+}
+
+func (s *SyncService) initializeSyncState(ctx context.Context, userUUID uuid.UUID) error {
+	return s.queries.InitializeSyncStateForUser(ctx, pgtype.UUID{Bytes: userUUID, Valid: true})
+}
+
+func (s *SyncService) getSyncState(ctx context.Context, userUUID uuid.UUID, tableName string) (types.SyncStatePayload, error) {
+	syncState, err := s.queries.GetSyncState(ctx, centraldb.GetSyncStateParams{
+		TableName: tableName,
+		UserID: pgtype.UUID{
+			Bytes: userUUID,
+			Valid: true,
+		},
+	})
+
+	if err != nil {
+		return types.SyncStatePayload{}, fmt.Errorf("error occured getting sync state: %v", err)
+	}
+
+	resp := types.SyncStatePayload{
+		TableName:      syncState.TableName,
+		LastSyncedAt:   syncState.LastSyncedAt,
+		LastSyncedOpID: syncState.LastSyncedOpID,
+	}
+
+	return resp, nil
+}
+
+func (s *SyncService) updateSyncState(ctx context.Context, userUUID uuid.UUID, payload types.SyncStatePayload) error {
+	err := s.queries.UpdateSyncState(ctx, centraldb.UpdateSyncStateParams{
+		UserID: pgtype.UUID{
+			Bytes: userUUID,
+			Valid: true,
+		},
+		LastSyncedAt:   payload.LastSyncedAt,
+		LastSyncedOpID: payload.LastSyncedOpID,
+		TableName:      payload.TableName,
+	})
+	if err != nil {
+		return fmt.Errorf("error occured updating sync state: %v", err)
+	}
+
+	return nil
+}
+
 func selectTimestamp(values ...string) time.Time {
 	for _, value := range values {
 		if t, ok := parseTimestamp(value); ok {
@@ -472,17 +643,12 @@ type columnPayload struct {
 }
 
 type cardPayload struct {
-	Column struct {
-		ID string `json:"id"`
-	} `json:"column"`
-	Card struct {
-		ID          string `json:"id"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		ColumnID    string `json:"column_id"`
-		CreatedAt   string `json:"created_at"`
-		UpdatedAt   string `json:"updated_at"`
-	} `json:"card"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ColumnID    string `json:"column_id"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
 type cardColumnPayload struct {
