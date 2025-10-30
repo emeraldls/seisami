@@ -269,9 +269,45 @@ export default function KanbanView() {
     if (newCardName.trim() === "" || !currentBoard) return;
 
     try {
-      await CreateCard(columnId, newCardName, "");
+      const createdCard = await CreateCard(columnId, newCardName, "");
       setNewCardName("");
       setAddingCardInStatus(null);
+
+      const column = columns.find((col) => col.id === columnId);
+      if (column) {
+        const cardsInColumn = features.filter((f) => f.column === columnId);
+        const createdAt =
+          createdCard.CreatedAt?.Valid && createdCard.CreatedAt.String
+            ? createdCard.CreatedAt.String
+            : new Date().toISOString();
+        const updatedAt = createdCard.UpdatedAt?.Valid
+          ? createdCard.UpdatedAt.String
+          : createdAt;
+
+        const payload = {
+          column: {
+            room_id: roomId,
+            id: column.id,
+            board_id: currentBoard.id,
+            name: column.name,
+            position: column.position,
+          },
+          card: {
+            id: createdCard.ID,
+            name: createdCard.Title,
+            description: createdCard.Description?.Valid
+              ? createdCard.Description.String
+              : "",
+            column_id: columnId,
+            index: cardsInColumn.length,
+            created_at: createdAt,
+            updated_at: updatedAt,
+          },
+        };
+
+        EventsEmit("card:create", JSON.stringify(payload));
+      }
+
       fetchBoard();
     } catch (err) {
       console.error("Failed to create card", err);
@@ -282,9 +318,29 @@ export default function KanbanView() {
     if (newColumnName.trim() === "" || !currentBoard) return;
 
     try {
-      await CreateColumn(currentBoard.id, newColumnName);
+      const createdColumn = await CreateColumn(currentBoard.id, newColumnName);
       setNewColumnName("");
       setIsAddingColumn(false);
+
+      const createdAt = createdColumn.CreatedAt?.Valid
+        ? createdColumn.CreatedAt.String
+        : new Date().toISOString();
+      const updatedAt = createdColumn.UpdatedAt?.Valid
+        ? createdColumn.UpdatedAt.String
+        : createdAt;
+
+      const payload = {
+        room_id: roomId,
+        id: createdColumn.ID,
+        board_id: createdColumn.BoardID,
+        name: createdColumn.Name,
+        position: createdColumn.Position,
+        created_at: createdAt,
+        updated_at: updatedAt,
+      };
+
+      EventsEmit("column:create", JSON.stringify(payload));
+
       fetchBoard();
     } catch (err) {
       console.error("Failed to create column", err);
@@ -327,8 +383,21 @@ export default function KanbanView() {
   };
 
   const handleDeleteColumn = async (columnId: string) => {
+    const column = columns.find((col) => col.id === columnId);
+
     try {
       await DeleteColumn(columnId);
+
+      const payload = {
+        room_id: roomId,
+        id: column?.id ?? columnId,
+        board_id: currentBoard?.id ?? "",
+        name: column?.name ?? "",
+        position: column?.position ?? 0,
+      };
+
+      EventsEmit("column:delete", JSON.stringify(payload));
+
       fetchBoard();
     } catch (err) {
       console.error("Failed to delete column", err);
@@ -336,10 +405,41 @@ export default function KanbanView() {
   };
 
   const handleDeleteCard = async (cardId: string) => {
+    const card =
+      features.find((feature) => feature.id === cardId) ?? selectedCard;
+    const columnIdForCard = card?.column ?? "";
+    const cardColumn = columnIdForCard
+      ? columns.find((column) => column.id === columnIdForCard)
+      : null;
+    const cardsInColumn = columnIdForCard
+      ? features.filter((feature) => feature.column === columnIdForCard)
+      : [];
+    const cardIndex = card
+      ? cardsInColumn.findIndex((feature) => feature.id === card.id)
+      : -1;
+
     try {
       await DeleteCard(cardId);
       setIsCardDialogOpen(false);
       setSelectedCard(null);
+
+      const payload = {
+        room_id: roomId,
+        column: {
+          id: cardColumn?.id ?? columnIdForCard,
+          board_id: currentBoard?.id ?? "",
+          name: cardColumn?.name ?? "",
+          position: cardColumn?.position ?? 0,
+        },
+        card: {
+          id: card?.id ?? cardId,
+          column_id: columnIdForCard,
+          index: cardIndex >= 0 ? cardIndex : 0,
+        },
+      };
+
+      EventsEmit("card:delete", JSON.stringify(payload));
+
       fetchBoard();
     } catch (err) {
       console.error("Failed to delete card", err);

@@ -58,7 +58,7 @@ type Operation struct {
 type SyncState struct {
 	TableName      string
 	LastSyncedAt   int64
-	LastSyncedOpID string
+	LastSyncedOpID pgtype.Text
 	UserID         pgtype.UUID
 }
 

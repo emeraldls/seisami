@@ -87,7 +87,6 @@ func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
 	{
 		sync.POST("/init", h.initSyncState)
 		sync.POST("/upload", h.uploadData)
-		sync.POST("/operations", h.createOperation)
 		sync.GET("/pull/:table", h.pullData)
 
 		sync.POST("/init/cloud", h.initCloud)
@@ -673,19 +672,4 @@ func (h *handler) pullData(c *gin.Context) {
 		"count":      len(operations),
 		"operations": operations,
 	})
-}
-
-func (h *handler) createOperation(c *gin.Context) {
-	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
-	if err != nil || userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
-
-	var req SyncOperation
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON body"})
-		return
-	}
-
 }

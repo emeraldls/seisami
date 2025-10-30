@@ -18,6 +18,15 @@ type ColumnEvent struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
+type ColumnDeleteEvent struct {
+	RoomID   string   `json:"room_id"`
+	ID       string   `json:"id"`
+	BoardID  string   `json:"board_id"`
+	Name     string   `json:"name"`
+	Position int64    `json:"position"`
+	CardIDs  []string `json:"card_ids"`
+}
+
 type CardEvent struct {
 	Column ColumnEvent `json:"column"`
 	Card   struct {
@@ -46,6 +55,21 @@ type CardColumnEvent struct {
 		Name     string `json:"name"`
 		Position int    `json:"position"`
 	} `json:"new_column"`
+}
+
+type CardDeleteEvent struct {
+	RoomID string `json:"room_id"`
+	Column struct {
+		ID       string `json:"id"`
+		BoardID  string `json:"board_id"`
+		Name     string `json:"name"`
+		Position int64  `json:"position"`
+	} `json:"column"`
+	Card struct {
+		ID       string `json:"id"`
+		ColumnID string `json:"column_id"`
+		Index    int    `json:"index"`
+	} `json:"card"`
 }
 
 type Operation int

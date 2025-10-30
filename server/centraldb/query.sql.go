@@ -182,6 +182,45 @@ func (q *Queries) CreateDesktopLoginCode(ctx context.Context, arg CreateDesktopL
 	return i, err
 }
 
+const createOperation = `-- name: CreateOperation :exec
+INSERT INTO operations (
+    id, table_name, record_id, operation_type, device_id, payload, created_at, updated_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (id) DO UPDATE SET
+    table_name = EXCLUDED.table_name,
+    record_id = EXCLUDED.record_id,
+    operation_type = EXCLUDED.operation_type,
+    device_id = EXCLUDED.device_id,
+    payload = EXCLUDED.payload,
+    updated_at = EXCLUDED.updated_at
+`
+
+type CreateOperationParams struct {
+	ID            string
+	TableName     string
+	RecordID      string
+	OperationType string
+	DeviceID      pgtype.Text
+	Payload       string
+	CreatedAt     pgtype.Text
+	UpdatedAt     pgtype.Text
+}
+
+func (q *Queries) CreateOperation(ctx context.Context, arg CreateOperationParams) error {
+	_, err := q.db.Exec(ctx, createOperation,
+		arg.ID,
+		arg.TableName,
+		arg.RecordID,
+		arg.OperationType,
+		arg.DeviceID,
+		arg.Payload,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const createTranscription = `-- name: CreateTranscription :one
 INSERT INTO transcriptions (id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -265,24 +304,27 @@ func (q *Queries) DeleteExpiredDesktopCodes(ctx context.Context) error {
 
 const getAllOperations = `-- name: GetAllOperations :many
 SELECT o.id, o.table_name, o.record_id, o.operation_type, o.device_id, o.payload, o.created_at, o.updated_at
-FROM operations o
+FROM operations AS o
 JOIN (
-    SELECT record_id, MAX(created_at) AS max_created_at
-    FROM operations
-    WHERE created_at > (
-        SELECT COALESCE(last_synced_at, '1970-01-01'::timestamp)
-        FROM sync_state
-        WHERE sync_state."table_name" = $1
-          AND sync_state."user_id" = $4
+    SELECT inner_op.record_id, MAX(inner_op.created_at) AS max_created_at
+    FROM operations AS inner_op
+    WHERE inner_op.created_at > (
+        SELECT COALESCE(
+            to_char(to_timestamp(ss.last_synced_at), 'YYYY-MM-DD"T"HH24:MI:SS'),
+            '1970-01-01T00:00:00'
+        )
+        FROM sync_state AS ss
+        WHERE ss."table_name" = $1
+          AND ss."user_id" = $4
     )
-    AND sync_state."table_name" = $2
-    GROUP BY record_id
-) latest
+    AND inner_op."table_name" = $2
+    GROUP BY inner_op.record_id
+) AS latest
   ON o.record_id = latest.record_id
   AND o.created_at = latest.max_created_at
   AND o."table_name" = $3
-JOIN columns c ON c.id = o.record_id
-JOIN boards b ON b.id = c.board_id
+JOIN columns AS c ON c.id = o.record_id
+JOIN boards AS b ON b.id = c.board_id
 WHERE b.user_id = $4
 ORDER BY o.created_at ASC
 `
@@ -294,7 +336,7 @@ type GetAllOperationsParams struct {
 	UserID      pgtype.UUID
 }
 
-// join through columns → boards to scope to user
+// - TODO: created_at in operation table shouldnt be text, update it & update this function
 func (q *Queries) GetAllOperations(ctx context.Context, arg GetAllOperationsParams) ([]Operation, error) {
 	rows, err := q.db.Query(ctx, getAllOperations,
 		arg.TableName,
@@ -467,10 +509,8 @@ func (q *Queries) GetDesktopLoginCode(ctx context.Context, code string) (Desktop
 const getSyncState = `-- name: GetSyncState :one
 SELECT ss.table_name, ss.last_synced_at, ss.last_synced_op_id, ss.user_id
 FROM sync_state ss
-JOIN columns c ON c.id = ss.record_id
-JOIN boards b ON b.id = c.board_id
 WHERE ss.table_name = $1
-  AND b.user_id = $2
+  AND ss.user_id = $2
 LIMIT 1
 `
 
@@ -636,6 +676,22 @@ func (q *Queries) SetPasswordResetToken(ctx context.Context, arg SetPasswordRese
 	return err
 }
 
+const syncDeleteBoard = `-- name: SyncDeleteBoard :exec
+DELETE FROM boards
+WHERE id = $1
+  AND user_id = $2
+`
+
+type SyncDeleteBoardParams struct {
+	ID     string
+	UserID pgtype.UUID
+}
+
+func (q *Queries) SyncDeleteBoard(ctx context.Context, arg SyncDeleteBoardParams) error {
+	_, err := q.db.Exec(ctx, syncDeleteBoard, arg.ID, arg.UserID)
+	return err
+}
+
 const syncDeleteCard = `-- name: SyncDeleteCard :exec
 DELETE FROM cards c
 USING columns col
@@ -670,6 +726,24 @@ type SyncDeleteColumnParams struct {
 
 func (q *Queries) SyncDeleteColumn(ctx context.Context, arg SyncDeleteColumnParams) error {
 	_, err := q.db.Exec(ctx, syncDeleteColumn, arg.ID, arg.UserID)
+	return err
+}
+
+const syncDeleteTranscription = `-- name: SyncDeleteTranscription :exec
+DELETE FROM transcriptions t
+USING boards b
+WHERE t.id = $1
+  AND t.board_id = b.id
+  AND b.user_id = $2
+`
+
+type SyncDeleteTranscriptionParams struct {
+	ID     string
+	UserID pgtype.UUID
+}
+
+func (q *Queries) SyncDeleteTranscription(ctx context.Context, arg SyncDeleteTranscriptionParams) error {
+	_, err := q.db.Exec(ctx, syncDeleteTranscription, arg.ID, arg.UserID)
 	return err
 }
 
@@ -829,6 +903,43 @@ func (q *Queries) SyncUpsertColumn(ctx context.Context, arg SyncUpsertColumnPara
 	return err
 }
 
+const syncUpsertTranscription = `-- name: SyncUpsertTranscription :exec
+INSERT INTO transcriptions (id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (id) DO UPDATE SET
+    board_id = EXCLUDED.board_id,
+    transcription = EXCLUDED.transcription,
+    recording_path = EXCLUDED.recording_path,
+    intent = EXCLUDED.intent,
+    assistant_response = EXCLUDED.assistant_response,
+    updated_at = EXCLUDED.updated_at
+`
+
+type SyncUpsertTranscriptionParams struct {
+	ID                string
+	BoardID           string
+	Transcription     string
+	RecordingPath     pgtype.Text
+	Intent            pgtype.Text
+	AssistantResponse pgtype.Text
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) SyncUpsertTranscription(ctx context.Context, arg SyncUpsertTranscriptionParams) error {
+	_, err := q.db.Exec(ctx, syncUpsertTranscription,
+		arg.ID,
+		arg.BoardID,
+		arg.Transcription,
+		arg.RecordingPath,
+		arg.Intent,
+		arg.AssistantResponse,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
 const updatePassword = `-- name: UpdatePassword :exec
 UPDATE users
 SET password_hash = $2,
@@ -857,7 +968,7 @@ WHERE table_name = $3
 
 type UpdateSyncStateParams struct {
 	LastSyncedAt   int64
-	LastSyncedOpID string
+	LastSyncedOpID pgtype.Text
 	TableName      string
 	UserID         pgtype.UUID
 }
@@ -884,7 +995,7 @@ DO UPDATE SET
 type UpsertSyncStateParams struct {
 	TableName      string
 	LastSyncedAt   int64
-	LastSyncedOpID string
+	LastSyncedOpID pgtype.Text
 	UserID         pgtype.UUID
 }
 

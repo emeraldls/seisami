@@ -55,6 +55,7 @@ func main() {
 	}
 }
 
+// update this function to return error
 func handleDeepLink(app *App, deepLink string) {
 	if app == nil {
 		fmt.Println("App instance not ready for deep link handling")

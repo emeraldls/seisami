@@ -111,6 +111,11 @@ ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
     updated_at = EXCLUDED.updated_at;
 
+-- name: SyncDeleteBoard :exec
+DELETE FROM boards
+WHERE id = $1
+  AND user_id = $2;
+
 -- name: SyncUpsertColumn :exec
 INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -161,28 +166,30 @@ SELECT c.id, c.board_id, c.name, c.position, c.created_at, c.updated_at
   JOIN boards b ON b.id = c.board_id
   WHERE b.user_id = $1;
 
-
+--- TODO: created_at in operation table shouldnt be text, update it & update this function
 -- name: GetAllOperations :many
 SELECT o.*
-FROM operations o
+FROM operations AS o
 JOIN (
-    SELECT record_id, MAX(created_at) AS max_created_at
-    FROM operations
-    WHERE created_at > (
-        SELECT COALESCE(last_synced_at, '1970-01-01'::timestamp)
-        FROM sync_state
-        WHERE sync_state."table_name" = $1
-          AND sync_state."user_id" = $4
+    SELECT inner_op.record_id, MAX(inner_op.created_at) AS max_created_at
+    FROM operations AS inner_op
+    WHERE inner_op.created_at > (
+        SELECT COALESCE(
+            to_char(to_timestamp(ss.last_synced_at), 'YYYY-MM-DD"T"HH24:MI:SS'),
+            '1970-01-01T00:00:00'
+        )
+        FROM sync_state AS ss
+        WHERE ss."table_name" = $1
+          AND ss."user_id" = $4
     )
-    AND sync_state."table_name" = $2
-    GROUP BY record_id
-) latest
+    AND inner_op."table_name" = $2
+    GROUP BY inner_op.record_id
+) AS latest
   ON o.record_id = latest.record_id
   AND o.created_at = latest.max_created_at
   AND o."table_name" = $3
--- join through columns → boards to scope to user
-JOIN columns c ON c.id = o.record_id
-JOIN boards b ON b.id = c.board_id
+JOIN columns AS c ON c.id = o.record_id
+JOIN boards AS b ON b.id = c.board_id
 WHERE b.user_id = $4
 ORDER BY o.created_at ASC;
 
@@ -198,10 +205,8 @@ DO UPDATE SET
 -- name: GetSyncState :one
 SELECT ss.*
 FROM sync_state ss
-JOIN columns c ON c.id = ss.record_id
-JOIN boards b ON b.id = c.board_id
 WHERE ss.table_name = $1
-  AND b.user_id = $2
+  AND ss.user_id = $2
 LIMIT 1;
 
 
@@ -230,3 +235,34 @@ VALUES
     ($1, 'transcriptions', EXTRACT(EPOCH FROM NOW())::BIGINT, NULL)
 ON CONFLICT (user_id, table_name)
 DO NOTHING;
+
+-- name: CreateOperation :exec
+INSERT INTO operations (
+    id, table_name, record_id, operation_type, device_id, payload, created_at, updated_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (id) DO UPDATE SET
+    table_name = EXCLUDED.table_name,
+    record_id = EXCLUDED.record_id,
+    operation_type = EXCLUDED.operation_type,
+    device_id = EXCLUDED.device_id,
+    payload = EXCLUDED.payload,
+    updated_at = EXCLUDED.updated_at;
+
+-- name: SyncUpsertTranscription :exec
+INSERT INTO transcriptions (id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (id) DO UPDATE SET
+    board_id = EXCLUDED.board_id,
+    transcription = EXCLUDED.transcription,
+    recording_path = EXCLUDED.recording_path,
+    intent = EXCLUDED.intent,
+    assistant_response = EXCLUDED.assistant_response,
+    updated_at = EXCLUDED.updated_at;
+
+-- name: SyncDeleteTranscription :exec
+DELETE FROM transcriptions t
+USING boards b
+WHERE t.id = $1
+  AND t.board_id = b.id
+  AND b.user_id = $2;

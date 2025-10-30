@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"seisami/app/types"
-	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -54,52 +53,10 @@ func (a *App) handleMutations() {
 					return
 				default:
 
-					op, err := a.repository.CreateOperation(types.ColumnTable, columnData.ID, string(columnBytes), types.UpdateOperation)
+					_, err := a.repository.CreateOperation(types.ColumnTable, columnData.ID, string(columnBytes), types.UpdateOperation)
 					if err != nil {
 						fmt.Println(err)
 						return
-					}
-
-					if op.CreatedAt.Valid {
-						t, err := time.Parse(layout, op.CreatedAt.String)
-						if err != nil {
-							fmt.Println("unable to parse created: ", err)
-							return
-						}
-
-						err = a.repository.UpsertSyncState(types.ColumnTable, op.ID, t.Unix())
-						if err != nil {
-							fmt.Println(err)
-						}
-
-						httpResponse := a.cloud.PushRecord(types.OperationSync{
-							ID:            op.ID,
-							TableName:     op.TableName,
-							RecordID:      op.RecordID,
-							OperationType: op.OperationType,
-							DeviceID:      op.DeviceID.String,
-							PayloadData:   op.Payload,
-							CreatedAt:     op.CreatedAt.String,
-							UpdatedAt:     op.UpdatedAt.String,
-						})
-
-						if httpResponse.HasError {
-							fmt.Printf("[Message]: %v\nData: %v", httpResponse.Message, httpResponse.Data)
-							return
-						}
-
-						// syncState, err := a.repository.GetSyncState("column")
-
-						// if err != nil {
-
-						// } else {
-						// 	err = a.repository.UpdateSyncState("column", op.ID, t.Unix())
-						// 	if err != nil {
-						// 		fmt.Println(err)
-						// 	}
-						// }
-					} else {
-						fmt.Println("created_at is invalid")
 					}
 
 				}
@@ -113,6 +70,74 @@ func (a *App) handleMutations() {
 				return
 			}
 
+		}
+	})
+
+	runtime.EventsOn(a.ctx, "column:create", func(optionalData ...any) {
+		if len(optionalData) > 0 {
+			var columnData types.ColumnEvent
+			data, ok := optionalData[0].(string)
+			if ok {
+				if err := json.Unmarshal([]byte(data), &columnData); err != nil {
+					fmt.Printf("unable to unmarshal json: %v\n", err)
+					return
+				}
+			} else {
+				fmt.Printf("couldnt parse data structure")
+				return
+			}
+
+			go func(ctx context.Context, payload string, column types.ColumnEvent) {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_, err := a.repository.CreateOperation(types.ColumnTable, column.ID, payload, types.InsertOperation)
+					if err != nil {
+						fmt.Println(err)
+					}
+				}
+			}(a.ctx, data, columnData)
+
+			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data}
+			if err := a.sendCollabCommand(msg); err != nil {
+				fmt.Printf("unable to broadcast the command: %v\n", err)
+				return
+			}
+		}
+	})
+
+	runtime.EventsOn(a.ctx, "column:delete", func(optionalData ...any) {
+		if len(optionalData) > 0 {
+			var columnData types.ColumnDeleteEvent
+			data, ok := optionalData[0].(string)
+			if ok {
+				if err := json.Unmarshal([]byte(data), &columnData); err != nil {
+					fmt.Printf("unable to unmarshal json: %v\n", err)
+					return
+				}
+			} else {
+				fmt.Printf("couldnt parse data structure")
+				return
+			}
+
+			go func(ctx context.Context, payload string, column types.ColumnDeleteEvent) {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_, err := a.repository.CreateOperation(types.ColumnTable, column.ID, payload, types.DeleteOperation)
+					if err != nil {
+						fmt.Println(err)
+					}
+				}
+			}(a.ctx, data, columnData)
+
+			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data}
+			if err := a.sendCollabCommand(msg); err != nil {
+				fmt.Printf("unable to broadcast the command: %v\n", err)
+				return
+			}
 		}
 	})
 
@@ -143,42 +168,11 @@ func (a *App) handleMutations() {
 						fmt.Println("unable to serialize column data: ", err)
 						return
 					}
-					op, err := a.repository.CreateOperation(types.CardTable, cardData.Card.ID, string(b), types.UpdateOperation)
+
+					_, err = a.repository.CreateOperation(types.CardTable, cardData.Card.ID, string(b), types.UpdateOperation)
 					if err != nil {
 						fmt.Println(err)
 						return
-					}
-
-					httpResponse := a.cloud.PushRecord(types.OperationSync{
-						ID:            op.ID,
-						TableName:     op.TableName,
-						RecordID:      op.RecordID,
-						OperationType: op.OperationType,
-						DeviceID:      op.DeviceID.String,
-						PayloadData:   op.Payload,
-						CreatedAt:     op.CreatedAt.String,
-						UpdatedAt:     op.UpdatedAt.String,
-					})
-
-					if httpResponse.HasError {
-						fmt.Printf("[Message]: %v\nData: %v", httpResponse.Message, httpResponse.Data)
-						return
-					}
-
-					if op.CreatedAt.Valid {
-						t, err := time.Parse(layout, op.CreatedAt.String)
-						if err != nil {
-							fmt.Println("unable to parse created: ", err)
-							return
-						}
-
-						err = a.repository.UpsertSyncState(types.CardTable, op.ID, t.Unix())
-						if err != nil {
-							fmt.Println(err)
-						}
-
-					} else {
-						fmt.Println("created_at is invalid")
 					}
 
 				}
@@ -192,6 +186,76 @@ func (a *App) handleMutations() {
 				return
 			}
 
+		}
+	})
+
+	runtime.EventsOn(a.ctx, "card:create", func(optionalData ...interface{}) {
+		if len(optionalData) > 0 {
+			var cardData types.CardEvent
+			data, ok := optionalData[0].(string)
+
+			if ok {
+				if err := json.Unmarshal([]byte(data), &cardData); err != nil {
+					fmt.Printf("unable to unmarshal json: %v\n", err)
+					return
+				}
+			} else {
+				fmt.Printf("couldnt parse data structure")
+				return
+			}
+
+			go func(ctx context.Context, payload string, card types.CardEvent) {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_, err := a.repository.CreateOperation(types.CardTable, card.Card.ID, payload, types.InsertOperation)
+					if err != nil {
+						fmt.Println(err)
+					}
+				}
+			}(a.ctx, data, cardData)
+
+			msg := types.Message{Action: "broadcast", RoomID: cardData.Column.RoomID, Data: data}
+			if err := a.sendCollabCommand(msg); err != nil {
+				fmt.Printf("unable to broadcast the command: %v\n", err)
+				return
+			}
+		}
+	})
+
+	runtime.EventsOn(a.ctx, "card:delete", func(optionalData ...interface{}) {
+		if len(optionalData) > 0 {
+			var cardData types.CardDeleteEvent
+			data, ok := optionalData[0].(string)
+
+			if ok {
+				if err := json.Unmarshal([]byte(data), &cardData); err != nil {
+					fmt.Printf("unable to unmarshal json: %v\n", err)
+					return
+				}
+			} else {
+				fmt.Printf("couldnt parse data structure")
+				return
+			}
+
+			go func(ctx context.Context, payload string, card types.CardDeleteEvent) {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_, err := a.repository.CreateOperation(types.CardTable, card.Card.ID, payload, types.DeleteOperation)
+					if err != nil {
+						fmt.Println(err)
+					}
+				}
+			}(a.ctx, data, cardData)
+
+			msg := types.Message{Action: "broadcast", RoomID: cardData.RoomID, Data: data}
+			if err := a.sendCollabCommand(msg); err != nil {
+				fmt.Printf("unable to broadcast the command: %v\n", err)
+				return
+			}
 		}
 	})
 
@@ -222,42 +286,11 @@ func (a *App) handleMutations() {
 						fmt.Println("unable to serialize column data: ", err)
 						return
 					}
-					op, err := a.repository.CreateOperation(types.CardTable, cardColumnData.CardID, string(b), types.UpdateOperation)
+
+					_, err = a.repository.CreateOperation(types.CardTable, cardColumnData.CardID, string(b), types.UpdateCardColumn)
 					if err != nil {
 						fmt.Println(err)
 						return
-					}
-
-					httpResponse := a.cloud.PushRecord(types.OperationSync{
-						ID:            op.ID,
-						TableName:     op.TableName,
-						RecordID:      op.RecordID,
-						OperationType: op.OperationType,
-						DeviceID:      op.DeviceID.String,
-						PayloadData:   op.Payload,
-						CreatedAt:     op.CreatedAt.String,
-						UpdatedAt:     op.UpdatedAt.String,
-					})
-
-					if httpResponse.HasError {
-						fmt.Printf("[Message]: %v\nData: %v", httpResponse.Message, httpResponse.Data)
-						return
-					}
-
-					if op.CreatedAt.Valid {
-						t, err := time.Parse(layout, op.CreatedAt.String)
-						if err != nil {
-							fmt.Println("unable to parse created: ", err)
-							return
-						}
-
-						err = a.repository.UpsertSyncState(types.CardTable, op.ID, t.Unix())
-						if err != nil {
-							fmt.Println(err)
-						}
-
-					} else {
-						fmt.Println("created_at is invalid")
 					}
 
 				}

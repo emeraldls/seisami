@@ -2,6 +2,7 @@ package sync_engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"seisami/app/internal/cloud"
 	"seisami/app/internal/local"
@@ -55,15 +56,19 @@ Something is wrong
 */
 
 func (s *SyncEngine) SyncData(tableName types.TableName) error {
+	fmt.Println("syncing data for table: ", tableName.String())
 	localOps, err := s.local.GetAllOperations(tableName)
 	if err != nil {
-		return err
+		return fmt.Errorf("[LOCAL] -> %v", err)
 	}
 
 	cloudOps, err := s.cloud.GetAllOperations(tableName)
 	if err != nil {
-		return err
+		return fmt.Errorf("[CLOUD] -> %v", err)
 	}
+
+	b, _ := json.MarshalIndent(cloudOps, "", " ")
+	fmt.Println(string(b))
 
 	localLatest := latestByRecord(localOps)
 	cloudLatest := latestByRecord(cloudOps)
@@ -206,6 +211,8 @@ func (s *SyncEngine) BootstrapCloud() error {
 		if err != nil {
 			fmt.Println(err)
 		}
+	} else {
+		fmt.Println("get sync state error: ", err)
 	}
 
 	state, err = s.cloud.GetSyncState(types.ColumnTable)
@@ -214,6 +221,8 @@ func (s *SyncEngine) BootstrapCloud() error {
 		if err != nil {
 			fmt.Println(err)
 		}
+	} else {
+		fmt.Println("get sync state error: ", err)
 	}
 
 	state, err = s.cloud.GetSyncState(types.CardTable)
@@ -222,6 +231,8 @@ func (s *SyncEngine) BootstrapCloud() error {
 		if err != nil {
 			fmt.Println(err)
 		}
+	} else {
+		fmt.Println("get sync state error: ", err)
 	}
 
 	return nil

@@ -185,9 +185,19 @@ func (cf cloudFuncs) GetSyncState(tableName types.TableName) (query.SyncState, e
 		return query.SyncState{}, fmt.Errorf("api request failed with status %d: %s", status, string(resBody))
 	}
 
-	var syncState types.SyncStatePayload
-	if err := json.Unmarshal(resBody, &syncState); err != nil {
+	var response HttpResponse
+	if err := json.Unmarshal(resBody, &response); err != nil {
 		return query.SyncState{}, fmt.Errorf("unable to deserialize data: %w", err)
+	}
+
+	dataBytes, err := json.Marshal(response.Data)
+	if err != nil {
+		return query.SyncState{}, fmt.Errorf("unable to re-marshal data: %w", err)
+	}
+
+	var syncState types.SyncStatePayload
+	if err := json.Unmarshal(dataBytes, &syncState); err != nil {
+		return query.SyncState{}, fmt.Errorf("unable to decode sync state: %w", err)
 	}
 
 	return query.SyncState(syncState), nil

@@ -200,17 +200,17 @@ RETURNING *;
 
 -- name: GetAllOperations :many
 SELECT o.*
-FROM operations o
+FROM operations AS o
 JOIN (
-    SELECT record_id, MAX(created_at) AS max_created_at
-    FROM operations
-    WHERE created_at > (
-        SELECT COALESCE(last_synced_at, 0)
+    SELECT inner_op.record_id, MAX(inner_op.created_at) AS max_created_at
+    FROM operations AS inner_op
+    WHERE inner_op.created_at > COALESCE((
+        SELECT last_synced_at
         FROM sync_state
-        WHERE sync_state."table_name" = ?
-    )
-    AND sync_state."table_name" = ?
-    GROUP BY record_id
+        WHERE sync_state.table_name = ?
+    ), 0)
+    AND inner_op.table_name = ?
+    GROUP BY inner_op.record_id
 ) latest
 ON o.record_id = latest.record_id
 AND o.created_at = latest.max_created_at

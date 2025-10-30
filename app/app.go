@@ -89,7 +89,26 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.action = actions.NewAction(ctx, a.repository)
 
-	a.syncEngine = sync_engine.NewSyncEngine(a.repository, a.loginToken, a.ctx, a.cloudApiUrl)
+	syncEngine := sync_engine.NewSyncEngine(a.repository, a.loginToken, a.ctx, a.cloudApiUrl)
+	a.syncEngine = syncEngine
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		for range ticker.C {
+			err := syncEngine.SyncData(types.BoardTable)
+			if err != nil {
+				fmt.Printf("unable to sync boardss table: %v\n", err)
+			}
+			err = syncEngine.SyncData(types.ColumnTable)
+			if err != nil {
+				fmt.Printf("unable to sync columns table: %v\n", err)
+			}
+			err = syncEngine.SyncData(types.CardTable)
+			if err != nil {
+				fmt.Printf("unable to sync cards table: %v\n", err)
+			}
+		}
+	}()
 
 	go a.handleMutations()
 	go startListener()
