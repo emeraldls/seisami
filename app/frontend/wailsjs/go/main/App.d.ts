@@ -45,6 +45,8 @@ export function GetTranscriptions(arg1:string,arg2:number,arg3:number):Promise<A
 
 export function Greet(arg1:string):Promise<string>;
 
+export function ImportNewBoard(arg1:string):Promise<void>;
+
 export function JoinCollaborationRoom(arg1:string):Promise<void>;
 
 export function LeaveCollaborationRoom(arg1:string):Promise<string>;

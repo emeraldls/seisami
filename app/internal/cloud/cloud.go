@@ -22,10 +22,10 @@ type cloudFuncs struct {
 	httpClient   http.Client
 }
 
-func NewCloudFuncs(repo repo.Repository, sessionToken string, ctx context.Context, cloudApiUrl string) cloudFuncs {
+func NewCloudFuncs(repo repo.Repository, sessionToken string, ctx context.Context, cloudApiUrl string) *cloudFuncs {
 	httpClient := http.Client{Timeout: 30 * time.Second}
 
-	return cloudFuncs{
+	return &cloudFuncs{
 		repo,
 		sessionToken,
 		ctx,
@@ -34,7 +34,7 @@ func NewCloudFuncs(repo repo.Repository, sessionToken string, ctx context.Contex
 	}
 }
 
-func (cf cloudFuncs) GetAllOperations(tableName types.TableName) ([]types.OperationSync, error) {
+func (cf *cloudFuncs) GetAllOperations(tableName types.TableName) ([]types.OperationSync, error) {
 	// Get all operations without filters - this will return all operations for the user
 	operations, err := cf.PullRecords(tableName)
 	if err != nil {
@@ -49,7 +49,7 @@ type HttpResponse struct {
 	Data     any
 }
 
-func (cf cloudFuncs) buildURL(path string) string {
+func (cf *cloudFuncs) buildURL(path string) string {
 	if strings.HasPrefix(path, "http") {
 		return path
 	}
@@ -63,7 +63,11 @@ func (cf cloudFuncs) buildURL(path string) string {
 	return base + "/" + suffix
 }
 
-func (cf cloudFuncs) doJSONRequest(method, path string, payload any) (int, []byte, error) {
+func (cf *cloudFuncs) UpdateSessionToken(token string) {
+	cf.sessionToken = token
+}
+
+func (cf *cloudFuncs) doJSONRequest(method, path string, payload any) (int, []byte, error) {
 	ctx := cf.ctx
 	if ctx == nil {
 		ctx = context.Background()
@@ -100,7 +104,7 @@ func (cf cloudFuncs) doJSONRequest(method, path string, payload any) (int, []byt
 	return res.StatusCode, resBody, nil
 }
 
-func (cf cloudFuncs) postSyncResource(path string, payload any) error {
+func (cf *cloudFuncs) postSyncResource(path string, payload any) error {
 	status, body, err := cf.doJSONRequest(http.MethodPost, path, payload)
 	if err != nil {
 		return err
@@ -113,7 +117,7 @@ func (cf cloudFuncs) postSyncResource(path string, payload any) error {
 	return nil
 }
 
-func (cf cloudFuncs) PushRecord(payload types.OperationSync) HttpResponse {
+func (cf *cloudFuncs) PushRecord(payload types.OperationSync) HttpResponse {
 	status, resBody, err := cf.doJSONRequest(http.MethodPost, "/sync/upload", payload)
 	if err != nil {
 		return HttpResponse{
@@ -138,7 +142,7 @@ func (cf cloudFuncs) PushRecord(payload types.OperationSync) HttpResponse {
 	}
 }
 
-func (cf cloudFuncs) PullRecord(tableName types.TableName) (types.OperationSync, error) {
+func (cf *cloudFuncs) PullRecord(tableName types.TableName) (types.OperationSync, error) {
 	operations, err := cf.PullRecords(tableName)
 	if err != nil {
 		return types.OperationSync{}, err
@@ -151,7 +155,7 @@ func (cf cloudFuncs) PullRecord(tableName types.TableName) (types.OperationSync,
 	return operations[0], nil
 }
 
-func (cf cloudFuncs) PullRecords(tableName types.TableName) ([]types.OperationSync, error) {
+func (cf *cloudFuncs) PullRecords(tableName types.TableName) ([]types.OperationSync, error) {
 	status, resBody, err := cf.doJSONRequest(http.MethodGet, fmt.Sprintf("/sync/pull/%s", tableName.String()), nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to pull records: %w", err)
@@ -175,7 +179,7 @@ func (cf cloudFuncs) PullRecords(tableName types.TableName) ([]types.OperationSy
 }
 
 // TODO: work on this function  in cloud & return HttpResponse also
-func (cf cloudFuncs) GetSyncState(tableName types.TableName) (query.SyncState, error) {
+func (cf *cloudFuncs) GetSyncState(tableName types.TableName) (query.SyncState, error) {
 	status, resBody, err := cf.doJSONRequest(http.MethodGet, "/sync/state/"+tableName.String(), nil)
 	if err != nil {
 		return query.SyncState{}, fmt.Errorf("unable to get sync state: %w", err)
@@ -203,7 +207,7 @@ func (cf cloudFuncs) GetSyncState(tableName types.TableName) (query.SyncState, e
 	return query.SyncState(syncState), nil
 }
 
-func (cf cloudFuncs) UpdateSyncState(state query.SyncState) error {
+func (cf *cloudFuncs) UpdateSyncState(state query.SyncState) error {
 	if err := cf.postSyncResource("/sync/state", state); err != nil {
 		return fmt.Errorf("unable to update sync state: %w", err)
 	}
@@ -211,7 +215,7 @@ func (cf cloudFuncs) UpdateSyncState(state query.SyncState) error {
 	return nil
 }
 
-func (cf cloudFuncs) UpsertBoard(board types.ExportedBoard) error {
+func (cf *cloudFuncs) UpsertBoard(board types.ExportedBoard) error {
 	if err := cf.postSyncResource("/sync/board", board); err != nil {
 		return fmt.Errorf("unable to upsert board: %w", err)
 	}
@@ -219,7 +223,7 @@ func (cf cloudFuncs) UpsertBoard(board types.ExportedBoard) error {
 	return nil
 }
 
-func (cf cloudFuncs) UpsertColumn(column types.ExportedColumn) error {
+func (cf *cloudFuncs) UpsertColumn(column types.ExportedColumn) error {
 	if err := cf.postSyncResource("/sync/column", column); err != nil {
 		return fmt.Errorf("unable to upsert column: %w", err)
 	}
@@ -227,7 +231,7 @@ func (cf cloudFuncs) UpsertColumn(column types.ExportedColumn) error {
 	return nil
 }
 
-func (cf cloudFuncs) UpsertCard(card types.ExportedCard) error {
+func (cf *cloudFuncs) UpsertCard(card types.ExportedCard) error {
 	if err := cf.postSyncResource("/sync/card", card); err != nil {
 		return fmt.Errorf("unable to upsert card: %w", err)
 	}
@@ -235,9 +239,59 @@ func (cf cloudFuncs) UpsertCard(card types.ExportedCard) error {
 	return nil
 }
 
-func (cf cloudFuncs) InitializeSyncStateForUser() error {
+func (cf *cloudFuncs) InitializeSyncStateForUser() error {
 	if err := cf.postSyncResource("/sync/init", nil); err != nil {
 		return fmt.Errorf("unable to init sync state: %w", err)
+	}
+
+	return nil
+}
+
+/**
+So now the workflow is when you invite someone to the board, like to the Kanban board, what you have to do is:
+
+When they click the link to open the board on your app, it will pull all the info for that particular board. It's going to pull all the data for that particular board.
+
+Then when it has pulled all the data for a particular board, the user will now update their local database to what has been pulled. It's going to create a new table of boards, insert the board data and every other information.
+
+I think this is perfect.
+*/
+
+func (cf *cloudFuncs) ImportData() (types.ImportUserBoardData, error) {
+	status, body, err := cf.doJSONRequest("GET", "/sync/export", nil)
+
+	if err != nil {
+		return types.ImportUserBoardData{}, err
+	}
+
+	var httpResp HttpResponse
+
+	if err = json.Unmarshal(body, &httpResp); err != nil {
+		return types.ImportUserBoardData{}, fmt.Errorf("unable to unmarshal body: %v", err)
+	}
+
+	if status != http.StatusOK && status != http.StatusCreated {
+		return types.ImportUserBoardData{}, fmt.Errorf("sync api returned status %d: %s", status, string(body))
+	}
+
+	dataBytes, err := json.Marshal(httpResp.Data)
+	if err != nil {
+		return types.ImportUserBoardData{}, fmt.Errorf("unable to re-marshal data: %w", err)
+	}
+
+	var data types.ImportUserBoardData
+
+	err = json.Unmarshal(dataBytes, &data)
+	if err != nil {
+		return types.ImportUserBoardData{}, err
+	}
+
+	return data, nil
+}
+
+func (cf *cloudFuncs) InitCloud() error {
+	if err := cf.postSyncResource("/init/cloud", nil); err != nil {
+		return fmt.Errorf("unable to init cloud status: %v", err)
 	}
 
 	return nil

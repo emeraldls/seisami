@@ -48,7 +48,7 @@ RETURNING id, user_id, name, created_at, updated_at
 `
 
 type CreateBoardParams struct {
-	ID        string
+	ID        pgtype.UUID
 	UserID    pgtype.UUID
 	Name      string
 	CreatedAt pgtype.Timestamptz
@@ -122,7 +122,7 @@ RETURNING id, board_id, name, position, created_at, updated_at
 
 type CreateColumnParams struct {
 	ID        string
-	BoardID   string
+	BoardID   pgtype.UUID
 	Name      string
 	Position  int32
 	CreatedAt pgtype.Timestamptz
@@ -229,7 +229,7 @@ RETURNING id, board_id, transcription, recording_path, intent, assistant_respons
 
 type CreateTranscriptionParams struct {
 	ID                string
-	BoardID           string
+	BoardID           pgtype.UUID
 	Transcription     string
 	RecordingPath     pgtype.Text
 	Intent            pgtype.Text
@@ -302,6 +302,28 @@ func (q *Queries) DeleteExpiredDesktopCodes(ctx context.Context) error {
 	return err
 }
 
+const ensureBoardOwner = `-- name: EnsureBoardOwner :one
+SELECT EXISTS (
+  SELECT 1
+  FROM board_members
+  WHERE board_id = $1
+    AND user_id = $2
+    AND role = 'owner'
+) AS is_owner
+`
+
+type EnsureBoardOwnerParams struct {
+	BoardID pgtype.UUID
+	UserID  pgtype.UUID
+}
+
+func (q *Queries) EnsureBoardOwner(ctx context.Context, arg EnsureBoardOwnerParams) (bool, error) {
+	row := q.db.QueryRow(ctx, ensureBoardOwner, arg.BoardID, arg.UserID)
+	var is_owner bool
+	err := row.Scan(&is_owner)
+	return is_owner, err
+}
+
 const getAllOperations = `-- name: GetAllOperations :many
 SELECT o.id, o.table_name, o.record_id, o.operation_type, o.device_id, o.payload, o.created_at, o.updated_at
 FROM operations AS o
@@ -371,14 +393,38 @@ func (q *Queries) GetAllOperations(ctx context.Context, arg GetAllOperationsPara
 	return items, nil
 }
 
+const getBoardByID = `-- name: GetBoardByID :one
+SELECT id, user_id, name, created_at, updated_at FROM boards
+WHERE id = $1
+`
+
+func (q *Queries) GetBoardByID(ctx context.Context, id pgtype.UUID) (Board, error) {
+	row := q.db.QueryRow(ctx, getBoardByID, id)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getBoardColumns = `-- name: GetBoardColumns :many
-SELECT id, board_id, name, position, created_at, updated_at FROM columns
-WHERE board_id = $1
+SELECT c.id, c.board_id, c.name, c.position, c.created_at, c.updated_at FROM columns c
+JOIN boards b ON b.id = c.board_id
+WHERE c.board_id = $1 AND b.user_id = $2
 ORDER BY position ASC
 `
 
-func (q *Queries) GetBoardColumns(ctx context.Context, boardID string) ([]Column, error) {
-	rows, err := q.db.Query(ctx, getBoardColumns, boardID)
+type GetBoardColumnsParams struct {
+	BoardID pgtype.UUID
+	UserID  pgtype.UUID
+}
+
+func (q *Queries) GetBoardColumns(ctx context.Context, arg GetBoardColumnsParams) ([]Column, error) {
+	rows, err := q.db.Query(ctx, getBoardColumns, arg.BoardID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -404,13 +450,108 @@ func (q *Queries) GetBoardColumns(ctx context.Context, boardID string) ([]Column
 	return items, nil
 }
 
+const getBoardMembers = `-- name: GetBoardMembers :many
+SELECT u.id, u.email, u.password_hash, u.created_at, u.updated_at, u.reset_token, u.reset_token_expires_at, u.cloud_initialized, bm.role, bm.joined_at
+FROM board_members bm
+JOIN users u ON bm.user_id = u.id
+WHERE bm.board_id = $1
+ORDER BY bm.joined_at ASC
+`
+
+type GetBoardMembersRow struct {
+	ID                  pgtype.UUID
+	Email               string
+	PasswordHash        string
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	ResetToken          pgtype.Text
+	ResetTokenExpiresAt pgtype.Timestamptz
+	CloudInitialized    pgtype.Bool
+	Role                pgtype.Text
+	JoinedAt            pgtype.Timestamptz
+}
+
+func (q *Queries) GetBoardMembers(ctx context.Context, boardID pgtype.UUID) ([]GetBoardMembersRow, error) {
+	rows, err := q.db.Query(ctx, getBoardMembers, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetBoardMembersRow
+	for rows.Next() {
+		var i GetBoardMembersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.PasswordHash,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ResetToken,
+			&i.ResetTokenExpiresAt,
+			&i.CloudInitialized,
+			&i.Role,
+			&i.JoinedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getBoardMetadata = `-- name: GetBoardMetadata :one
+SELECT 
+    b.id,
+    b.name,
+    b.created_at,
+    b.updated_at,
+    b.user_id,
+    (SELECT COUNT(*) FROM columns c WHERE c.board_id = b.id) AS columns_count,
+    (SELECT COUNT(*) FROM cards ca 
+     JOIN columns col ON ca.column_id = col.id 
+     WHERE col.board_id = b.id) AS cards_count,
+    (SELECT COUNT(*) FROM transcriptions t WHERE t.board_id = b.id) AS transcriptions_count
+FROM boards b
+WHERE b.id = $1
+`
+
+type GetBoardMetadataRow struct {
+	ID                  pgtype.UUID
+	Name                string
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	UserID              pgtype.UUID
+	ColumnsCount        int64
+	CardsCount          int64
+	TranscriptionsCount int64
+}
+
+func (q *Queries) GetBoardMetadata(ctx context.Context, id pgtype.UUID) (GetBoardMetadataRow, error) {
+	row := q.db.QueryRow(ctx, getBoardMetadata, id)
+	var i GetBoardMetadataRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.UserID,
+		&i.ColumnsCount,
+		&i.CardsCount,
+		&i.TranscriptionsCount,
+	)
+	return i, err
+}
+
 const getBoardTranscriptions = `-- name: GetBoardTranscriptions :many
 SELECT id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at FROM transcriptions
 WHERE board_id = $1
 ORDER BY created_at DESC
 `
 
-func (q *Queries) GetBoardTranscriptions(ctx context.Context, boardID string) ([]Transcription, error) {
+func (q *Queries) GetBoardTranscriptions(ctx context.Context, boardID pgtype.UUID) ([]Transcription, error) {
 	rows, err := q.db.Query(ctx, getBoardTranscriptions, boardID)
 	if err != nil {
 		return nil, err
@@ -439,6 +580,40 @@ func (q *Queries) GetBoardTranscriptions(ctx context.Context, boardID string) ([
 	return items, nil
 }
 
+const getBoardsForUser = `-- name: GetBoardsForUser :many
+SELECT b.id, b.user_id, b.name, b.created_at, b.updated_at
+FROM boards b
+JOIN board_members bm ON bm.board_id = b.id
+WHERE bm.user_id = $1
+ORDER BY b.created_at DESC
+`
+
+func (q *Queries) GetBoardsForUser(ctx context.Context, userID pgtype.UUID) ([]Board, error) {
+	rows, err := q.db.Query(ctx, getBoardsForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Board
+	for rows.Next() {
+		var i Board
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getCloudInitStatus = `-- name: GetCloudInitStatus :one
 SELECT cloud_initialized 
 FROM "users"
@@ -450,6 +625,25 @@ func (q *Queries) GetCloudInitStatus(ctx context.Context, id pgtype.UUID) (pgtyp
 	var cloud_initialized pgtype.Bool
 	err := row.Scan(&cloud_initialized)
 	return cloud_initialized, err
+}
+
+const getColumnByID = `-- name: GetColumnByID :one
+SELECT id, board_id, name, position, created_at, updated_at FROM columns
+WHERE id = $1
+`
+
+func (q *Queries) GetColumnByID(ctx context.Context, id string) (Column, error) {
+	row := q.db.QueryRow(ctx, getColumnByID, id)
+	var i Column
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getColumnCards = `-- name: GetColumnCards :many
@@ -507,7 +701,7 @@ func (q *Queries) GetDesktopLoginCode(ctx context.Context, code string) (Desktop
 }
 
 const getSyncState = `-- name: GetSyncState :one
-SELECT ss.table_name, ss.last_synced_at, ss.last_synced_op_id, ss.user_id
+SELECT ss.user_id, ss.table_name, ss.last_synced_at, ss.last_synced_op_id
 FROM sync_state ss
 WHERE ss.table_name = $1
   AND ss.user_id = $2
@@ -523,10 +717,10 @@ func (q *Queries) GetSyncState(ctx context.Context, arg GetSyncStateParams) (Syn
 	row := q.db.QueryRow(ctx, getSyncState, arg.TableName, arg.UserID)
 	var i SyncState
 	err := row.Scan(
+		&i.UserID,
 		&i.TableName,
 		&i.LastSyncedAt,
 		&i.LastSyncedOpID,
-		&i.UserID,
 	)
 	return i, err
 }
@@ -657,6 +851,264 @@ func (q *Queries) InitializeSyncStateForUser(ctx context.Context, userID pgtype.
 	return err
 }
 
+const insertBoardMember = `-- name: InsertBoardMember :exec
+INSERT INTO board_members (board_id, user_id, role)
+VALUES ($1, $2, $3)
+ON CONFLICT (board_id, user_id) DO NOTHING
+`
+
+type InsertBoardMemberParams struct {
+	BoardID pgtype.UUID
+	UserID  pgtype.UUID
+	Role    pgtype.Text
+}
+
+func (q *Queries) InsertBoardMember(ctx context.Context, arg InsertBoardMemberParams) error {
+	_, err := q.db.Exec(ctx, insertBoardMember, arg.BoardID, arg.UserID, arg.Role)
+	return err
+}
+
+const isUserMemberOfBoard = `-- name: IsUserMemberOfBoard :one
+SELECT EXISTS (
+  SELECT 1 FROM board_members
+  WHERE board_id = $1 AND user_id = $2
+) AS is_member
+`
+
+type IsUserMemberOfBoardParams struct {
+	BoardID pgtype.UUID
+	UserID  pgtype.UUID
+}
+
+func (q *Queries) IsUserMemberOfBoard(ctx context.Context, arg IsUserMemberOfBoardParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isUserMemberOfBoard, arg.BoardID, arg.UserID)
+	var is_member bool
+	err := row.Scan(&is_member)
+	return is_member, err
+}
+
+const listAllColumns = `-- name: ListAllColumns :many
+SELECT c.id, c.board_id, c.name, c.position, c.created_at, c.updated_at FROM columns c
+  JOIN boards b
+    ON b.user_id = $1
+ORDER BY c.created_at ASC
+`
+
+func (q *Queries) ListAllColumns(ctx context.Context, userID pgtype.UUID) ([]Column, error) {
+	rows, err := q.db.Query(ctx, listAllColumns, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Column
+	for rows.Next() {
+		var i Column
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Name,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBoardMembers = `-- name: ListBoardMembers :many
+SELECT bm.board_id, bm.user_id, bm.role, bm.joined_at, u.email
+FROM board_members bm
+JOIN users u ON u.id = bm.user_id
+WHERE bm.board_id = $1
+ORDER BY bm.joined_at DESC
+`
+
+type ListBoardMembersRow struct {
+	BoardID  pgtype.UUID
+	UserID   pgtype.UUID
+	Role     pgtype.Text
+	JoinedAt pgtype.Timestamptz
+	Email    string
+}
+
+func (q *Queries) ListBoardMembers(ctx context.Context, boardID pgtype.UUID) ([]ListBoardMembersRow, error) {
+	rows, err := q.db.Query(ctx, listBoardMembers, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBoardMembersRow
+	for rows.Next() {
+		var i ListBoardMembersRow
+		if err := rows.Scan(
+			&i.BoardID,
+			&i.UserID,
+			&i.Role,
+			&i.JoinedAt,
+			&i.Email,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBoardTranscriptions = `-- name: ListBoardTranscriptions :many
+SELECT t.id, t.board_id, t.transcription, t.recording_path, t.intent, t.assistant_response, t.created_at, t.updated_at FROM transcriptions t
+  JOIN boards b
+    ON b.user_id = $1
+WHERE b.id = $2
+ORDER BY t.created_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type ListBoardTranscriptionsParams struct {
+	UserID pgtype.UUID
+	ID     pgtype.UUID
+	Limit  int32
+	Offset int32
+}
+
+func (q *Queries) ListBoardTranscriptions(ctx context.Context, arg ListBoardTranscriptionsParams) ([]Transcription, error) {
+	rows, err := q.db.Query(ctx, listBoardTranscriptions,
+		arg.UserID,
+		arg.ID,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transcription
+	for rows.Next() {
+		var i Transcription
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Transcription,
+			&i.RecordingPath,
+			&i.Intent,
+			&i.AssistantResponse,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBoards = `-- name: ListBoards :many
+SELECT id, user_id, name, created_at, updated_at FROM boards
+  WHERE user_id = $1
+    ORDER BY created_at ASC
+    LIMIT $2 OFFSET $3
+`
+
+type ListBoardsParams struct {
+	UserID pgtype.UUID
+	Limit  int32
+	Offset int32
+}
+
+func (q *Queries) ListBoards(ctx context.Context, arg ListBoardsParams) ([]Board, error) {
+	rows, err := q.db.Query(ctx, listBoards, arg.UserID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Board
+	for rows.Next() {
+		var i Board
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBoardsCards = `-- name: ListBoardsCards :many
+SELECT c.id, c.column_id, c.title, c.description, c.attachments, c.created_at, c.updated_at
+FROM cards c
+JOIN columns col ON c.column_id = col.id
+JOIN boards b ON col.board_id = b.id
+WHERE b.user_id = $1 AND col.board_id = $2
+ORDER BY c.created_at ASC
+`
+
+type ListBoardsCardsParams struct {
+	UserID  pgtype.UUID
+	BoardID pgtype.UUID
+}
+
+func (q *Queries) ListBoardsCards(ctx context.Context, arg ListBoardsCardsParams) ([]Card, error) {
+	rows, err := q.db.Query(ctx, listBoardsCards, arg.UserID, arg.BoardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Card
+	for rows.Next() {
+		var i Card
+		if err := rows.Scan(
+			&i.ID,
+			&i.ColumnID,
+			&i.Title,
+			&i.Description,
+			&i.Attachments,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removeBoardMember = `-- name: RemoveBoardMember :exec
+DELETE FROM board_members
+WHERE board_id = $1 AND user_id = $2
+`
+
+type RemoveBoardMemberParams struct {
+	BoardID pgtype.UUID
+	UserID  pgtype.UUID
+}
+
+func (q *Queries) RemoveBoardMember(ctx context.Context, arg RemoveBoardMemberParams) error {
+	_, err := q.db.Exec(ctx, removeBoardMember, arg.BoardID, arg.UserID)
+	return err
+}
+
 const setPasswordResetToken = `-- name: SetPasswordResetToken :exec
 UPDATE users
 SET reset_token = $2,
@@ -683,7 +1135,7 @@ WHERE id = $1
 `
 
 type SyncDeleteBoardParams struct {
-	ID     string
+	ID     pgtype.UUID
 	UserID pgtype.UUID
 }
 
@@ -819,7 +1271,7 @@ ON CONFLICT (id) DO UPDATE SET
 `
 
 type SyncUpsertBoardParams struct {
-	ID        string
+	ID        pgtype.UUID
 	UserID    pgtype.UUID
 	Name      string
 	CreatedAt pgtype.Timestamptz
@@ -884,7 +1336,7 @@ ON CONFLICT (id) DO UPDATE SET
 
 type SyncUpsertColumnParams struct {
 	ID        string
-	BoardID   string
+	BoardID   pgtype.UUID
 	Name      string
 	Position  int32
 	CreatedAt pgtype.Timestamptz
@@ -917,7 +1369,7 @@ ON CONFLICT (id) DO UPDATE SET
 
 type SyncUpsertTranscriptionParams struct {
 	ID                string
-	BoardID           string
+	BoardID           pgtype.UUID
 	Transcription     string
 	RecordingPath     pgtype.Text
 	Intent            pgtype.Text
@@ -1007,4 +1459,25 @@ func (q *Queries) UpsertSyncState(ctx context.Context, arg UpsertSyncStateParams
 		arg.UserID,
 	)
 	return err
+}
+
+const validateBoardAccess = `-- name: ValidateBoardAccess :one
+SELECT EXISTS (
+  SELECT 1
+  FROM board_members
+  WHERE board_id = $1
+    AND user_id = $2
+) AS has_access
+`
+
+type ValidateBoardAccessParams struct {
+	BoardID pgtype.UUID
+	UserID  pgtype.UUID
+}
+
+func (q *Queries) ValidateBoardAccess(ctx context.Context, arg ValidateBoardAccessParams) (bool, error) {
+	row := q.db.QueryRow(ctx, validateBoardAccess, arg.BoardID, arg.UserID)
+	var has_access bool
+	err := row.Scan(&has_access)
+	return has_access, err
 }

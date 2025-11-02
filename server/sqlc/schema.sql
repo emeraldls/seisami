@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     reset_token TEXT,
-    reset_token_expires_at TIMESTAMPTZ
+    reset_token_expires_at TIMESTAMPTZ,
+    cloud_initialized BOOLEAN
 );
 
 CREATE TABLE IF NOT EXISTS desktop_login_codes (
@@ -25,7 +26,7 @@ CREATE INDEX IF NOT EXISTS desktop_login_codes_state_idx
 
 -- Cloud data sync tables
 CREATE TABLE IF NOT EXISTS boards (
-    id TEXT PRIMARY KEY,
+    id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -36,7 +37,7 @@ CREATE INDEX IF NOT EXISTS boards_user_id_idx ON boards(user_id);
 
 CREATE TABLE IF NOT EXISTS columns (
     id TEXT PRIMARY KEY,
-    board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     position INTEGER NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -59,7 +60,7 @@ CREATE INDEX IF NOT EXISTS cards_column_id_idx ON cards(column_id);
 
 CREATE TABLE IF NOT EXISTS transcriptions (
     id TEXT PRIMARY KEY,
-    board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     transcription TEXT NOT NULL,
     recording_path TEXT,
     intent TEXT,
@@ -82,19 +83,17 @@ CREATE TABLE IF NOT EXISTS operations (
 );
 
 CREATE TABLE IF NOT EXISTS sync_state (
-  "table_name" TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id),
+  "table_name" TEXT NOT NULL,
   last_synced_at BIGINT NOT NULL,
-  last_synced_op_id TEXT NOT NULL
+  last_synced_op_id TEXT,
+  PRIMARY KEY (user_id, table_name)
 );
 
-ALTER TABLE sync_state ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id);
-
-ALTER TABLE users ADD COLUMN IF NOT EXISTS cloud_initialized BOOLEAN;
-
-ALTER TABLE sync_state DROP CONSTRAINT sync_state_pkey;
-
-ALTER TABLE sync_state
-    ADD CONSTRAINT sync_state_pkey PRIMARY KEY (user_id, table_name);
-
-ALTER TABLE sync_state 
-ALTER COLUMN last_synced_op_id DROP NOT NULL;
+CREATE TABLE IF NOT EXISTS board_members (
+  board_id UUID NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  user_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role     TEXT DEFAULT 'member', 
+  joined_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (board_id, user_id)
+);

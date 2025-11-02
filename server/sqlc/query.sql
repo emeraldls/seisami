@@ -88,8 +88,9 @@ WHERE user_id = $1
 ORDER BY created_at DESC;
 
 -- name: GetBoardColumns :many
-SELECT * FROM columns
-WHERE board_id = $1
+SELECT c.* FROM columns c
+JOIN boards b ON b.id = c.board_id
+WHERE c.board_id = $1 AND b.user_id = $2
 ORDER BY position ASC;
 
 -- name: GetColumnCards :many
@@ -266,3 +267,109 @@ USING boards b
 WHERE t.id = $1
   AND t.board_id = b.id
   AND b.user_id = $2;
+
+-- name: InsertBoardMember :exec
+INSERT INTO board_members (board_id, user_id, role)
+VALUES ($1, $2, $3)
+ON CONFLICT (board_id, user_id) DO NOTHING;
+
+-- name: RemoveBoardMember :exec
+DELETE FROM board_members
+WHERE board_id = $1 AND user_id = $2;
+
+-- name: GetBoardMembers :many
+SELECT u.*, bm.role, bm.joined_at
+FROM board_members bm
+JOIN users u ON bm.user_id = u.id
+WHERE bm.board_id = $1
+ORDER BY bm.joined_at ASC;
+
+-- name: GetBoardsForUser :many
+SELECT b.*
+FROM boards b
+JOIN board_members bm ON bm.board_id = b.id
+WHERE bm.user_id = $1
+ORDER BY b.created_at DESC;
+
+-- name: IsUserMemberOfBoard :one
+SELECT EXISTS (
+  SELECT 1 FROM board_members
+  WHERE board_id = $1 AND user_id = $2
+) AS is_member;
+
+-- name: ValidateBoardAccess :one
+SELECT EXISTS (
+  SELECT 1
+  FROM board_members
+  WHERE board_id = $1
+    AND user_id = $2
+) AS has_access;
+
+-- name: GetColumnByID :one
+SELECT * FROM columns
+WHERE id = $1;
+
+
+-- name: GetBoardByID :one
+SELECT * FROM boards
+WHERE id = $1;
+
+-- name: EnsureBoardOwner :one
+SELECT EXISTS (
+  SELECT 1
+  FROM board_members
+  WHERE board_id = $1
+    AND user_id = $2
+    AND role = 'owner'
+) AS is_owner;
+
+-- name: ListBoards :many
+SELECT * FROM boards
+  WHERE user_id = $1
+    ORDER BY created_at ASC
+    LIMIT $2 OFFSET $3;
+
+-- name: ListAllColumns :many
+SELECT c.* FROM columns c
+  JOIN boards b
+    ON b.user_id = $1
+ORDER BY c.created_at ASC;
+
+-- name: ListBoardsCards :many
+SELECT c.*
+FROM cards c
+JOIN columns col ON c.column_id = col.id
+JOIN boards b ON col.board_id = b.id
+WHERE b.user_id = $1 AND col.board_id = $2
+ORDER BY c.created_at ASC;
+
+-- name: ListBoardTranscriptions :many
+SELECT t.* FROM transcriptions t
+  JOIN boards b
+    ON b.user_id = $1
+WHERE b.id = $2
+ORDER BY t.created_at DESC
+LIMIT $3 OFFSET $4;
+
+-- name: ListBoardMembers :many
+SELECT bm.*, u.email
+FROM board_members bm
+JOIN users u ON u.id = bm.user_id
+WHERE bm.board_id = $1
+ORDER BY bm.joined_at DESC;
+
+-- name: GetBoardMetadata :one
+SELECT 
+    b.id,
+    b.name,
+    b.created_at,
+    b.updated_at,
+    b.user_id,
+    (SELECT COUNT(*) FROM columns c WHERE c.board_id = b.id) AS columns_count,
+    (SELECT COUNT(*) FROM cards ca 
+     JOIN columns col ON ca.column_id = col.id 
+     WHERE col.board_id = b.id) AS cards_count,
+    (SELECT COUNT(*) FROM transcriptions t WHERE t.board_id = b.id) AS transcriptions_count
+FROM boards b
+WHERE b.id = $1;
+

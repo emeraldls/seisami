@@ -6,6 +6,8 @@ import {
   FolderKanban,
   ClosedCaption,
   Cloud,
+  Download,
+  LogOut,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Link, useLocation } from "react-router-dom";
@@ -15,6 +17,7 @@ import { BoardSelector } from "./board-selector";
 import { useState } from "react";
 import { useDesktopAuthStore } from "~/stores/auth-store";
 import { DesktopAuthService } from "~/lib/desktop-auth-service";
+import { BoardMembersPanel } from "./board-members-panel";
 
 interface NavItem {
   id: string;
@@ -138,25 +141,7 @@ export const Sidebar = () => {
         >
           {isAuthenticated ? (
             <div className="space-y-2">
-              {!collapsed && (
-                <div className="px-3 py-2 rounded-lg bg-sidebar-accent/30">
-                  <p className="text-xs font-medium text-sidebar-foreground/70">
-                    Cloud Enabled
-                  </p>
-                  <p className="text-xs text-sidebar-foreground/50 truncate">
-                    {email}
-                  </p>
-                </div>
-              )}
-              <Button
-                onClick={handleLogout}
-                variant="ghost"
-                size="sm"
-                className="w-full justify-center"
-              >
-                <Cloud className="h-4 w-4" />
-                {!collapsed && <span className="text-xs">Logout</span>}
-              </Button>
+              {!collapsed && <BoardMembersPanel key={"board-panel"} />}
             </div>
           ) : (
             <Button
@@ -167,7 +152,7 @@ export const Sidebar = () => {
             >
               <Cloud className="h-4 w-4" />
               {!collapsed && (
-                <span className="text-xs">
+                <span className="text-xs" key={"auth"}>
                   {isAuthenticating ? "Authenticating..." : "Cloud Features"}
                 </span>
               )}
@@ -182,7 +167,7 @@ export const Sidebar = () => {
                 <Link
                   to={"/" + item.id}
                   className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1",
+                    "w-full flex items-center gap-3 px-2 py-2.5 rounded-lg mb-1",
                     "transition-all duration-200",
                     "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                     collapsed && "justify-center px-0"
@@ -194,6 +179,19 @@ export const Sidebar = () => {
               </div>
             );
           })}
+          {isAuthenticated && (
+            <div className="space-y-2">
+              <Button
+                onClick={handleLogout}
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start text-red-600"
+              >
+                <LogOut className="h-4 w-4" />
+                {!collapsed && <span className="">Logout</span>}
+              </Button>
+            </div>
+          )}
         </div>
       </motion.aside>
     </AnimatePresence>

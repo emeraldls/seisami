@@ -1,7 +1,6 @@
 package sync_engine
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"seisami/app/internal/cloud"
@@ -11,32 +10,24 @@ import (
 	"time"
 )
 
+/*
+	TODO: Cloud shouldnt be initialized inside sync engine, there are methods that are not for syncing
+*/
+
 type SyncEngine struct {
-	local        local.Local
-	cloud        cloud.Cloud
-	repo         repo.Repository
-	appCtx       context.Context
-	sessionToken string
-	apiUrl       string
+	local local.Local
+	cloud cloud.Cloud
+	repo  repo.Repository
 }
 
-func NewSyncEngine(repo repo.Repository, sessionToken string, appCtx context.Context, apiUrl string) *SyncEngine {
+func NewSyncEngine(repo repo.Repository, cloud cloud.Cloud) *SyncEngine {
 	local := local.NewLocalFuncs(repo)
-	cloud := cloud.NewCloudFuncs(repo, sessionToken, appCtx, apiUrl)
 
 	return &SyncEngine{
-		local:        local,
-		cloud:        cloud,
-		appCtx:       appCtx,
-		repo:         repo,
-		sessionToken: sessionToken,
-		apiUrl:       apiUrl,
+		local: local,
+		cloud: cloud,
+		repo:  repo,
 	}
-}
-
-func (s *SyncEngine) UpdateSessionToken(token string) {
-	s.sessionToken = token
-	s.cloud = cloud.NewCloudFuncs(s.repo, token, s.appCtx, s.apiUrl)
 }
 
 const layout = "2006-01-02 15:04:05"
@@ -234,6 +225,85 @@ func (s *SyncEngine) BootstrapCloud() error {
 	} else {
 		fmt.Println("get sync state error: ", err)
 	}
+
+	return nil
+}
+
+func (s *SyncEngine) ImportNewBoard(boardID string) error {
+	boardData, err := s.cloud.ImportData()
+	if err != nil {
+		return fmt.Errorf("failed to fetch board data from cloud: %v", err)
+	}
+
+	existingBoard, err := s.repo.GetBoard(boardData.Board.ID)
+	if err == nil && existingBoard.ID != "" {
+		return fmt.Errorf("board '%s' already exists locally", boardData.Board.Name)
+	}
+
+	_, err = s.repo.ImportBoard(
+		boardData.Board.ID,
+		boardData.Board.Name,
+		boardData.Board.CreatedAt,
+		boardData.Board.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to import board: %v", err)
+	}
+
+	for _, col := range boardData.Columns {
+		_, err = s.repo.ImportColumn(
+			col.ID,
+			col.BoardID,
+			col.Name,
+			col.Position,
+			col.CreatedAt,
+			col.UpdatedAt,
+		)
+		if err != nil {
+			fmt.Printf("failed to import column %s: %v\n", col.ID, err)
+			continue
+		}
+	}
+
+	for _, card := range boardData.Cards {
+		_, err = s.repo.ImportCard(
+			card.ID,
+			card.ColumnID,
+			card.Title,
+			card.Description,
+			card.Attachments,
+			card.CreatedAt,
+			card.UpdatedAt,
+		)
+		if err != nil {
+			fmt.Printf("failed to import card %s: %v\n", card.ID, err)
+			continue
+		}
+	}
+
+	for _, t := range boardData.Transcriptions {
+		_, err = s.repo.ImportTranscription(
+			t.ID,
+			t.BoardID,
+			t.Transcription,
+			t.RecordingPath,
+			t.Intent,
+			t.AssistantResponse,
+			t.CreatedAt,
+			t.UpdatedAt,
+		)
+		if err != nil {
+			fmt.Printf("failed to import transcription %s: %v\n", t.ID, err)
+			continue
+		}
+	}
+
+	fmt.Printf("Successfully imported board %s with %d columns, %d cards, and %d transcriptions\n",
+		boardData.Board.ID,
+		len(boardData.Columns),
+		len(boardData.Cards),
+		len(boardData.Transcriptions),
+	)
 
 	return nil
 }

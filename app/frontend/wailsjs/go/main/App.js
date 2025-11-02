@@ -86,6 +86,10 @@ export function Greet(arg1) {
   return window['go']['main']['App']['Greet'](arg1);
 }
 
+export function ImportNewBoard(arg1) {
+  return window['go']['main']['App']['ImportNewBoard'](arg1);
+}
+
 export function JoinCollaborationRoom(arg1) {
   return window['go']['main']['App']['JoinCollaborationRoom'](arg1);
 }

@@ -16,6 +16,7 @@ import (
 	"seisami/app/internal/repo/sqlc/query"
 	"seisami/app/internal/sync_engine"
 	"seisami/app/types"
+	"seisami/app/utils"
 
 	"sort"
 	"strings"
@@ -89,11 +90,14 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.action = actions.NewAction(ctx, a.repository)
 
-	syncEngine := sync_engine.NewSyncEngine(a.repository, a.loginToken, a.ctx, a.cloudApiUrl)
+	cloud := cloud.NewCloudFuncs(a.repository, a.loginToken, a.ctx, a.cloudApiUrl)
+	a.cloud = cloud
+
+	syncEngine := sync_engine.NewSyncEngine(a.repository, cloud)
 	a.syncEngine = syncEngine
 
 	go func() {
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(30 * time.Second)
 		for range ticker.C {
 			err := syncEngine.SyncData(types.BoardTable)
 			if err != nil {
@@ -107,7 +111,12 @@ func (a *App) startup(ctx context.Context) {
 			if err != nil {
 				fmt.Printf("unable to sync cards table: %v\n", err)
 			}
+
+			// if a.loginToken != "" {
+
+			// }
 		}
+
 	}()
 
 	go a.handleMutations()
@@ -230,16 +239,17 @@ func (a *App) StartDataSyncing(table string) error {
 
 func (a *App) SetLoginToken(token string) {
 	a.loginToken = token
-	if a.syncEngine != nil {
-		a.syncEngine.UpdateSessionToken(token)
-	}
+	a.cloud.UpdateSessionToken(token)
 }
 
 func (a *App) ClearLoginToken() {
 	a.loginToken = ""
-	if a.syncEngine != nil {
-		a.syncEngine.UpdateSessionToken("")
-	}
+	a.cloud.UpdateSessionToken("")
+}
+
+func (a *App) ImportNewBoard(boardID string) error {
+
+	return a.syncEngine.ImportNewBoard(boardID)
 }
 
 func (a *App) GetLoginToken() string {
@@ -257,6 +267,10 @@ func (a *App) ensureCollabConnectionLocked() error {
 	}
 
 	wsURL := url.URL{Scheme: "ws", Host: addr, Path: "/ws"}
+	q := wsURL.Query()
+	q.Set("token", a.GetLoginToken())
+	wsURL.RawQuery = q.Encode()
+
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
 	if err != nil {
 		return fmt.Errorf("unable to connect to collaboration server at %s: %w", wsURL.String(), err)
@@ -287,13 +301,6 @@ func (a *App) resetCollabConnectionLocked() {
 }
 
 func (a *App) sendCollabCommand(msg types.Message) error {
-
-	go func() {}()
-
-	if a.collabRoomId == "" {
-		return nil
-	}
-
 	fmt.Println("can send collab command")
 
 	a.collabMu.Lock()
@@ -528,8 +535,7 @@ func (a *App) startRecording() {
 		return
 	}
 	defer stream.Stop()
-	home, _ := os.UserHomeDir()
-	appDir := filepath.Join(home, "Music", "Seisami")
+	appDir := utils.GetRecordingsDir()
 
 	if err := os.MkdirAll(appDir, 0755); err != nil {
 		log.Printf("Error creating recordings folder: %v\n", err)
@@ -872,6 +878,7 @@ func (a *App) transcribeWithOpenAI(filePath string, settings query.Setting) (str
 	req := openai.AudioRequest{
 		Model:    openai.Whisper1,
 		FilePath: filePath,
+		Language: "en",
 	}
 
 	resp, err := client.CreateTranscription(context.Background(), req)

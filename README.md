@@ -41,3 +41,11 @@ Desktop binaries live in `build/bin/` when you run `wails build`.
 ---
 
 Contributions welcome.
+
+The project still doesnt have a very good structure yet... there are copies of alot of things between server & app... There are also some stuffs that shouldnt be where they are....
+
+--- Some rando thoughts
+
+You can think of a board like a workspace. Then within the board you have columns (or lists) that contain cards (or tasks). Each card can have multiple features (or subtasks). 
+
+A board also has transcriptions associated with it.

@@ -1,9 +1,9 @@
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "~/components/sidebar";
 import { CloudSyncProgress } from "~/components/cloud-sync-progress";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSidebar } from "~/contexts/sidebar-context";
-import { EventsOn } from "../../wailsjs/runtime/runtime";
+import { EventsOn, EventsEmit } from "../../wailsjs/runtime/runtime";
 import { toast } from "sonner";
 import { Button } from "~/components/ui/button";
 import {
@@ -12,10 +12,24 @@ import {
   PopoverTrigger,
 } from "~/components/ui/popover";
 import { Info, MessageCircle } from "lucide-react";
+import { useDesktopAuthStore } from "~/stores/auth-store";
+import { BoardImportDialog } from "~/components/board-import-dialog";
 
 export const AppLayout = () => {
   const { collapsed } = useSidebar();
   const cloudToastIdRef = useRef<string | number | null>(null);
+  const tokenSentRef = useRef(false);
+  const { token } = useDesktopAuthStore();
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [boardIdToImport, setBoardIdToImport] = useState<string | undefined>();
+
+  useEffect(() => {
+    if (token && !tokenSentRef.current) {
+      console.log("Sending auth token to backend...");
+      EventsEmit("auth:set_token", token);
+      tokenSentRef.current = true;
+    }
+  }, [token]);
 
   useEffect(() => {
     const unsubscribeProcessingStart = EventsOn(
@@ -101,6 +115,16 @@ export const AppLayout = () => {
       }
     );
 
+    // Listen for board import deep link event
+    const unsubscribeBoardImport = EventsOn(
+      "board:import_request",
+      (data: { board_id: string }) => {
+        console.log("Board import requested:", data.board_id);
+        setBoardIdToImport(data.board_id);
+        setImportDialogOpen(true);
+      }
+    );
+
     return () => {
       unsubscribeProcessingStart();
       unsubscribeToolComplete();
@@ -110,6 +134,7 @@ export const AppLayout = () => {
       unsubscribeCloudSetupStarted();
       unsubscribeCloudSetupSuccess();
       unsubscribeCloudSetupFailed();
+      unsubscribeBoardImport();
     };
   }, []);
 
@@ -168,6 +193,11 @@ export const AppLayout = () => {
         </div>
       </div>
       <CloudSyncProgress />
+      <BoardImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        boardId={boardIdToImport}
+      />
     </>
   );
 };

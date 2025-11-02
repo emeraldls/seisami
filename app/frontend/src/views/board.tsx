@@ -57,6 +57,14 @@ import {
 } from "~/components/ui/dialog";
 import { EventsEmit } from "../../wailsjs/runtime/runtime";
 import { useCollaborationStore } from "~/stores/collab-store";
+import { wsService, type CollabResponse } from "~/lib/websocket-service";
+import type {
+  ColumnEventData,
+  ColumnDeleteEventData,
+  CardEventData,
+  CardDeleteEventData,
+  CardColumnEventData,
+} from "~/types/types";
 
 type Feature = {
   id: string;
@@ -163,6 +171,150 @@ export default function KanbanView() {
   useEffect(() => {
     fetchBoard();
   }, [fetchBoard]);
+
+  useEffect(() => {
+    if (!roomId) return;
+
+    const unsubscribe = wsService.onMessage((message: CollabResponse) => {
+      console.log(message);
+      if (!("type" in message) || message.type !== "message") {
+        return;
+      }
+
+      try {
+        const parsedData = JSON.parse(message.data);
+        const eventType = parsedData.type;
+        const eventData = parsedData.data;
+
+        console.log("Received WebSocket event:", eventType, eventData);
+
+        switch (eventType) {
+          case "column:create":
+            handleRemoteColumnCreate(eventData);
+            break;
+          case "column:data":
+            handleRemoteColumnUpdate(eventData);
+            break;
+          case "column:delete":
+            handleRemoteColumnDelete(eventData);
+            break;
+          case "card:create":
+            handleRemoteCardCreate(eventData);
+            break;
+          case "card:data":
+            handleRemoteCardUpdate(eventData);
+            break;
+          case "card:delete":
+            handleRemoteCardDelete(eventData);
+            break;
+          case "card:column":
+            handleRemoteCardColumnChange(eventData);
+            break;
+          default:
+            console.log("Unknown event type:", eventType);
+        }
+      } catch (error) {
+        console.error("Error handling WebSocket message:", error);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [roomId]);
+
+  const handleRemoteColumnCreate = (data: ColumnEventData) => {
+    const newColumn: Column = {
+      id: data.id,
+      name: data.name,
+      color: "#10B981",
+      position: data.position,
+    };
+
+    setColumns((prev) => {
+      const exists = prev.some((col) => col.id === newColumn.id);
+      if (exists) return prev;
+      return [...prev, newColumn].sort((a, b) => a.position - b.position);
+    });
+  };
+
+  const handleRemoteColumnUpdate = (data: ColumnEventData) => {
+    setColumns((prev) =>
+      prev.map((col) =>
+        col.id === data.id
+          ? { ...col, name: data.name, position: data.position }
+          : col
+      )
+    );
+  };
+
+  const handleRemoteColumnDelete = (data: ColumnDeleteEventData) => {
+    setColumns((prev) => prev.filter((col) => col.id !== data.id));
+    setFeatures((prev) => prev.filter((feature) => feature.column !== data.id));
+  };
+
+  const handleRemoteCardCreate = (data: CardEventData) => {
+    const newCard: Feature = {
+      id: data.card.id,
+      name: data.card.name,
+      description: data.card.description || "",
+      attachments: "",
+      startAt: new Date(data.card.created_at || new Date().toISOString()),
+      endAt: new Date(
+        data.card.updated_at || data.card.created_at || new Date().toISOString()
+      ),
+      column: data.card.column_id,
+    };
+
+    setFeatures((prev) => {
+      const exists = prev.some((feature) => feature.id === newCard.id);
+      if (exists) return prev;
+      return [...prev, newCard];
+    });
+  };
+
+  const handleRemoteCardUpdate = (data: CardEventData) => {
+    setFeatures((prev) =>
+      prev.map((feature) =>
+        feature.id === data.card.id
+          ? {
+              ...feature,
+              name: data.card.name,
+              description: data.card.description || "",
+            }
+          : feature
+      )
+    );
+
+    setSelectedCard((prev) =>
+      prev && prev.id === data.card.id
+        ? {
+            ...prev,
+            name: data.card.name,
+            description: data.card.description || "",
+          }
+        : prev
+    );
+  };
+
+  const handleRemoteCardDelete = (data: CardDeleteEventData) => {
+    setFeatures((prev) =>
+      prev.filter((feature) => feature.id !== data.card.id)
+    );
+
+    if (selectedCard?.id === data.card.id) {
+      setIsCardDialogOpen(false);
+      setSelectedCard(null);
+    }
+  };
+
+  const handleRemoteCardColumnChange = (data: CardColumnEventData) => {
+    setFeatures((prev) =>
+      prev.map((feature) =>
+        feature.id === data.card_id
+          ? { ...feature, column: data.new_column.id }
+          : feature
+      )
+    );
+  };
 
   const handleDataChange = useCallback(
     async (newFeatures: Feature[]) => {

@@ -9,6 +9,7 @@ import { TranscriptionCard } from "~/components/transcription-card";
 import { TranscriptionDetailModal } from "~/components/transcription-detail-modal";
 import { Transcription } from "~/types/types";
 import { useBoardStore } from "~/stores/board-store";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const drawWaveform = (
   ctx: CanvasRenderingContext2D,
@@ -54,7 +55,7 @@ const drawWaveform = (
 };
 
 export default function Transcriptions() {
-  const [transcriptions, setTranscriptions] = useState<Transcription[]>([]);
+  const queryClient = useQueryClient();
   const [isRecording, setIsRecording] = useState(false);
   const [audioBars, setAudioBars] = useState<number[] | null>(null);
   const [waveformData, setWaveformData] = useState<number[]>([]);
@@ -68,35 +69,38 @@ export default function Transcriptions() {
 
   const { currentBoard } = useBoardStore();
 
-  useEffect(() => {
-    const fetchTranscriptions = async () => {
-      if (currentBoard) {
-        try {
-          const transcriptions = await GetTranscriptions(
-            currentBoard.id,
-            1,
-            50
-          );
-          const formattedTranscriptions: Transcription[] = transcriptions.map(
-            (t) => ({
-              id: t.ID,
-              text: t.Transcription,
-              timestamp: new Date(t.CreatedAt.String || new Date()),
-              isTranscribing: false,
-              intent: t.Intent?.String || undefined,
-              assistantResponse: t.AssistantResponse?.String || undefined,
-              recordingPath: t.RecordingPath?.String || undefined,
-            })
-          );
-          setTranscriptions(formattedTranscriptions);
-        } catch (error) {
-          console.error("Failed to fetch transcriptions:", error);
-        }
-      }
-    };
+  const {
+    data: transcriptions = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ["transcriptions", currentBoard?.id],
+    queryFn: async () => {
+      if (!currentBoard) return [];
+      const result = await GetTranscriptions(currentBoard.id, 1, 50);
+      const formattedTranscriptions: Transcription[] = result.map((t) => ({
+        id: t.ID,
+        text: t.Transcription,
+        timestamp: new Date(t.CreatedAt.String || new Date()),
+        isTranscribing: false,
+        intent: t.Intent?.String || undefined,
+        assistantResponse: t.AssistantResponse?.String || undefined,
+        recordingPath: t.RecordingPath?.String || undefined,
+      }));
+      return formattedTranscriptions;
+    },
+    enabled: !!currentBoard,
+  });
 
-    fetchTranscriptions();
-  }, [currentBoard]);
+  const updateTranscriptionInCache = (
+    updater: (prev: Transcription[]) => Transcription[]
+  ) => {
+    queryClient.setQueryData(
+      ["transcriptions", currentBoard?.id],
+      (old: Transcription[] = []) => updater(old)
+    );
+  };
 
   useEffect(() => {
     if (!audioBars) return;
@@ -171,7 +175,7 @@ export default function Transcriptions() {
               transcription: string;
             };
             if (parsed.transcription) {
-              setTranscriptions((prev) =>
+              updateTranscriptionInCache((prev) =>
                 prev.map((t) =>
                   t.id === parsed.id
                     ? {
@@ -199,7 +203,7 @@ export default function Transcriptions() {
             const parsed = JSON.parse(data);
             console.log("Structured Response received:", parsed);
 
-            setTranscriptions((prev) => {
+            updateTranscriptionInCache((prev) => {
               const updated = [...prev];
               if (updated.length > 0) {
                 updated[0] = {
@@ -249,7 +253,7 @@ export default function Transcriptions() {
               timestamp: new Date(),
               isTranscribing: true,
             };
-            setTranscriptions((prev) => [newTranscription, ...prev]);
+            updateTranscriptionInCache((prev) => [newTranscription, ...prev]);
           } catch (e) {
             console.error("Failed to parse recording:stop event data", e);
           }
@@ -263,7 +267,9 @@ export default function Transcriptions() {
         if (data) {
           try {
             const parsed = JSON.parse(data) as { id: string };
-            setTranscriptions((prev) => prev.filter((t) => t.id !== parsed.id));
+            updateTranscriptionInCache((prev) =>
+              prev.filter((t) => t.id !== parsed.id)
+            );
           } catch (e) {
             console.error("Failed to parse transcription:short event data", e);
           }
@@ -279,10 +285,10 @@ export default function Transcriptions() {
       unsubscribeTranscriptionShort();
       unsubscribeAudioBars();
     };
-  }, []);
+  }, [currentBoard, queryClient]);
 
   const deleteTranscription = (id: string) => {
-    setTranscriptions((prev) => prev.filter((t) => t.id !== id));
+    updateTranscriptionInCache((prev) => prev.filter((t) => t.id !== id));
   };
 
   const copyTranscription = (text: string) => {
@@ -346,8 +352,27 @@ export default function Transcriptions() {
             </div>
           </div>
 
-          {transcriptions.length === 0 ? (
-            <div>Nothing yet boy</div>
+          {isLoading ? (
+            <div className="flex items-center justify-center p-12">
+              <div className="text-center space-y-2">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-neutral-900 mx-auto"></div>
+                <p className="text-sm text-neutral-500">
+                  Loading transcriptions...
+                </p>
+              </div>
+            </div>
+          ) : isError ? (
+            <div className="text-center p-12">
+              <p className="text-sm text-destructive">
+                Failed to load transcriptions: {error?.message}
+              </p>
+            </div>
+          ) : transcriptions.length === 0 ? (
+            <div className="text-center p-12">
+              <p className="text-neutral-500">
+                No transcriptions yet. Start recording to create your first one!
+              </p>
+            </div>
           ) : (
             <div className="space-y-4">
               {transcriptions.map((transcription) => (

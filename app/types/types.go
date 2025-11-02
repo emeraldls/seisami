@@ -1,11 +1,14 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type Message struct {
 	Action string `json:"action" validate:"required"`
 	RoomID string `json:"roomId,omitempty"`
 	Data   string `json:"data,omitempty"`
+	Type   string `json:"type"`
 }
 
 type ColumnEvent struct {
@@ -168,4 +171,18 @@ type ExportedTranscription struct {
 	AssistantResponse string `json:"assistant_response,omitempty"`
 	CreatedAt         string `json:"created_at"`
 	UpdatedAt         string `json:"updated_at"`
+}
+
+type ExportedData struct {
+	Boards         []ExportedBoard         `json:"boards"`
+	Columns        []ExportedColumn        `json:"columns"`
+	Cards          []ExportedCard          `json:"cards"`
+	Transcriptions []ExportedTranscription `json:"transcriptions"`
+}
+
+type ImportUserBoardData struct {
+	Board          ExportedBoard           `json:"board"`
+	Columns        []ExportedColumn        `json:"columns"`
+	Cards          []ExportedCard          `json:"cards"`
+	Transcriptions []ExportedTranscription `json:"transcriptions"`
 }

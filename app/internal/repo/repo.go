@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"seisami/app/internal/repo/sqlc/query"
 	"seisami/app/types"
+	"seisami/app/utils"
 
 	_ "embed"
 
@@ -25,10 +25,9 @@ type repo struct {
 var schema string
 
 func dbPath() string {
-	home, _ := os.UserHomeDir()
-	appDir := filepath.Join(home, "Library", "Application Support", "Seisami")
+	appDir := utils.GetAppDataDir()
 	os.MkdirAll(appDir, 0755)
-	return filepath.Join(appDir, "seisami.db")
+	return utils.GetDBPath()
 }
 
 func NewRepo() *repo {
@@ -451,15 +450,7 @@ func (r *repo) UpdateSyncState(tableName types.TableName, lastOpID string, lastS
 	return nil
 }
 
-// ExportAllData exports all local data for cloud sync
-type ExportedData struct {
-	Boards         []types.ExportedBoard         `json:"boards"`
-	Columns        []types.ExportedColumn        `json:"columns"`
-	Cards          []types.ExportedCard          `json:"cards"`
-	Transcriptions []types.ExportedTranscription `json:"transcriptions"`
-}
-
-func (r *repo) ExportAllData() (*ExportedData, error) {
+func (r *repo) ExportAllData() (*types.ExportedData, error) {
 	boards, err := r.queries.ListBoards(r.ctx, query.ListBoardsParams{Limit: 1000, Offset: 0})
 	if err != nil {
 		return nil, fmt.Errorf("error exporting boards: %v", err)
@@ -530,7 +521,7 @@ func (r *repo) ExportAllData() (*ExportedData, error) {
 		}
 	}
 
-	return &ExportedData{
+	return &types.ExportedData{
 		Boards:         exportedBoards,
 		Columns:        exportedColumns,
 		Cards:          exportedCards,
@@ -538,22 +529,78 @@ func (r *repo) ExportAllData() (*ExportedData, error) {
 	}, nil
 }
 
-func (r *repo) InsertFullColumnData(data query.Column) error {
-	params := query.InsertFullColumnDataParams(data)
-
-	_, err := r.queries.InsertFullColumnData(r.ctx, params)
+func (r *repo) ImportBoard(id, name, createdAt, updatedAt string) (query.Board, error) {
+	board, err := r.queries.ImportBoard(r.ctx, query.ImportBoardParams{
+		ID:        id,
+		Name:      name,
+		CreatedAt: sql.NullString{String: createdAt, Valid: true},
+		UpdatedAt: sql.NullString{String: updatedAt, Valid: true},
+	})
 	if err != nil {
-		return fmt.Errorf("unable to insert full column data: %v", err)
+		return query.Board{}, fmt.Errorf("unable to import board: %v", err)
 	}
-	return nil
+	return board, nil
 }
 
-func (r *repo) InsertFullCardData(data query.Card) error {
-	params := query.InsertFullCardDataParams(data)
-	_, err := r.queries.InsertFullCardData(r.ctx, params)
+func (r *repo) ImportColumn(id, boardId, name string, position int64, createdAt, updatedAt string) (query.Column, error) {
+	column, err := r.queries.ImportColumn(r.ctx, query.ImportColumnParams{
+		ID:        id,
+		BoardID:   boardId,
+		Name:      name,
+		Position:  position,
+		CreatedAt: sql.NullString{String: createdAt, Valid: true},
+		UpdatedAt: sql.NullString{String: updatedAt, Valid: true},
+	})
 	if err != nil {
-		return fmt.Errorf("unable to insert full card data: %v", err)
+		return query.Column{}, fmt.Errorf("unable to import column: %v", err)
 	}
+	return column, nil
+}
 
-	return nil
+func (r *repo) ImportCard(id, columnId, title, description, attachments, createdAt, updatedAt string) (query.Card, error) {
+	card, err := r.queries.ImportCard(r.ctx, query.ImportCardParams{
+		ID:       id,
+		ColumnID: columnId,
+		Title:    title,
+		Description: sql.NullString{
+			String: description,
+			Valid:  description != "",
+		},
+		Attachments: sql.NullString{
+			String: attachments,
+			Valid:  attachments != "",
+		},
+		CreatedAt: sql.NullString{String: createdAt, Valid: true},
+		UpdatedAt: sql.NullString{String: updatedAt, Valid: true},
+	})
+	if err != nil {
+		return query.Card{}, fmt.Errorf("unable to import card: %v", err)
+	}
+	return card, nil
+}
+
+func (r *repo) ImportTranscription(id, boardId, transcription, recordingPath, intent, assistantResponse, createdAt, updatedAt string) (query.Transcription, error) {
+	t, err := r.queries.ImportTranscription(r.ctx, query.ImportTranscriptionParams{
+		ID:            id,
+		BoardID:       boardId,
+		Transcription: transcription,
+		RecordingPath: sql.NullString{
+			String: recordingPath,
+			Valid:  recordingPath != "",
+		},
+		Intent: sql.NullString{
+			String: intent,
+			Valid:  intent != "",
+		},
+		AssistantResponse: sql.NullString{
+			String: assistantResponse,
+			Valid:  assistantResponse != "",
+		},
+		CreatedAt: sql.NullString{String: createdAt, Valid: true},
+		UpdatedAt: sql.NullString{String: updatedAt, Valid: true},
+	})
+	if err != nil {
+		return query.Transcription{}, fmt.Errorf("unable to import transcription: %v", err)
+	}
+	return t, nil
 }

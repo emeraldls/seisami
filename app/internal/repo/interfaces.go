@@ -43,8 +43,10 @@ type Repository interface {
 	GetSyncState(tableName types.TableName) (query.SyncState, error)
 	UpdateSyncState(tableName types.TableName, lastOpID string, lastSyncedAt int64) error
 
-	ExportAllData() (*ExportedData, error)
+	ExportAllData() (*types.ExportedData, error)
 
-	InsertFullColumnData(data query.Column) error
-	InsertFullCardData(data query.Card) error
+	ImportBoard(id, name, createdAt, updatedAt string) (query.Board, error)
+	ImportColumn(id, boardId, name string, position int64, createdAt, updatedAt string) (query.Column, error)
+	ImportCard(id, columnId, title, description, attachments, createdAt, updatedAt string) (query.Card, error)
+	ImportTranscription(id, boardId, transcription, recordingPath, intent, assistantResponse, createdAt, updatedAt string) (query.Transcription, error)
 }

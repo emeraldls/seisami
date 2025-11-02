@@ -114,7 +114,7 @@ func handleConn(c *client.Client, manager *room_manager.RoomManager) {
 
 		case "broadcast":
 			broadcastMsg := map[string]string{
-				"type": "message",
+				"type": msg.Type,
 				"from": c.GetId(),
 				"data": msg.Data,
 			}

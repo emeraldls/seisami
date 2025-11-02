@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Card } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -15,74 +15,85 @@ import {
   // OpenAccessibilitySettings,
 } from "../../wailsjs/go/main/App";
 import { query, frontend } from "../../wailsjs/go/models";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 const Settings = () => {
-  const [settings, setSettings] = useState<query.Setting | null>(null);
+  const queryClient = useQueryClient();
   const [transcriptionMethod, setTranscriptionMethod] =
     useState<string>("cloud");
   const [whisperBinaryPath, setWhisperBinaryPath] = useState<string>("");
   const [whisperModelPath, setWhisperModelPath] = useState<string>("");
   const [openaiApiKey, setOpenaiApiKey] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [microphonePermission, setMicrophonePermission] = useState<number>(-2); // -2 = not checked, -1 = not determined, 0 = denied, 1 = authorized
   const [checkingPermission, setCheckingPermission] = useState(false);
-  const [accessibilityPermission, setAccessibilityPermission] =
-    useState<number>(-2); // -2 = not checked, 0 = denied, 1 = authorized
   const [checkingAccessibility, setCheckingAccessibility] = useState(false);
 
-  useEffect(() => {
-    loadSettings();
-    checkMicrophonePermission();
-    checkAccessibilityPermission();
-  }, []);
-
-  const loadSettings = async () => {
-    try {
+  const {
+    data: settings,
+    isLoading: loading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => {
       const currentSettings = await GetSettings();
-      setSettings(currentSettings);
       setTranscriptionMethod(currentSettings.TranscriptionMethod || "cloud");
       setWhisperBinaryPath(currentSettings.WhisperBinaryPath?.String || "");
       setWhisperModelPath(currentSettings.WhisperModelPath?.String || "");
       setOpenaiApiKey(currentSettings.OpenaiApiKey?.String || "");
-    } catch (error) {
-      console.error("Failed to load settings:", error);
-      setTranscriptionMethod("cloud");
-    } finally {
-      setLoading(false);
-    }
-  };
+      return currentSettings;
+    },
+  });
 
-  const checkMicrophonePermission = async () => {
-    try {
-      const permission = await CheckMicrophonePermission();
-      setMicrophonePermission(permission);
-    } catch (error) {
-      console.error("Failed to check microphone permission:", error);
-      setMicrophonePermission(-2);
-    }
-  };
+  // Fetch microphone permission
+  const { data: microphonePermission = -2, refetch: refetchMicPermission } =
+    useQuery({
+      queryKey: ["microphonePermission"],
+      queryFn: CheckMicrophonePermission,
+      retry: false,
+    });
 
-  const checkAccessibilityPermission = async () => {
-    try {
+  // Fetch accessibility permission (mocked for now)
+  const {
+    data: accessibilityPermission = -2,
+    refetch: refetchAccessibilityPermission,
+  } = useQuery({
+    queryKey: ["accessibilityPermission"],
+    queryFn: async () => {
       // Temporarily mock this since the function isn't available yet
-      // const permission = await CheckAccessibilityPermission();
-      // setAccessibilityPermission(permission);
       console.log("Accessibility permission check not yet available");
-      setAccessibilityPermission(-2);
-    } catch (error) {
-      console.error("Failed to check accessibility permission:", error);
-      setAccessibilityPermission(-2);
-    }
-  };
+      return -2;
+    },
+    retry: false,
+  });
 
-  const handleRequestMicrophonePermission = async () => {
-    setCheckingPermission(true);
-    try {
-      const granted = await RequestMicrophonePermission();
-      setMicrophonePermission(granted ? 1 : 0);
+  // Save settings mutation
+  const saveSettingsMutation = useMutation({
+    mutationFn: async () => {
+      await SaveSettings(
+        transcriptionMethod,
+        whisperBinaryPath || null,
+        whisperModelPath || null,
+        openaiApiKey || null
+      );
+    },
+    onSuccess: () => {
+      toast.success("Settings saved successfully!");
+      queryClient.invalidateQueries({ queryKey: ["settings"] });
+    },
+    onError: (error: Error) => {
+      toast.error(
+        error.message || "Failed to save settings. Please try again."
+      );
+    },
+  });
+
+  // Request microphone permission mutation
+  const requestMicPermissionMutation = useMutation({
+    mutationFn: RequestMicrophonePermission,
+    onSuccess: (granted) => {
+      refetchMicPermission();
       if (!granted) {
-        // If permission was denied, offer to open settings
         const openSettings = confirm(
           "Microphone permission was denied. Would you like to open System Settings to grant permission manually?"
         );
@@ -90,24 +101,23 @@ const Settings = () => {
           OpenMicrophoneSettings();
         }
       }
-    } catch (error) {
+    },
+    onError: (error) => {
       console.error("Failed to request microphone permission:", error);
-    } finally {
-      setCheckingPermission(false);
-    }
+      toast.error("Failed to request microphone permission");
+    },
+  });
+
+  const handleRequestMicrophonePermission = async () => {
+    requestMicPermissionMutation.mutate();
   };
 
   const handleRequestAccessibilityPermission = async () => {
     setCheckingAccessibility(true);
     try {
       // Temporarily mock this since the function isn't available yet
-      // await RequestAccessibilityPermission();
-      // const permission = await CheckAccessibilityPermission();
-      // setAccessibilityPermission(permission);
       console.log("Accessibility permission request not yet available");
-
       // For now, just open the settings
-      // OpenAccessibilitySettings();
     } catch (error) {
       console.error("Failed to request accessibility permission:", error);
     } finally {
@@ -160,21 +170,7 @@ const Settings = () => {
   };
 
   const handleSaveSettings = async () => {
-    setSaving(true);
-    try {
-      await SaveSettings(
-        transcriptionMethod,
-        whisperBinaryPath || null,
-        whisperModelPath || null,
-        openaiApiKey || null
-      );
-      alert("Settings saved successfully!");
-    } catch (error) {
-      console.error("Failed to save settings:", error);
-      alert("Failed to save settings. Please try again.");
-    } finally {
-      setSaving(false);
-    }
+    saveSettingsMutation.mutate();
   };
 
   const handleSelectWhisperBinary = async () => {
@@ -246,11 +242,11 @@ const Settings = () => {
                   {microphonePermission !== 1 && (
                     <Button
                       onClick={handleRequestMicrophonePermission}
-                      disabled={checkingPermission}
+                      disabled={requestMicPermissionMutation.isPending}
                       variant="outline"
                       size="sm"
                     >
-                      {checkingPermission
+                      {requestMicPermissionMutation.isPending
                         ? "Checking..."
                         : "Request Permission"}
                     </Button>
@@ -470,8 +466,11 @@ const Settings = () => {
           )}
 
           <div className="flex justify-end pt-4 border-t">
-            <Button onClick={handleSaveSettings} disabled={saving}>
-              {saving ? "Saving..." : "Save Settings"}
+            <Button
+              onClick={handleSaveSettings}
+              disabled={saveSettingsMutation.isPending}
+            >
+              {saveSettingsMutation.isPending ? "Saving..." : "Save Settings"}
             </Button>
           </div>
         </div>

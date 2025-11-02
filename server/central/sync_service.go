@@ -48,6 +48,13 @@ type SyncStatus struct {
 	LastUpdated    int64 `json:"last_updated"`
 }
 
+type ImportSummary struct {
+	Boards         int `json:"boards"`
+	Columns        int `json:"columns"`
+	Cards          int `json:"cards"`
+	Transcriptions int `json:"transcriptions"`
+}
+
 var (
 	errUnsupportedTable     = errors.New("unsupported sync table")
 	errUnsupportedOperation = errors.New("unsupported sync operation")
@@ -96,8 +103,18 @@ func (s *SyncService) handleBoardOperation(ctx context.Context, userUUID uuid.UU
 		createdAt := selectTimestamp(payload.CreatedAt, op.CreatedAt)
 		updatedAt := selectTimestamp(payload.UpdatedAt, op.UpdatedAt)
 
-		err := s.queries.SyncUpsertBoard(ctx, centraldb.SyncUpsertBoardParams{
-			ID:   payload.ID,
+		boardID, err := uuid.Parse(payload.ID)
+		if err != nil {
+			return fmt.Errorf("unable to parse data type into uuid: %v", err)
+		}
+
+		id := pgtype.UUID{
+			Bytes: boardID,
+			Valid: true,
+		}
+
+		err = s.queries.SyncUpsertBoard(ctx, centraldb.SyncUpsertBoardParams{
+			ID:   id,
 			Name: payload.Name,
 			UserID: pgtype.UUID{
 				Bytes: userUUID,
@@ -117,9 +134,46 @@ func (s *SyncService) handleBoardOperation(ctx context.Context, userUUID uuid.UU
 			return fmt.Errorf("unable to upsert board: %v", err)
 		}
 
+		boardUUID, errr := uuid.Parse(payload.ID)
+		if errr != nil {
+			return fmt.Errorf("unable to convert board id to uuid: %v", err)
+		}
+
+		// TODO: would be best to use transactions to ensure atomicity between boards & board_memebers table
+
+		if op.OperationType == "insert" {
+			err = s.queries.InsertBoardMember(ctx, centraldb.InsertBoardMemberParams{
+				BoardID: pgtype.UUID{
+					Bytes: boardUUID,
+					Valid: true,
+				},
+				UserID: pgtype.UUID{
+					Bytes: userUUID,
+					Valid: true,
+				},
+				Role: pgtype.Text{
+					String: types.BoardOwnerRole.String(),
+					Valid:  true,
+				},
+			})
+
+			if err != nil {
+				return fmt.Errorf("unable to create board member: %v", err)
+			}
+		}
+
 	case "delete":
-		err := s.queries.SyncDeleteBoard(ctx, centraldb.SyncDeleteBoardParams{
-			ID: op.RecordID,
+		boardID, err := uuid.Parse(op.RecordID)
+		if err != nil {
+			return fmt.Errorf("unable to parse data type into uuid: %v", err)
+		}
+
+		id := pgtype.UUID{
+			Bytes: boardID,
+			Valid: true,
+		}
+		err = s.queries.SyncDeleteBoard(ctx, centraldb.SyncDeleteBoardParams{
+			ID: id,
 			UserID: pgtype.UUID{
 				Bytes: userUUID,
 				Valid: true,
@@ -176,9 +230,24 @@ func (s *SyncService) handleColumnOperation(ctx context.Context, userUUID uuid.U
 		createdAt := selectTimestamp(payload.CreatedAt, op.CreatedAt)
 		updatedAt := selectTimestamp(payload.UpdatedAt, op.UpdatedAt)
 
-		err := s.queries.SyncUpsertColumn(ctx, centraldb.SyncUpsertColumnParams{
+		boardID, err := uuid.Parse(payload.BoardID)
+		if err != nil {
+			return fmt.Errorf("unable to parse board id into uuid: %v", err)
+		}
+
+		err = s.ensureBoardAccess(ctx, boardID, userUUID)
+		if err != nil {
+			return err
+		}
+
+		id := pgtype.UUID{
+			Bytes: boardID,
+			Valid: true,
+		}
+
+		err = s.queries.SyncUpsertColumn(ctx, centraldb.SyncUpsertColumnParams{
 			ID:       payload.ID,
-			BoardID:  payload.BoardID,
+			BoardID:  id,
 			Name:     payload.Name,
 			Position: payload.Position,
 			CreatedAt: pgtype.Timestamptz{
@@ -243,6 +312,9 @@ func (s *SyncService) handleCardOperation(ctx context.Context, userUUID uuid.UUI
 			return err
 		}
 
+		b, _ := json.MarshalIndent(payload, "", " ")
+		fmt.Println(string(b))
+
 		cardID := payload.Card.ID
 		if cardID == "" {
 			cardID = op.RecordID
@@ -259,9 +331,20 @@ func (s *SyncService) handleCardOperation(ctx context.Context, userUUID uuid.UUI
 			return fmt.Errorf("card payload missing column id")
 		}
 
-		// if err := s.ensureColumnOwnership(ctx, columnID, userUUID); err != nil {
-		// 	return err
-		// }
+		column, err := s.queries.GetColumnByID(ctx, payload.Column.ID)
+		if err != nil {
+			return fmt.Errorf("card with column id (%s) doesnt exist: %v", payload.Column.ID, err)
+		}
+
+		boardID, err := uuid.FromBytes(column.BoardID.Bytes[:])
+		if err != nil {
+			return fmt.Errorf("unable to parse board id into uuid: %v", err)
+		}
+
+		err = s.ensureBoardAccess(ctx, boardID, userUUID)
+		if err != nil {
+			return err
+		}
 
 		createdAt := selectTimestamp(payload.Card.CreatedAt, op.CreatedAt)
 		updatedAt := selectTimestamp(payload.Card.UpdatedAt, op.UpdatedAt)
@@ -308,6 +391,9 @@ func (s *SyncService) handleCardOperation(ctx context.Context, userUUID uuid.UUI
 			return fmt.Errorf("unable to unmarhsal data: %v", err)
 		}
 
+		b, _ := json.MarshalIndent(payload, "", " ")
+		fmt.Println(string(b))
+
 		if payload.CardID == "" {
 			payload.CardID = op.RecordID
 		}
@@ -318,6 +404,21 @@ func (s *SyncService) handleCardOperation(ctx context.Context, userUUID uuid.UUI
 		// if err := s.ensureColumnOwnership(ctx, payload.NewColumn.ID, userUUID); err != nil {
 		// 	return err
 		// }
+
+		column, err := s.queries.GetColumnByID(ctx, payload.NewColumn.ID)
+		if err != nil {
+			return fmt.Errorf("card with column id (%s) doesnt exist: %v", payload.NewColumn.ID, err)
+		}
+
+		boardID, err := uuid.FromBytes(column.BoardID.Bytes[:])
+		if err != nil {
+			return fmt.Errorf("unable to parse board id into uuid: %v", err)
+		}
+
+		err = s.ensureBoardAccess(ctx, boardID, userUUID)
+		if err != nil {
+			return err
+		}
 
 		updatedAt := selectTimestamp(op.UpdatedAt, op.CreatedAt)
 
@@ -334,6 +435,7 @@ func (s *SyncService) handleCardOperation(ctx context.Context, userUUID uuid.UUI
 		if err != nil {
 			return err
 		}
+
 	default:
 		return fmt.Errorf("%w: %s on cards", errUnsupportedOperation, op.OperationType)
 	}
@@ -376,12 +478,20 @@ func (s *SyncService) handleTranscriptionOperation(ctx context.Context, userUUID
 			return fmt.Errorf("transcription payload missing identifiers")
 		}
 
+		boardID, err := uuid.Parse(payload.ID)
+		if err != nil {
+			return fmt.Errorf("unable to convert string to uuid: %v", err)
+		}
+
 		createdAt := selectTimestamp(payload.CreatedAt, op.CreatedAt)
 		updatedAt := selectTimestamp(payload.UpdatedAt, op.UpdatedAt)
 
-		err := s.queries.SyncUpsertTranscription(ctx, centraldb.SyncUpsertTranscriptionParams{
-			ID:            payload.ID,
-			BoardID:       payload.BoardID,
+		err = s.queries.SyncUpsertTranscription(ctx, centraldb.SyncUpsertTranscriptionParams{
+			ID: payload.ID,
+			BoardID: pgtype.UUID{
+				Bytes: boardID,
+				Valid: true,
+			},
 			Transcription: payload.Transcription,
 			RecordingPath: pgtype.Text{
 				String: payload.RecordingPath,
@@ -602,19 +712,28 @@ func (s *SyncService) getCloudStatus(ctx context.Context, userUUID uuid.UUID) (b
 	return status.Bool, nil
 }
 
-const layout = "2006-01-02 15:04:05"
-
 func (s *SyncService) upsertBoard(ctx context.Context, userUUID uuid.UUID, board boardPayload) error {
-	createdAt, err := time.Parse(layout, board.CreatedAt)
-	if err != nil {
-		return fmt.Errorf("unable to parse created_art into that layout: %v", err)
+	createdAt, ok := parseTimestamp(board.CreatedAt)
+	if !ok {
+		return fmt.Errorf("unable to parse board created_at value %q", board.CreatedAt)
 	}
-	updatedAt, err := time.Parse(layout, board.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("unable to parse updated_at into that layout: %v", err)
+	updatedAt, ok := parseTimestamp(board.UpdatedAt)
+	if !ok {
+		return fmt.Errorf("unable to parse board updated_at value %q", board.UpdatedAt)
 	}
-	err = s.queries.SyncUpsertBoard(ctx, centraldb.SyncUpsertBoardParams{
-		ID:   board.ID,
+
+	boardID, err := uuid.Parse(board.ID)
+	if err != nil {
+		return fmt.Errorf("unable to parse data type into uuid: %v", err)
+	}
+
+	id := pgtype.UUID{
+		Bytes: boardID,
+		Valid: true,
+	}
+
+	if err := s.queries.SyncUpsertBoard(ctx, centraldb.SyncUpsertBoardParams{
+		ID:   id,
 		Name: board.Name,
 		UserID: pgtype.UUID{
 			Bytes: userUUID,
@@ -628,27 +747,63 @@ func (s *SyncService) upsertBoard(ctx context.Context, userUUID uuid.UUID, board
 			Time:  updatedAt,
 			Valid: true,
 		},
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("unable to upsert board: %v", err)
+	}
+
+	boardUUID, err := uuid.Parse(board.ID)
+	if err != nil {
+		return fmt.Errorf("unable to parse board id into uuid: %v", err)
+	}
+
+	if err := s.queries.InsertBoardMember(ctx, centraldb.InsertBoardMemberParams{
+		BoardID: pgtype.UUID{
+			Bytes: boardUUID,
+			Valid: true,
+		},
+		UserID: pgtype.UUID{
+			Bytes: userUUID,
+			Valid: true,
+		},
+		Role: pgtype.Text{
+			String: types.BoardOwnerRole.String(),
+			Valid:  true,
+		},
+	}); err != nil {
+		return fmt.Errorf("unable to create board member: %v", err)
 	}
 
 	return nil
 }
 
 func (s *SyncService) upsertColumn(ctx context.Context, userUUID uuid.UUID, column columnPayload) error {
-	createdAt, err := time.Parse(layout, column.CreatedAt)
-	if err != nil {
-		return fmt.Errorf("unable to parse created_art into that layout: %v", err)
+	createdAt, ok := parseTimestamp(column.CreatedAt)
+	if !ok {
+		return fmt.Errorf("unable to parse column created_at value %q", column.CreatedAt)
 	}
-	updatedAt, err := time.Parse(layout, column.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("unable to parse updated_at into that layout: %v", err)
+	updatedAt, ok := parseTimestamp(column.UpdatedAt)
+	if !ok {
+		return fmt.Errorf("unable to parse column updated_at value %q", column.UpdatedAt)
 	}
 
-	err = s.queries.SyncUpsertColumn(ctx, centraldb.SyncUpsertColumnParams{
+	boardID, err := uuid.Parse(column.BoardID)
+	if err != nil {
+		return fmt.Errorf("unable to parse board id into uuid: %v", err)
+	}
+
+	// TODO: errors should be returned as a value so it can return different error codes
+	if err := s.ensureBoardAccess(ctx, boardID, userUUID); err != nil {
+		return err
+	}
+
+	id := pgtype.UUID{
+		Bytes: boardID,
+		Valid: true,
+	}
+
+	if err := s.queries.SyncUpsertColumn(ctx, centraldb.SyncUpsertColumnParams{
 		ID:       column.ID,
-		BoardID:  column.BoardID,
+		BoardID:  id,
 		Name:     column.Name,
 		Position: column.Position,
 		CreatedAt: pgtype.Timestamptz{
@@ -659,34 +814,55 @@ func (s *SyncService) upsertColumn(ctx context.Context, userUUID uuid.UUID, colu
 			Time:  updatedAt,
 			Valid: true,
 		},
-	})
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("unable to upsert column: %v", err)
 	}
 
 	return nil
 }
 
-func (s *SyncService) upsertCard(ctx context.Context, card cardPayload) error {
+func (s *SyncService) upsertCard(ctx context.Context, userUUID uuid.UUID, card cardPayload) error {
 	b, _ := json.MarshalIndent(card, "", " ")
 	fmt.Println(string(b))
-	createdAt, err := time.Parse(layout, card.CreatedAt)
-	if err != nil {
-		return fmt.Errorf("unable to parse created_art into that layout: %v", err)
+	createdAt, ok := parseTimestamp(card.CreatedAt)
+	if !ok {
+		return fmt.Errorf("unable to parse card created_at value %q", card.CreatedAt)
 	}
-	updatedAt, err := time.Parse(layout, card.UpdatedAt)
-	if err != nil {
-		return fmt.Errorf("unable to parse updated_at into that layout: %v", err)
+	updatedAt, ok := parseTimestamp(card.UpdatedAt)
+	if !ok {
+		return fmt.Errorf("unable to parse card updated_at value %q", card.UpdatedAt)
 	}
 
-	err = s.queries.SyncUpsertCard(ctx, centraldb.SyncUpsertCardParams{
+	column, err := s.queries.GetColumnByID(ctx, card.ColumnID)
+	if err != nil {
+		return fmt.Errorf("card with column id (%s) doesnt exist: %v", card.ColumnID, err)
+	}
+
+	boardID, err := uuid.FromBytes(column.BoardID.Bytes[:])
+	if err != nil {
+		return fmt.Errorf("unable to parse board id into uuid: %v", err)
+	}
+
+	if err := s.ensureBoardAccess(ctx, boardID, userUUID); err != nil {
+		return err
+	}
+
+	if err := s.queries.SyncUpsertCard(ctx, centraldb.SyncUpsertCardParams{
 		ID:       card.ID,
 		ColumnID: card.ColumnID,
 		Title:    card.Title,
-		Description: pgtype.Text{
-			String: card.Description,
-			Valid:  true,
-		},
+		Description: func() pgtype.Text {
+			if strings.TrimSpace(card.Description) == "" {
+				return pgtype.Text{}
+			}
+			return pgtype.Text{String: card.Description, Valid: true}
+		}(),
+		Attachments: func() pgtype.Text {
+			if strings.TrimSpace(card.Attachments) == "" {
+				return pgtype.Text{}
+			}
+			return pgtype.Text{String: card.Attachments, Valid: true}
+		}(),
 		CreatedAt: pgtype.Timestamptz{
 			Time:  createdAt,
 			Valid: true,
@@ -695,11 +871,67 @@ func (s *SyncService) upsertCard(ctx context.Context, card cardPayload) error {
 			Time:  updatedAt,
 			Valid: true,
 		},
-		// TODO: attachments isnt here yet
-	})
-
-	if err != nil {
+	}); err != nil {
 		return fmt.Errorf("unable to upsert card: %v", err)
+	}
+
+	return nil
+}
+
+func (s *SyncService) upsertTranscription(ctx context.Context, userUUID uuid.UUID, transcription transcriptionPayload) error {
+	createdAt, ok := parseTimestamp(transcription.CreatedAt)
+	if !ok {
+		return fmt.Errorf("unable to parse transcription created_at value %q", transcription.CreatedAt)
+	}
+	updatedAt, ok := parseTimestamp(transcription.UpdatedAt)
+	if !ok {
+		return fmt.Errorf("unable to parse transcription updated_at value %q", transcription.UpdatedAt)
+	}
+
+	boardID, err := uuid.Parse(transcription.BoardID)
+	if err != nil {
+		return fmt.Errorf("unable to parse board id into uuid: %w", err)
+	}
+
+	if err := s.ensureBoardAccess(ctx, boardID, userUUID); err != nil {
+		return err
+	}
+
+	recordingPath := pgtype.Text{}
+	if strings.TrimSpace(transcription.RecordingPath) != "" {
+		recordingPath = pgtype.Text{String: transcription.RecordingPath, Valid: true}
+	}
+
+	intent := pgtype.Text{}
+	if strings.TrimSpace(transcription.Intent) != "" {
+		intent = pgtype.Text{String: transcription.Intent, Valid: true}
+	}
+
+	assistantResponse := pgtype.Text{}
+	if strings.TrimSpace(transcription.AssistantResponse) != "" {
+		assistantResponse = pgtype.Text{String: transcription.AssistantResponse, Valid: true}
+	}
+
+	if err := s.queries.SyncUpsertTranscription(ctx, centraldb.SyncUpsertTranscriptionParams{
+		ID: transcription.ID,
+		BoardID: pgtype.UUID{
+			Bytes: boardID,
+			Valid: true,
+		},
+		Transcription:     transcription.Transcription,
+		RecordingPath:     recordingPath,
+		Intent:            intent,
+		AssistantResponse: assistantResponse,
+		CreatedAt: pgtype.Timestamptz{
+			Time:  createdAt,
+			Valid: true,
+		},
+		UpdatedAt: pgtype.Timestamptz{
+			Time:  updatedAt,
+			Valid: true,
+		},
+	}); err != nil {
+		return fmt.Errorf("unable to upsert transcription: %v", err)
 	}
 
 	return nil
@@ -733,6 +965,23 @@ func (s *SyncService) getSyncState(ctx context.Context, userUUID uuid.UUID, tabl
 	return resp, nil
 }
 
+// TODO: errors should be returned as a value so it can return different error codes
+func (s *SyncService) ensureBoardAccess(ctx context.Context, boardID, userID uuid.UUID) error {
+	hasAccess, err := s.queries.ValidateBoardAccess(ctx, centraldb.ValidateBoardAccessParams{
+		BoardID: pgtype.UUID{Bytes: boardID, Valid: true},
+		UserID:  pgtype.UUID{Bytes: userID, Valid: true},
+	})
+	if err != nil {
+		return fmt.Errorf("error validating board access: %v", err)
+	}
+
+	if !hasAccess {
+		return fmt.Errorf("user %s does not have access to board %s", userID, boardID)
+	}
+
+	return nil
+}
+
 func (s *SyncService) updateSyncState(ctx context.Context, userUUID uuid.UUID, payload types.SyncStatePayload) error {
 	err := s.queries.UpdateSyncState(ctx, centraldb.UpdateSyncStateParams{
 		UserID: pgtype.UUID{
@@ -751,6 +1000,259 @@ func (s *SyncService) updateSyncState(ctx context.Context, userUUID uuid.UUID, p
 	}
 
 	return nil
+}
+
+// These functions are not to be in sync service
+func (s *SyncService) inviteUserToBoard(ctx context.Context, userID uuid.UUID, payload boardMemberActionPayload) error {
+	boardID, err := uuid.Parse(payload.BoardID)
+	if err != nil {
+		return fmt.Errorf("unable to parse board id to uuid: %v", err)
+	}
+	err = s.ensureBoardOwner(ctx, boardID, userID)
+	if err != nil {
+		return err
+	}
+
+	user, err := s.queries.GetUserByEmail(ctx, payload.Email)
+	if err != nil {
+		return fmt.Errorf("unable to get user by email %v: %v", payload.Email, err.Error())
+	}
+
+	id := pgtype.UUID{
+		Bytes: boardID,
+		Valid: true,
+	}
+
+	_, err = s.queries.GetBoardByID(ctx, id)
+	if err != nil {
+		return fmt.Errorf("unable to get board with id %s: %v", payload.BoardID, err)
+	}
+
+	err = s.queries.InsertBoardMember(ctx, centraldb.InsertBoardMemberParams{
+		Role: pgtype.Text{
+			String: types.BoardMemberRole.String(),
+			Valid:  true,
+		},
+		UserID: user.ID,
+		BoardID: pgtype.UUID{
+			Bytes: boardID,
+			Valid: true,
+		},
+	})
+
+	if err != nil {
+		return fmt.Errorf("unable to invite member to board: %v", err)
+	}
+
+	return nil
+}
+
+func (s *SyncService) removeUserFromBoard(ctx context.Context, userUUID uuid.UUID, payload boardMemberActionPayload) error {
+	boardID, err := uuid.Parse(payload.BoardID)
+	if err != nil {
+		return fmt.Errorf("unable to parse board id to uuid: %v", err)
+	}
+
+	if err := s.ensureBoardOwner(ctx, boardID, userUUID); err != nil {
+		return err
+	}
+
+	userToRemoveID, err := uuid.Parse(payload.UserID)
+	if err != nil {
+		return err
+	}
+
+	targetUser, err := s.queries.GetUserByID(ctx, pgtype.UUID{
+		Bytes: userToRemoveID,
+		Valid: true,
+	})
+
+	if err != nil {
+		return fmt.Errorf("unable to get user by email %s: %v", payload.Email, err)
+	}
+
+	err = s.queries.RemoveBoardMember(ctx, centraldb.RemoveBoardMemberParams{
+		BoardID: pgtype.UUID{
+			Bytes: boardID,
+			Valid: true,
+		},
+		UserID: targetUser.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to remove user from board: %v", err)
+	}
+
+	return nil
+}
+
+func (s *SyncService) getBoardMembers(ctx context.Context, boardID, userId uuid.UUID) ([]types.BoardMember, error) {
+	if err := s.ensureBoardAccess(ctx, boardID, userId); err != nil {
+		return nil, err
+	}
+
+	members, err := s.queries.ListBoardMembers(ctx, pgtype.UUID{Bytes: boardID, Valid: true})
+	if err != nil {
+		return nil, err
+	}
+
+	boardMembers := make([]types.BoardMember, len(members))
+
+	//TODO: should include user email
+
+	for i, member := range members {
+		boardMembers[i] = types.BoardMember{
+			UserID:   member.UserID.String(),
+			Role:     member.Role.String,
+			JoinedAt: member.JoinedAt.Time.String(),
+			Email:    member.Email,
+		}
+	}
+
+	return boardMembers, nil
+
+}
+
+func (s *SyncService) getBoardMetadata(ctx context.Context, boardID, userID uuid.UUID) (*types.BoardMetadata, error) {
+	if err := s.ensureBoardAccess(ctx, boardID, userID); err != nil {
+		return nil, err
+	}
+
+	metadata, err := s.queries.GetBoardMetadata(ctx, pgtype.UUID{Bytes: boardID, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("unable to get board metadata: %v", err)
+	}
+
+	return &types.BoardMetadata{
+		ID:                  metadata.ID.String(),
+		Name:                metadata.Name,
+		CreatedAt:           metadata.CreatedAt.Time.String(),
+		UpdatedAt:           metadata.UpdatedAt.Time.String(),
+		ColumnsCount:        int(metadata.ColumnsCount),
+		CardsCount:          int(metadata.CardsCount),
+		TranscriptionsCount: int(metadata.TranscriptionsCount),
+	}, nil
+}
+
+func (s *SyncService) ensureBoardOwner(ctx context.Context, boardID, userID uuid.UUID) error {
+	isOwner, err := s.queries.EnsureBoardOwner(ctx, centraldb.EnsureBoardOwnerParams{
+		BoardID: pgtype.UUID{Bytes: boardID, Valid: true},
+		UserID:  pgtype.UUID{Bytes: userID, Valid: true},
+	})
+
+	if err != nil {
+		return fmt.Errorf("error checking board ownership: %v", err)
+	}
+
+	if !isOwner {
+		return fmt.Errorf("user %s is not the owner of board %s", userID, boardID)
+	}
+
+	return nil
+}
+
+func (s *SyncService) ExportAllData(ctx context.Context, userID uuid.UUID, boardID string) (*types.ExportedData, error) {
+
+	boardUUID, err := uuid.Parse(boardID)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse data type into uuid: %v", err)
+	}
+
+	id := pgtype.UUID{
+		Bytes: boardUUID,
+		Valid: true,
+	}
+
+	board, err := s.queries.GetBoardByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("unable to fetch board with id (%s): %v", boardID, err)
+	}
+
+	columns, err := s.queries.GetBoardColumns(ctx, centraldb.GetBoardColumnsParams{
+		BoardID: id,
+		UserID: pgtype.UUID{
+			Bytes: userID,
+			Valid: true,
+		},
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to fetch board columns with id (%s): %v", boardID, err)
+	}
+
+	exportedColumns := make([]types.ExportedColumn, len(columns))
+	for i, c := range columns {
+		exportedColumns[i] = types.ExportedColumn{
+			ID:        c.ID,
+			BoardID:   c.BoardID.String(),
+			Name:      c.Name,
+			Position:  int64(c.Position),
+			CreatedAt: c.CreatedAt.Time.String(),
+			UpdatedAt: c.UpdatedAt.Time.String(),
+		}
+	}
+
+	cards, err := s.queries.ListBoardsCards(ctx, centraldb.ListBoardsCardsParams{
+		UserID:  board.UserID,
+		BoardID: id,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to fetch board cards with id %s boards: %v", boardID, err)
+	}
+
+	exportedCards := make([]types.ExportedCard, len(cards))
+	for i, card := range cards {
+		exportedCards[i] = types.ExportedCard{
+			ID:          card.ID,
+			ColumnID:    card.ColumnID,
+			Title:       card.Title,
+			Description: card.Description.String,
+			Attachments: card.Attachments.String,
+			CreatedAt:   card.CreatedAt.Time.String(),
+			UpdatedAt:   card.UpdatedAt.Time.String(),
+		}
+	}
+
+	transcriptions, err := s.queries.ListBoardTranscriptions(ctx, centraldb.ListBoardTranscriptionsParams{
+		Limit:  1000,
+		Offset: 0,
+		ID:     id,
+		UserID: pgtype.UUID{
+			Bytes: userID,
+			Valid: true,
+		}})
+
+	if err != nil {
+		return nil, fmt.Errorf("error exporting transcriptions: %v", err)
+	}
+
+	exportedTranscriptions := make([]types.ExportedTranscription, len(transcriptions))
+	for i, t := range transcriptions {
+		exportedTranscriptions[i] = types.ExportedTranscription{
+			ID:                t.ID,
+			BoardID:           id.String(),
+			Transcription:     t.Transcription,
+			RecordingPath:     t.RecordingPath.String,
+			Intent:            t.Intent.String,
+			AssistantResponse: t.AssistantResponse.String,
+			CreatedAt:         t.CreatedAt.Time.String(),
+			UpdatedAt:         t.UpdatedAt.Time.String(),
+		}
+	}
+
+	exportedBoard := types.ExportedBoard{
+		ID:        board.ID.String(),
+		Name:      board.Name,
+		CreatedAt: board.CreatedAt.Time.String(),
+		UpdatedAt: board.UpdatedAt.Time.String(),
+	}
+
+	return &types.ExportedData{
+		Board:          exportedBoard,
+		Columns:        exportedColumns,
+		Cards:          exportedCards,
+		Transcriptions: exportedTranscriptions,
+	}, nil
 }
 
 func selectTimestamp(values ...string) time.Time {
@@ -780,23 +1282,6 @@ func parseTimestamp(value string) (time.Time, bool) {
 	}
 
 	return time.Time{}, false
-}
-
-func nullableString(value string) interface{} {
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	return value
-}
-
-func maxTime(values ...time.Time) time.Time {
-	latest := time.Time{}
-	for _, value := range values {
-		if value.After(latest) {
-			latest = value
-		}
-	}
-	return latest
 }
 
 type boardPayload struct {
@@ -856,4 +1341,10 @@ type transcriptionPayload struct {
 	AssistantResponse string `json:"assistant_response"`
 	CreatedAt         string `json:"created_at"`
 	UpdatedAt         string `json:"updated_at"`
+}
+
+type boardMemberActionPayload struct {
+	Email   string `json:"email"`
+	BoardID string `json:"board_id" validate:"required"`
+	UserID  string `json:"user_id"`
 }

@@ -463,13 +463,54 @@ func (q *Queries) GetTranscriptionByRecordingPath(ctx context.Context, arg GetTr
 	return i, err
 }
 
-const insertFullCardData = `-- name: InsertFullCardData :one
+const importBoard = `-- name: ImportBoard :one
+
+INSERT INTO boards (id, name, created_at, updated_at)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    name = excluded.name,
+    updated_at = excluded.updated_at
+RETURNING id, name, created_at, updated_at
+`
+
+type ImportBoardParams struct {
+	ID        string
+	Name      string
+	CreatedAt sql.NullString
+	UpdatedAt sql.NullString
+}
+
+// - The queries are for when downloading data ----
+func (q *Queries) ImportBoard(ctx context.Context, arg ImportBoardParams) (Board, error) {
+	row := q.db.QueryRowContext(ctx, importBoard,
+		arg.ID,
+		arg.Name,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const importCard = `-- name: ImportCard :one
 INSERT INTO cards (id, column_id, title, description, attachments, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    column_id = excluded.column_id,
+    title = excluded.title,
+    description = excluded.description,
+    attachments = excluded.attachments,
+    updated_at = excluded.updated_at
 RETURNING id, column_id, title, description, attachments, created_at, updated_at
 `
 
-type InsertFullCardDataParams struct {
+type ImportCardParams struct {
 	ID          string
 	ColumnID    string
 	Title       string
@@ -479,8 +520,8 @@ type InsertFullCardDataParams struct {
 	UpdatedAt   sql.NullString
 }
 
-func (q *Queries) InsertFullCardData(ctx context.Context, arg InsertFullCardDataParams) (Card, error) {
-	row := q.db.QueryRowContext(ctx, insertFullCardData,
+func (q *Queries) ImportCard(ctx context.Context, arg ImportCardParams) (Card, error) {
+	row := q.db.QueryRowContext(ctx, importCard,
 		arg.ID,
 		arg.ColumnID,
 		arg.Title,
@@ -502,14 +543,18 @@ func (q *Queries) InsertFullCardData(ctx context.Context, arg InsertFullCardData
 	return i, err
 }
 
-const insertFullColumnData = `-- name: InsertFullColumnData :one
-
+const importColumn = `-- name: ImportColumn :one
 INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    board_id = excluded.board_id,
+    name = excluded.name,
+    position = excluded.position,
+    updated_at = excluded.updated_at
 RETURNING id, board_id, name, position, created_at, updated_at
 `
 
-type InsertFullColumnDataParams struct {
+type ImportColumnParams struct {
 	ID        string
 	BoardID   string
 	Name      string
@@ -518,9 +563,8 @@ type InsertFullColumnDataParams struct {
 	UpdatedAt sql.NullString
 }
 
-// - The queries are for when downloading data ----
-func (q *Queries) InsertFullColumnData(ctx context.Context, arg InsertFullColumnDataParams) (Column, error) {
-	row := q.db.QueryRowContext(ctx, insertFullColumnData,
+func (q *Queries) ImportColumn(ctx context.Context, arg ImportColumnParams) (Column, error) {
+	row := q.db.QueryRowContext(ctx, importColumn,
 		arg.ID,
 		arg.BoardID,
 		arg.Name,
@@ -534,6 +578,55 @@ func (q *Queries) InsertFullColumnData(ctx context.Context, arg InsertFullColumn
 		&i.BoardID,
 		&i.Name,
 		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const importTranscription = `-- name: ImportTranscription :one
+INSERT INTO transcriptions (id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    board_id = excluded.board_id,
+    transcription = excluded.transcription,
+    recording_path = excluded.recording_path,
+    intent = excluded.intent,
+    assistant_response = excluded.assistant_response,
+    updated_at = excluded.updated_at
+RETURNING id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at
+`
+
+type ImportTranscriptionParams struct {
+	ID                string
+	BoardID           string
+	Transcription     string
+	RecordingPath     sql.NullString
+	Intent            sql.NullString
+	AssistantResponse sql.NullString
+	CreatedAt         sql.NullString
+	UpdatedAt         sql.NullString
+}
+
+func (q *Queries) ImportTranscription(ctx context.Context, arg ImportTranscriptionParams) (Transcription, error) {
+	row := q.db.QueryRowContext(ctx, importTranscription,
+		arg.ID,
+		arg.BoardID,
+		arg.Transcription,
+		arg.RecordingPath,
+		arg.Intent,
+		arg.AssistantResponse,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i Transcription
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Transcription,
+		&i.RecordingPath,
+		&i.Intent,
+		&i.AssistantResponse,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

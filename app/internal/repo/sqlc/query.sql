@@ -233,18 +233,50 @@ WHERE table_name = ?
 LIMIT 1;
 
 -- name: UpdateSyncState :exec
+-- name: UpdateSyncState :exec
 UPDATE sync_state
 SET last_synced_at = ?, last_synced_op_id = ?
 WHERE table_name = ?;
 
 --- The queries are for when downloading data ----
 
--- name: InsertFullColumnData :one
-INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?)
+-- name: ImportBoard :one
+INSERT INTO boards (id, name, created_at, updated_at)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    name = excluded.name,
+    updated_at = excluded.updated_at
 RETURNING *;
 
--- name: InsertFullCardData :one
+-- name: ImportColumn :one
+INSERT INTO columns (id, board_id, name, position, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    board_id = excluded.board_id,
+    name = excluded.name,
+    position = excluded.position,
+    updated_at = excluded.updated_at
+RETURNING *;
+
+-- name: ImportCard :one
 INSERT INTO cards (id, column_id, title, description, attachments, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    column_id = excluded.column_id,
+    title = excluded.title,
+    description = excluded.description,
+    attachments = excluded.attachments,
+    updated_at = excluded.updated_at
+RETURNING *;
+
+-- name: ImportTranscription :one
+INSERT INTO transcriptions (id, board_id, transcription, recording_path, intent, assistant_response, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    board_id = excluded.board_id,
+    transcription = excluded.transcription,
+    recording_path = excluded.recording_path,
+    intent = excluded.intent,
+    assistant_response = excluded.assistant_response,
+    updated_at = excluded.updated_at
 RETURNING *;

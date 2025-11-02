@@ -88,6 +88,7 @@ func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
 		sync.POST("/init", h.initSyncState)
 		sync.POST("/upload", h.uploadData)
 		sync.GET("/pull/:table", h.pullData)
+		sync.POST("/export", h.exportData)
 
 		sync.POST("/init/cloud", h.initCloud)
 		sync.GET("/cloud/status", h.getCloudStatus)
@@ -98,6 +99,15 @@ func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
 
 		sync.POST("/state", h.updateSyncState)
 		sync.GET("/state/:table", h.getSyncState)
+	}
+
+	boardRts := router.Group("/board")
+	boardRts.Use(authMiddleware(authService))
+	{
+		boardRts.POST("/invite", h.inviteUser)
+		boardRts.DELETE("/remove", h.removeUserFromBoard)
+		boardRts.GET("/:boardId/members", h.getBoardMembers)
+		boardRts.GET("/:boardId/metadata", h.getBoardMetadata)
 	}
 
 	return router
@@ -368,6 +378,41 @@ func validateToken(tokenString string, jwtSecret []byte) (string, error) {
 	return claims.Subject, nil
 }
 
+func (h *handler) exportData(c *gin.Context) {
+
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+
+	boardID := c.Param("boardId")
+	if boardID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "board id is required"})
+		return
+	}
+
+	var payload types.SyncPayload
+	if err := c.BindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid payload"})
+		return
+	}
+
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "unable to parse id: " + err.Error()})
+		return
+	}
+
+	data, err := h.syncService.ExportAllData(c.Request.Context(), uid, boardID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "import successful", "data": data})
+}
+
 func (h *handler) uploadData(c *gin.Context) {
 	if h.syncService == nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "sync service unavailable"})
@@ -613,7 +658,13 @@ func (h *handler) upsertCard(c *gin.Context) {
 		return
 	}
 
-	err = h.syncService.upsertCard(c, payload)
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "couldnt parse user id to uuid: " + err.Error()})
+		return
+	}
+
+	err = h.syncService.upsertCard(c, id, payload)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -672,4 +723,145 @@ func (h *handler) pullData(c *gin.Context) {
 		"count":      len(operations),
 		"operations": operations,
 	})
+}
+
+// Implement notification service for things like this
+
+func (h *handler) inviteUser(c *gin.Context) {
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var payload boardMemberActionPayload
+
+	if err := c.BindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid JSON body"})
+		return
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "missing fields: " + err.Error()})
+		return
+	}
+
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "couldnt parse user id to uuid: " + err.Error()})
+		return
+	}
+
+	err = h.syncService.inviteUserToBoard(c, id, payload)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "successful"})
+}
+
+func (h *handler) removeUserFromBoard(c *gin.Context) {
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	var payload boardMemberActionPayload
+
+	if err := c.BindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid JSON body"})
+		return
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "missing fields: " + err.Error()})
+		return
+	}
+
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "couldnt parse user id to uuid: " + err.Error()})
+		return
+	}
+
+	err = h.syncService.removeUserFromBoard(c, id, payload)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "successful"})
+
+}
+
+func (h *handler) getBoardMembers(c *gin.Context) {
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	boardID := c.Param("boardId")
+	if boardID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "board id is required"})
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "couldnt parse user id to uuid: " + err.Error()})
+		return
+	}
+
+	boardUUID, err := uuid.Parse(boardID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "couldnt parse board id to uuid: " + err.Error()})
+		return
+	}
+
+	boardMembers, err := h.syncService.getBoardMembers(c, boardUUID, userUUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "successful", "data": boardMembers})
+
+}
+
+func (h *handler) getBoardMetadata(c *gin.Context) {
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+
+	boardID := c.Param("boardId")
+	if boardID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "board id is required"})
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid user id: " + err.Error()})
+		return
+	}
+
+	boardUUID, err := uuid.Parse(boardID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid board id: " + err.Error()})
+		return
+	}
+
+	metadata, err := h.syncService.getBoardMetadata(c, boardUUID, userUUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "successful", "data": metadata})
 }

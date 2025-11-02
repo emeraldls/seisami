@@ -9,11 +9,18 @@ import (
 )
 
 type Board struct {
-	ID        string
+	ID        pgtype.UUID
 	UserID    pgtype.UUID
 	Name      string
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+}
+
+type BoardMember struct {
+	BoardID  pgtype.UUID
+	UserID   pgtype.UUID
+	Role     pgtype.Text
+	JoinedAt pgtype.Timestamptz
 }
 
 type Card struct {
@@ -28,7 +35,7 @@ type Card struct {
 
 type Column struct {
 	ID        string
-	BoardID   string
+	BoardID   pgtype.UUID
 	Name      string
 	Position  int32
 	CreatedAt pgtype.Timestamptz
@@ -56,15 +63,15 @@ type Operation struct {
 }
 
 type SyncState struct {
+	UserID         pgtype.UUID
 	TableName      string
 	LastSyncedAt   int64
 	LastSyncedOpID pgtype.Text
-	UserID         pgtype.UUID
 }
 
 type Transcription struct {
 	ID                string
-	BoardID           string
+	BoardID           pgtype.UUID
 	Transcription     string
 	RecordingPath     pgtype.Text
 	Intent            pgtype.Text

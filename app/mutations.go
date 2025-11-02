@@ -10,7 +10,21 @@ import (
 )
 
 func (a *App) handleMutations() {
-	const layout = "2006-01-02 15:04:05"
+
+	runtime.EventsOn(a.ctx, "auth:set_token", func(optionalData ...any) {
+		if len(optionalData) > 0 {
+			if token, ok := optionalData[0].(string); ok && token != "" {
+				fmt.Printf("Received auth token, setting up cloud authentication\n")
+				if a.cloud != nil {
+					a.cloud.UpdateSessionToken(token)
+				}
+			} else {
+				fmt.Println("Received event 'auth:set_token' with invalid token")
+			}
+		} else {
+			fmt.Println("Received event 'auth:set_token' with no data")
+		}
+	})
 
 	runtime.EventsOn(a.ctx, "board:id", func(optionalData ...any) {
 
@@ -62,7 +76,7 @@ func (a *App) handleMutations() {
 				}
 			}(a.ctx, columnData)
 
-			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data}
+			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data, Type: "column:data"}
 
 			err = a.sendCollabCommand(msg)
 			if err != nil {
@@ -99,7 +113,7 @@ func (a *App) handleMutations() {
 				}
 			}(a.ctx, data, columnData)
 
-			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data}
+			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data, Type: "column:create"}
 			if err := a.sendCollabCommand(msg); err != nil {
 				fmt.Printf("unable to broadcast the command: %v\n", err)
 				return
@@ -133,7 +147,7 @@ func (a *App) handleMutations() {
 				}
 			}(a.ctx, data, columnData)
 
-			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data}
+			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data, Type: "column:delete"}
 			if err := a.sendCollabCommand(msg); err != nil {
 				fmt.Printf("unable to broadcast the command: %v\n", err)
 				return
@@ -178,7 +192,7 @@ func (a *App) handleMutations() {
 				}
 			}(a.ctx, cardData)
 
-			msg := types.Message{Action: "broadcast", RoomID: cardData.Column.RoomID, Data: data}
+			msg := types.Message{Action: "broadcast", RoomID: cardData.Column.RoomID, Data: data, Type: "card:data"}
 
 			err := a.sendCollabCommand(msg)
 			if err != nil {
@@ -216,7 +230,7 @@ func (a *App) handleMutations() {
 				}
 			}(a.ctx, data, cardData)
 
-			msg := types.Message{Action: "broadcast", RoomID: cardData.Column.RoomID, Data: data}
+			msg := types.Message{Action: "broadcast", RoomID: cardData.Column.RoomID, Data: data, Type: "card:create"}
 			if err := a.sendCollabCommand(msg); err != nil {
 				fmt.Printf("unable to broadcast the command: %v\n", err)
 				return
@@ -251,7 +265,7 @@ func (a *App) handleMutations() {
 				}
 			}(a.ctx, data, cardData)
 
-			msg := types.Message{Action: "broadcast", RoomID: cardData.RoomID, Data: data}
+			msg := types.Message{Action: "broadcast", RoomID: cardData.RoomID, Data: data, Type: "card:delete"}
 			if err := a.sendCollabCommand(msg); err != nil {
 				fmt.Printf("unable to broadcast the command: %v\n", err)
 				return
@@ -296,7 +310,7 @@ func (a *App) handleMutations() {
 				}
 			}(a.ctx, cardColumnData)
 
-			msg := types.Message{Action: "broadcast", RoomID: cardColumnData.RoomID, Data: data}
+			msg := types.Message{Action: "broadcast", RoomID: cardColumnData.RoomID, Data: data, Type: "card:column"}
 
 			err := a.sendCollabCommand(msg)
 			if err != nil {

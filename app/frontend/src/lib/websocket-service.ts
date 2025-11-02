@@ -17,7 +17,7 @@ export type CollabResponse =
       roomId: string;
     }
   | {
-      type: "message";
+      type: string;
       from: string;
       data: string;
     }
