@@ -23,9 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/emeraldls/portaudio"
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
+	"github.com/gordonklaus/portaudio"
 	"github.com/gorilla/websocket"
 	"github.com/sashabaranov/go-openai"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -80,7 +80,7 @@ func NewApp() *App {
 		stopChan:         make(chan bool),
 		repository:       repo,
 		collabServerAddr: addr,
-		cloudApiUrl:      CLOUD_API_URL,
+		cloudApiUrl:      getCloudApiUrl(),
 	}
 }
 

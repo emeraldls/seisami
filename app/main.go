@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
-	"log"
 	"net/url"
+	"os"
+	"os/exec"
 	"runtime"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/wailsapp/wails/v2"
@@ -21,33 +24,35 @@ var assets embed.FS
 
 func main() {
 	_ = godotenv.Load(".env")
-	app := NewApp()
 
+	app := NewApp()
 	var macOptions *mac.Options
 	var windowsOptions *windows.Options
+	var deepLink string
 
 	switch runtime.GOOS {
 	case "darwin":
 		macOptions = &mac.Options{
 			OnUrlOpen: func(url string) {
 				handleDeepLink(app, url)
-
-				wailsRuntime.EventsEmit(app.ctx, "cloud:setup_started")
-				go func() {
-					err := app.bootstrapCloud()
-					if err != nil {
-						wailsRuntime.EventsEmit(app.ctx, "cloud:setup_failed", err.Error())
-						return
-					}
-					wailsRuntime.EventsEmit(app.ctx, "cloud:setup_success")
-				}()
 			},
 		}
 
 	case "windows":
+		if len(os.Args) > 1 && strings.HasPrefix(os.Args[1], "seisami://") {
+			deepLink = os.Args[1]
+		}
+
+		exePath, _ := os.Executable()
+		if err := registerWindowsProtocol("seisami", exePath); err != nil {
+			fmt.Println("Failed to register protocol:", err)
+		}
+
+		windowsOptions = &windows.Options{
+			WebviewUserDataPath: "seisami_userdata",
+		}
 	}
 
-	// Create application with options
 	err := wails.Run(&options.App{
 		Title:     "seisami",
 		MinWidth:  1024,
@@ -56,7 +61,13 @@ func main() {
 			Assets: assets,
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
-		OnStartup:        app.startup,
+		OnStartup: func(ctx context.Context) {
+			app.startup(ctx)
+
+			if deepLink != "" {
+				go handleDeepLink(app, deepLink)
+			}
+		},
 		Bind: []interface{}{
 			app,
 		},
@@ -69,7 +80,9 @@ func main() {
 	}
 }
 
-// TODO: update this function to return error
+// -------------------------
+// Deep link handler
+// -------------------------
 func handleDeepLink(app *App, deepLink string) {
 	if app == nil {
 		fmt.Println("App instance not ready for deep link handling")
@@ -80,6 +93,7 @@ func handleDeepLink(app *App, deepLink string) {
 	if ctx == nil {
 		fmt.Println("App context not ready; deferring event emission")
 	}
+
 	u, err := url.Parse(deepLink)
 	if err != nil {
 		fmt.Println("Failed to parse deep link:", err)
@@ -88,6 +102,7 @@ func handleDeepLink(app *App, deepLink string) {
 
 	query := u.Query()
 
+	// Board import route
 	if u.Host == "board" && u.Path == "/import" {
 		boardID := query.Get("board_id")
 		if boardID == "" {
@@ -106,6 +121,7 @@ func handleDeepLink(app *App, deepLink string) {
 		return
 	}
 
+	// Auth callback
 	if u.Host != "auth" || u.Path != "/callback" {
 		return
 	}
@@ -121,13 +137,19 @@ func handleDeepLink(app *App, deepLink string) {
 
 	fmt.Println("Auth callback received")
 	app.SetLoginToken(token)
-	err = app.cloud.InitCloud()
 
-	if err != nil {
-		log.Println(err)
-	}
-
+	// same flow for both macOS + Windows
 	if ctx != nil {
+		wailsRuntime.EventsEmit(ctx, "cloud:setup_started")
+
+		go func() {
+			if err := app.bootstrapCloud(); err != nil {
+				wailsRuntime.EventsEmit(ctx, "cloud:setup_failed", err.Error())
+				return
+			}
+			wailsRuntime.EventsEmit(ctx, "cloud:setup_success")
+		}()
+
 		go func() {
 			wailsRuntime.EventsEmit(ctx, "auth:desktop_callback", map[string]string{
 				"token": token,
@@ -136,4 +158,28 @@ func handleDeepLink(app *App, deepLink string) {
 			})
 		}()
 	}
+}
+
+// -------------------------
+// Windows protocol registration
+// -------------------------
+func registerWindowsProtocol(appName, exePath string) error {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+
+	// seisami:// protocol registration
+	cmd := exec.Command("reg", "add", "HKEY_CLASSES_ROOT\\"+appName, "/ve", "/d", "URL:"+strings.Title(appName)+" Protocol", "/f")
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	cmd = exec.Command("reg", "add", "HKEY_CLASSES_ROOT\\"+appName, "/v", "URL Protocol", "/d", "", "/f")
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	cmd = exec.Command("reg", "add", "HKEY_CLASSES_ROOT\\"+appName+"\\shell\\open\\command", "/ve",
+		"/d", fmt.Sprintf("\"%s\" \"%%1\"", exePath), "/f")
+	return cmd.Run()
 }
