@@ -296,3 +296,34 @@ func (cf *cloudFuncs) InitCloud() error {
 
 	return nil
 }
+
+func (cf *cloudFuncs) FetchAppVersion() (types.AppVersion, error) {
+	status, body, err := cf.doJSONRequest("GET", "/updates/latest", nil)
+	if err != nil {
+		return types.AppVersion{}, err
+	}
+
+	var httpResp HttpResponse
+
+	if err = json.Unmarshal(body, &httpResp); err != nil {
+		return types.AppVersion{}, fmt.Errorf("unable to unmarshal body: %v", err)
+	}
+
+	if status != http.StatusOK && status != http.StatusCreated {
+		return types.AppVersion{}, fmt.Errorf("sync api returned status %d: %s", status, string(body))
+	}
+
+	dataBytes, err := json.Marshal(httpResp.Data)
+	if err != nil {
+		return types.AppVersion{}, fmt.Errorf("unable to re-marshal data: %w", err)
+	}
+
+	var data types.AppVersion
+
+	err = json.Unmarshal(dataBytes, &data)
+	if err != nil {
+		return types.AppVersion{}, err
+	}
+
+	return data, nil
+}

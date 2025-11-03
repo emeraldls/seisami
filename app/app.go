@@ -93,8 +93,6 @@ func (a *App) isAuthenticated() bool {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.action = actions.NewAction(ctx, a.repository)
-	// loginToken will be set by the frontend via SetLoginToken when it initializes
-	a.loginToken = ""
 
 	cloud := cloud.NewCloudFuncs(a.repository, a.loginToken, a.ctx, a.cloudApiUrl)
 	a.cloud = cloud
@@ -924,3 +922,8 @@ func (a *App) transcribeWithCloud(filePath string) (string, error) {
 	// for now, fall back to local transcription using env API key or current method
 	return a.transcribeLocally(filePath)
 }
+
+// func (a *App) fetchAppVersion() (types.AppVersion, error) {
+// 	client := http.Client{Timeout: 60 * time.Second}
+
+// }

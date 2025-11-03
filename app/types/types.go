@@ -186,3 +186,10 @@ type ImportUserBoardData struct {
 	Cards          []ExportedCard          `json:"cards"`
 	Transcriptions []ExportedTranscription `json:"transcriptions"`
 }
+
+type AppVersion struct {
+	Version string `json:"version"`
+	Notes   string `json:"notes"`
+	URL     string `json:"url"`
+	Sha256  string `json:"sha256"`
+}

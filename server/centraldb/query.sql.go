@@ -40,6 +40,38 @@ func (q *Queries) ConsumeDesktopLoginCode(ctx context.Context, arg ConsumeDeskto
 	return i, err
 }
 
+const createAppVersion = `-- name: CreateAppVersion :one
+INSERT INTO app_versions (version, url, notes, sha256)
+VALUES ($1, $2, $3, $4)
+RETURNING id, version, url, notes, sha256, created_at
+`
+
+type CreateAppVersionParams struct {
+	Version string
+	Url     string
+	Notes   pgtype.Text
+	Sha256  pgtype.Text
+}
+
+func (q *Queries) CreateAppVersion(ctx context.Context, arg CreateAppVersionParams) (AppVersion, error) {
+	row := q.db.QueryRow(ctx, createAppVersion,
+		arg.Version,
+		arg.Url,
+		arg.Notes,
+		arg.Sha256,
+	)
+	var i AppVersion
+	err := row.Scan(
+		&i.ID,
+		&i.Version,
+		&i.Url,
+		&i.Notes,
+		&i.Sha256,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createBoard = `-- name: CreateBoard :one
 
 INSERT INTO boards (id, user_id, name, created_at, updated_at)
@@ -696,6 +728,27 @@ func (q *Queries) GetDesktopLoginCode(ctx context.Context, code string) (Desktop
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.UsedAt,
+	)
+	return i, err
+}
+
+const getLatestAppVersion = `-- name: GetLatestAppVersion :one
+SELECT id, version, url, notes, sha256, created_at
+FROM app_versions
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+func (q *Queries) GetLatestAppVersion(ctx context.Context) (AppVersion, error) {
+	row := q.db.QueryRow(ctx, getLatestAppVersion)
+	var i AppVersion
+	err := row.Scan(
+		&i.ID,
+		&i.Version,
+		&i.Url,
+		&i.Notes,
+		&i.Sha256,
+		&i.CreatedAt,
 	)
 	return i, err
 }

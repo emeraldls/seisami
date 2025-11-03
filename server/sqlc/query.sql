@@ -373,3 +373,13 @@ SELECT
 FROM boards b
 WHERE b.id = $1;
 
+-- name: CreateAppVersion :one
+INSERT INTO app_versions (version, url, notes, sha256)
+VALUES ($1, $2, $3, $4)
+RETURNING *;
+
+-- name: GetLatestAppVersion :one
+SELECT *
+FROM app_versions
+ORDER BY created_at DESC
+LIMIT 1;

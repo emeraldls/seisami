@@ -140,3 +140,9 @@ type BoardMetadata struct {
 	CardsCount          int    `json:"cards_count"`
 	TranscriptionsCount int    `json:"transcriptions_count"`
 }
+type AppVersion struct {
+	Version string `json:"version"`
+	Notes   string `json:"notes"`
+	URL     string `json:"url"`
+	Sha256  string `json:"sha256"`
+}

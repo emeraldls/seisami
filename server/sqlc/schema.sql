@@ -97,3 +97,12 @@ CREATE TABLE IF NOT EXISTS board_members (
   joined_at TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (board_id, user_id)
 );
+
+CREATE TABLE IF NOT EXISTS app_versions (
+  id SERIAL PRIMARY KEY,
+  version TEXT UNIQUE NOT NULL,
+  url TEXT NOT NULL,
+  notes TEXT,
+  sha256 TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);

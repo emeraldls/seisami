@@ -5,9 +5,13 @@ package central
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"seisami/server/centraldb"
 	"seisami/server/types"
 	"strconv"
@@ -1253,6 +1257,68 @@ func (s *SyncService) ExportAllData(ctx context.Context, userID uuid.UUID, board
 		Cards:          exportedCards,
 		Transcriptions: exportedTranscriptions,
 	}, nil
+}
+
+func (s *SyncService) getAppLatestVersion(ctx context.Context) (types.AppVersion, error) {
+	version, err := s.queries.GetLatestAppVersion(ctx)
+	if err != nil {
+		return types.AppVersion{}, fmt.Errorf("unable to get app version: %v", err)
+	}
+
+	appVersion := types.AppVersion{
+		Version: version.Version,
+		Notes:   version.Notes.String,
+		URL:     version.Url,
+		Sha256:  version.Sha256.String,
+	}
+
+	return appVersion, nil
+}
+
+func (s *SyncService) createAppNewVersion(ctx context.Context, releaseUrl string) error {
+	// eg url :// https://github.com/emeraldls/seisami/releases/download/test-build6/Seisami-test-build6-macos.zip
+	// download build
+
+	f, err := os.Create("release.zip")
+	if err != nil {
+		return fmt.Errorf("unable to create file: %v", err)
+	}
+
+	resp, err := http.Get(releaseUrl)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	_, err = io.Copy(f, resp.Body)
+
+	if err != nil {
+		return err
+	}
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, f); err != nil {
+		return err
+	}
+
+	return nil
+
+	// hash := hasher.Sum(nil)
+	// hex := hex.EncodeToString(hash[:])
+
+	// 	v, err := s.queries.CreateAppVersion(ctx, centraldb.CreateAppVersionParams{
+	//     Version: "1.0.5",
+	//     URL: releaseURL,
+	//     Notes: "Auto-uploaded from build pipeline",
+	//     Sha256: hashHex,
+	// })
+
+	// compute sha456
 }
 
 func selectTimestamp(values ...string) time.Time {

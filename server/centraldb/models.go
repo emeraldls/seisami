@@ -8,6 +8,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AppVersion struct {
+	ID        int32
+	Version   string
+	Url       string
+	Notes     pgtype.Text
+	Sha256    pgtype.Text
+	CreatedAt pgtype.Timestamptz
+}
+
 type Board struct {
 	ID        pgtype.UUID
 	UserID    pgtype.UUID
