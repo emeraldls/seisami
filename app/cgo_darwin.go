@@ -1,13 +1,4 @@
-// LEGACY: This file is kept for reference only.
-// Platform-specific code has been moved to:
-// - cgo_darwin.go (for macOS)
-// - cgo_windows.go (for Windows)
-// - platform_darwin.go (for macOS platform init)
-// - platform_windows.go (for Windows platform init)
-//
-// Build tags ensure only the correct files are compiled for each platform.
-
-//go:build ignore
+//go:build darwin
 
 package main
 
@@ -33,15 +24,17 @@ package main
 */
 import "C"
 
-func isFnPressed() bool {
+// Platform-specific implementations for macOS
+
+func isHotkeyPressed() bool {
 	return C.fn_pressed != 0
 }
 
-func startListener() {
+func startHotkeyListener() {
 	C.start_listener()
 }
 
-func PlaySound() {
+func playRecordingSound() {
 	C.PlayStartRecordingSound()
 }
 
@@ -80,3 +73,10 @@ func requestAccessibilityPermission() {
 func openAccessibilitySettings() {
 	C.open_accessibility_settings()
 }
+
+// Platform-specific constants
+const (
+	platformName              = "macOS"
+	requiresAccessibilityPerm = true
+	hotkeyName                = "Fn Key"
+)

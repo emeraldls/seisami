@@ -84,11 +84,17 @@ func NewApp() *App {
 	}
 }
 
+func (a *App) isAuthenticated() bool {
+	return strings.TrimSpace(a.loginToken) != ""
+}
+
 // startup is called when the app starts. The context is saved
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.action = actions.NewAction(ctx, a.repository)
+	// loginToken will be set by the frontend via SetLoginToken when it initializes
+	a.loginToken = ""
 
 	cloud := cloud.NewCloudFuncs(a.repository, a.loginToken, a.ctx, a.cloudApiUrl)
 	a.cloud = cloud
@@ -99,6 +105,9 @@ func (a *App) startup(ctx context.Context) {
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		for range ticker.C {
+			if !a.isAuthenticated() {
+				continue
+			}
 			err := syncEngine.SyncData(types.BoardTable)
 			if err != nil {
 				fmt.Printf("unable to sync boardss table: %v\n", err)
@@ -120,8 +129,9 @@ func (a *App) startup(ctx context.Context) {
 	}()
 
 	go a.handleMutations()
-	go startListener()
-	go a.handleFnKeyPress()
+
+	// Platform-specific initialization (handles hotkey listener setup)
+	a.initPlatformSpecific()
 }
 
 // Greet returns a greeting for the given name
@@ -245,6 +255,11 @@ func (a *App) SetLoginToken(token string) {
 func (a *App) ClearLoginToken() {
 	a.loginToken = ""
 	a.cloud.UpdateSessionToken("")
+
+	a.collabMu.Lock()
+	a.resetCollabConnectionLocked()
+	a.collabRoomId = ""
+	a.collabMu.Unlock()
 }
 
 func (a *App) ImportNewBoard(boardID string) error {
@@ -259,6 +274,10 @@ func (a *App) GetLoginToken() string {
 func (a *App) ensureCollabConnectionLocked() error {
 	if a.collabConn != nil {
 		return nil
+	}
+
+	if !a.isAuthenticated() {
+		return fmt.Errorf("user not authenticated")
 	}
 
 	addr := a.collabServerAddr
@@ -305,6 +324,10 @@ func (a *App) sendCollabCommand(msg types.Message) error {
 
 	a.collabMu.Lock()
 	defer a.collabMu.Unlock()
+
+	if !a.isAuthenticated() {
+		return fmt.Errorf("user not authenticated")
+	}
 
 	if err := a.ensureCollabConnectionLocked(); err != nil {
 		return err
@@ -389,6 +412,10 @@ func (a *App) sendCollabCommandAsync(msg types.Message) error {
 	a.collabMu.Lock()
 	defer a.collabMu.Unlock()
 
+	if !a.isAuthenticated() {
+		return fmt.Errorf("user not authenticated")
+	}
+
 	if err := a.ensureCollabConnectionLocked(); err != nil {
 		return err
 	}
@@ -440,22 +467,25 @@ func (a *App) GetCollaborationRoomId() string {
 	return a.collabRoomId
 }
 
-func (a *App) handleFnKeyPress() {
-	fnPressed := false
+func (a *App) handleHotkeyPress() {
+	hotkeyPressed := false
 
-	// Check accessibility permissions once at startup
-	accessibilityStatus := checkAccessibilityPermission()
-	if accessibilityStatus != 1 {
-		fmt.Println("Accessibility permissions not granted - FN key monitoring disabled")
-		runtime.EventsEmit(a.ctx, "accessibility:permission_denied", "Accessibility permissions are required for FN key monitoring. Please grant them in System Settings.")
-		return
+	// Check accessibility permissions if required by platform
+	if requiresAccessibilityPerm {
+		accessibilityStatus := checkAccessibilityPermission()
+		if accessibilityStatus != 1 {
+			fmt.Printf("Accessibility permissions not granted - %s monitoring disabled\n", hotkeyName)
+			runtime.EventsEmit(a.ctx, "accessibility:permission_denied",
+				fmt.Sprintf("Accessibility permissions are required for %s monitoring. Please grant them in System Settings.", hotkeyName))
+			return
+		}
 	}
 
 	for {
-		if isFnPressed() {
-			if !fnPressed {
-				fnPressed = true
-				fmt.Println("FN key pressed, checking permissions and starting recording")
+		if isHotkeyPressed() {
+			if !hotkeyPressed {
+				hotkeyPressed = true
+				fmt.Printf("%s pressed, checking permissions and starting recording\n", hotkeyName)
 
 				permissionStatus := checkMicrophonePermission()
 				switch permissionStatus {
@@ -473,13 +503,13 @@ func (a *App) handleFnKeyPress() {
 					fmt.Println("Microphone permission not determined - requesting permission")
 					runtime.EventsEmit(a.ctx, "microphone:requesting_permission", "Microphone permission required. Please grant access when prompted.")
 
-					// Request permission asynchronously but don't block the FN key handler
+					// Request permission asynchronously but don't block the hotkey handler
 					go func() {
 						if requestMicrophonePermissionSync() {
-							fmt.Println("Microphone permission granted via FN key request")
-							runtime.EventsEmit(a.ctx, "microphone:permission_granted", "Microphone permission granted. You can now press FN to record.")
+							fmt.Println("Microphone permission granted via hotkey request")
+							runtime.EventsEmit(a.ctx, "microphone:permission_granted", "Microphone permission granted. You can now press the hotkey to record.")
 						} else {
-							fmt.Println("Microphone permission denied via FN key request")
+							fmt.Println("Microphone permission denied via hotkey request")
 							runtime.EventsEmit(a.ctx, "microphone:permission_denied", "Microphone permission was denied. Please grant permission in System Settings.")
 							openMicrophoneSettings()
 						}
@@ -487,9 +517,9 @@ func (a *App) handleFnKeyPress() {
 				}
 			}
 		} else {
-			if fnPressed {
-				fnPressed = false
-				fmt.Println("FN key released, stopping recording")
+			if hotkeyPressed {
+				hotkeyPressed = false
+				fmt.Printf("%s released, stopping recording\n", hotkeyName)
 				a.stopRecording()
 			}
 		}
@@ -498,7 +528,7 @@ func (a *App) handleFnKeyPress() {
 }
 
 func (a *App) startRecording() {
-	PlaySound()
+	playRecordingSound()
 	if a.isRecording {
 		log.Println("Already recording.")
 		return

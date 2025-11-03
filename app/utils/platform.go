@@ -6,7 +6,6 @@ import (
 	"runtime"
 )
 
-// GetAppDataDir returns the platform-specific application data directory
 func GetAppDataDir() string {
 	home, _ := os.UserHomeDir()
 
@@ -29,12 +28,11 @@ func GetAppDataDir() string {
 		}
 		return filepath.Join(home, ".config", "Seisami")
 	default:
-		// Fallback for unknown platforms
+
 		return filepath.Join(home, ".seisami")
 	}
 }
 
-// GetRecordingsDir returns the platform-specific recordings directory
 func GetRecordingsDir() string {
 	home, _ := os.UserHomeDir()
 
@@ -49,12 +47,11 @@ func GetRecordingsDir() string {
 		// Linux: ~/Documents/Seisami/Recordings
 		return filepath.Join(home, "Documents", "Seisami", "Recordings")
 	default:
-		// Fallback
+
 		return filepath.Join(home, "Seisami", "Recordings")
 	}
 }
 
-// GetDBPath returns the platform-specific database file path
 func GetDBPath() string {
 	return filepath.Join(GetAppDataDir(), "seisami.db")
 }

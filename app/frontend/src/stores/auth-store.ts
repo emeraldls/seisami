@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { SetLoginToken, ClearLoginToken } from "../../wailsjs/go/main/App";
 
 export interface DesktopAuthState {
   isAuthenticated: boolean;
@@ -34,6 +35,10 @@ export const useDesktopAuthStore = create<DesktopAuthState>()(
           email,
           error: null,
         });
+
+        SetLoginToken(token).catch((err) => {
+          console.error("Failed to sync token with backend:", err);
+        });
       },
 
       logout: () => {
@@ -42,6 +47,10 @@ export const useDesktopAuthStore = create<DesktopAuthState>()(
           token: null,
           userId: null,
           email: null,
+        });
+
+        ClearLoginToken().catch((err) => {
+          console.error("Failed to clear token from backend:", err);
         });
       },
 

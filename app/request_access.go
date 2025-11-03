@@ -18,16 +18,19 @@ func (a *App) OpenMicrophoneSettings() {
 
 // CheckAccessibilityPermission checks the current accessibility permission status
 // Returns: 1 = authorized, 0 = denied/not authorized
+// Note: On Windows, this always returns 1 as accessibility permissions are not required
 func (a *App) CheckAccessibilityPermission() int {
 	return checkAccessibilityPermission()
 }
 
 // RequestAccessibilityPermission requests accessibility permission and shows system dialog
+// Note: On Windows, this is a no-op as accessibility permissions are not required
 func (a *App) RequestAccessibilityPermission() {
 	requestAccessibilityPermission()
 }
 
 // OpenAccessibilitySettings opens the system settings for accessibility permissions
+// Note: On Windows, this is a no-op as accessibility permissions are not required
 func (a *App) OpenAccessibilitySettings() {
 	openAccessibilitySettings()
 }

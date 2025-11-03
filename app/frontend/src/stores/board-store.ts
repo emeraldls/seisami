@@ -80,7 +80,8 @@ export const useBoardStore = create<BoardState>()(
             set({
               boards,
               isLoading: false,
-              hasCompletedOnboarding: boards.length > 0,
+              hasCompletedOnboarding:
+                get().hasCompletedOnboarding || boards.length > 0,
             });
           } catch (error) {
             console.error("Failed to fetch boards:", error);
@@ -158,7 +159,7 @@ export const useBoardStore = create<BoardState>()(
                 boards: newBoards,
                 currentBoard: newCurrentBoard,
                 isLoading: false,
-                hasCompletedOnboarding: newBoards.length > 0,
+                hasCompletedOnboarding: state.hasCompletedOnboarding,
               };
             });
 

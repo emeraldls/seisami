@@ -102,7 +102,6 @@ func handleDeepLink(app *App, deepLink string) {
 
 	query := u.Query()
 
-	// Board import route
 	if u.Host == "board" && u.Path == "/import" {
 		boardID := query.Get("board_id")
 		if boardID == "" {
@@ -121,7 +120,6 @@ func handleDeepLink(app *App, deepLink string) {
 		return
 	}
 
-	// Auth callback
 	if u.Host != "auth" || u.Path != "/callback" {
 		return
 	}
@@ -138,7 +136,6 @@ func handleDeepLink(app *App, deepLink string) {
 	fmt.Println("Auth callback received")
 	app.SetLoginToken(token)
 
-	// same flow for both macOS + Windows
 	if ctx != nil {
 		wailsRuntime.EventsEmit(ctx, "cloud:setup_started")
 

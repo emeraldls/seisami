@@ -1,5 +1,6 @@
 import { EventsOn, BrowserOpenURL } from "../../wailsjs/runtime";
 import { useDesktopAuthStore } from "~/stores/auth-store";
+import { SetLoginToken } from "../../wailsjs/go/main/App";
 
 const WEB_BASE_URL = import.meta.env.VITE_WEB_URL || "http://localhost:3000";
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
@@ -32,6 +33,8 @@ export const DesktopAuthService = {
 
             const authStore = useDesktopAuthStore.getState();
             authStore.setToken(finalToken, "local-user", "local@seisami.app");
+
+            await SetLoginToken(finalToken);
           } catch (err) {
             console.error("Failed to exchange code:", err);
           }

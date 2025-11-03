@@ -177,44 +177,41 @@ export default function KanbanView() {
 
     const unsubscribe = wsService.onMessage((message: CollabResponse) => {
       console.log(message);
-      if (!("type" in message) || message.type !== "message") {
-        return;
-      }
+      if ("data" in message && message.data) {
+        try {
+          const eventType = message.type;
+          const eventData = JSON.parse(message.data);
 
-      try {
-        const parsedData = JSON.parse(message.data);
-        const eventType = parsedData.type;
-        const eventData = parsedData.data;
+          console.log("Received WebSocket event:", eventType, eventData);
 
-        console.log("Received WebSocket event:", eventType, eventData);
-
-        switch (eventType) {
-          case "column:create":
-            handleRemoteColumnCreate(eventData);
-            break;
-          case "column:data":
-            handleRemoteColumnUpdate(eventData);
-            break;
-          case "column:delete":
-            handleRemoteColumnDelete(eventData);
-            break;
-          case "card:create":
-            handleRemoteCardCreate(eventData);
-            break;
-          case "card:data":
-            handleRemoteCardUpdate(eventData);
-            break;
-          case "card:delete":
-            handleRemoteCardDelete(eventData);
-            break;
-          case "card:column":
-            handleRemoteCardColumnChange(eventData);
-            break;
-          default:
-            console.log("Unknown event type:", eventType);
+          switch (eventType) {
+            case "column:create":
+              handleRemoteColumnCreate(eventData);
+              break;
+            case "column:data":
+              handleRemoteColumnUpdate(eventData);
+              break;
+            case "column:delete":
+              handleRemoteColumnDelete(eventData);
+              break;
+            case "card:create":
+              handleRemoteCardCreate(eventData);
+              break;
+            case "card:data":
+              handleRemoteCardUpdate(eventData);
+              break;
+            case "card:delete":
+              handleRemoteCardDelete(eventData);
+              break;
+            case "card:column":
+              handleRemoteCardColumnChange(eventData);
+              break;
+            default:
+              console.log("Unknown event type:", eventType);
+          }
+        } catch (error) {
+          console.error("Error handling WebSocket message:", error);
         }
-      } catch (error) {
-        console.error("Error handling WebSocket message:", error);
       }
     });
 

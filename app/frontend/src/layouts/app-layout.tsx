@@ -14,6 +14,11 @@ import {
 import { Info, MessageCircle } from "lucide-react";
 import { useDesktopAuthStore } from "~/stores/auth-store";
 import { BoardImportDialog } from "~/components/board-import-dialog";
+import { GlobalWaveform } from "~/components/global-waveform";
+import { useRecordingStore } from "~/stores/recording-store";
+import { useBoardStore } from "~/stores/board-store";
+import { Transcription } from "~/types/types";
+import { useQueryClient } from "@tanstack/react-query";
 
 export const AppLayout = () => {
   const { collapsed } = useSidebar();
@@ -22,6 +27,17 @@ export const AppLayout = () => {
   const { token } = useDesktopAuthStore();
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [boardIdToImport, setBoardIdToImport] = useState<string | undefined>();
+  const queryClient = useQueryClient();
+  const { currentBoard } = useBoardStore();
+  const {
+    setIsRecording,
+    setAudioBars,
+    addWaveformData,
+    resetWaveform,
+    addPendingTranscription,
+    updatePendingTranscription,
+    removePendingTranscription,
+  } = useRecordingStore();
 
   useEffect(() => {
     if (token && !tokenSentRef.current) {
@@ -30,6 +46,16 @@ export const AppLayout = () => {
       tokenSentRef.current = true;
     }
   }, [token]);
+
+  // Helper function to update transcriptions in cache
+  const updateTranscriptionInCache = (
+    updater: (prev: Transcription[]) => Transcription[]
+  ) => {
+    queryClient.setQueryData(
+      ["transcriptions", currentBoard?.id],
+      (old: Transcription[] = []) => updater(old)
+    );
+  };
 
   useEffect(() => {
     const unsubscribeProcessingStart = EventsOn(
@@ -125,6 +151,126 @@ export const AppLayout = () => {
       }
     );
 
+    // Global transcription event listeners
+    const unsubscribeTranscription = EventsOn(
+      "transcription",
+      (data: string) => {
+        if (data) {
+          try {
+            const parsed = JSON.parse(data) as {
+              id: string;
+              transcription: string;
+            };
+            if (parsed.transcription) {
+              updateTranscriptionInCache((prev) =>
+                prev.map((t) =>
+                  t.id === parsed.id
+                    ? {
+                        ...t,
+                        text: parsed.transcription,
+                        isTranscribing: false,
+                        wordCount: parsed.transcription.split(" ").length,
+                      }
+                    : t
+                )
+              );
+              updatePendingTranscription(parsed.id, {
+                text: parsed.transcription,
+                isTranscribing: false,
+                wordCount: parsed.transcription.split(" ").length,
+              });
+            }
+          } catch (e) {
+            console.error("Failed to parse transcription event data", e);
+          }
+        }
+      }
+    );
+
+    const unsubscribeStructuredResponse = EventsOn(
+      "structured_response",
+      (data: string) => {
+        if (data) {
+          try {
+            const parsed = JSON.parse(data);
+            console.log("Structured Response received:", parsed);
+
+            updateTranscriptionInCache((prev) => {
+              const updated = [...prev];
+              if (updated.length > 0) {
+                updated[0] = {
+                  ...updated[0],
+                  intent: parsed.intent,
+                  assistantResponse: parsed.result,
+                };
+              }
+              return updated;
+            });
+          } catch (e) {
+            console.error("Failed to parse structured response data", e);
+          }
+        }
+      }
+    );
+
+    const unsubscribeAudioBars = EventsOn("audio_bars", (data) => {
+      console.log(data);
+      if (Array.isArray(data) && data.length > 0) {
+        setAudioBars(data);
+        addWaveformData(data);
+      }
+    });
+
+    const unsubscribeRecordingStart = EventsOn("recording:start", () => {
+      setIsRecording(true);
+      resetWaveform();
+      if (currentBoard) {
+        console.log("emitting event: ", currentBoard.id);
+        EventsEmit("board:id", currentBoard.id);
+      }
+    });
+
+    const unsubscribeRecordingStop = EventsOn(
+      "recording:stop",
+      (data: string) => {
+        setIsRecording(false);
+        setAudioBars(null);
+        resetWaveform();
+        if (data) {
+          try {
+            const parsed = JSON.parse(data) as { id: string };
+            const newTranscription: Transcription = {
+              id: parsed.id,
+              text: "Transcribing...",
+              timestamp: new Date(),
+              isTranscribing: true,
+            };
+            updateTranscriptionInCache((prev) => [newTranscription, ...prev]);
+            addPendingTranscription(parsed.id, newTranscription);
+          } catch (e) {
+            console.error("Failed to parse recording:stop event data", e);
+          }
+        }
+      }
+    );
+
+    const unsubscribeTranscriptionShort = EventsOn(
+      "transcription:short",
+      (data: string) => {
+        if (data) {
+          try {
+            const parsed = JSON.parse(data) as { id: string };
+            updateTranscriptionInCache((prev) =>
+              prev.filter((t) => t.id !== parsed.id)
+            );
+            removePendingTranscription(parsed.id);
+          } catch (e) {
+            console.error("Failed to parse transcription:short event data", e);
+          }
+        }
+      }
+    );
+
     return () => {
       unsubscribeProcessingStart();
       unsubscribeToolComplete();
@@ -135,8 +281,14 @@ export const AppLayout = () => {
       unsubscribeCloudSetupSuccess();
       unsubscribeCloudSetupFailed();
       unsubscribeBoardImport();
+      unsubscribeTranscription();
+      unsubscribeStructuredResponse();
+      unsubscribeAudioBars();
+      unsubscribeRecordingStart();
+      unsubscribeRecordingStop();
+      unsubscribeTranscriptionShort();
     };
-  }, []);
+  }, [currentBoard, queryClient]);
 
   return (
     <>
@@ -193,6 +345,7 @@ export const AppLayout = () => {
         </div>
       </div>
       <CloudSyncProgress />
+      <GlobalWaveform />
       <BoardImportDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}

@@ -37,6 +37,8 @@ export function GetColumn(arg1:string):Promise<query.Column>;
 
 export function GetLoginToken():Promise<string>;
 
+export function GetPlatformInfo():Promise<Record<string, any>>;
+
 export function GetSettings():Promise<query.Setting>;
 
 export function GetTranscriptionByID(arg1:string):Promise<query.Transcription>;

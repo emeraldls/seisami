@@ -70,6 +70,10 @@ export function GetLoginToken() {
   return window['go']['main']['App']['GetLoginToken']();
 }
 
+export function GetPlatformInfo() {
+  return window['go']['main']['App']['GetPlatformInfo']();
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
