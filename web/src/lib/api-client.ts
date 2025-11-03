@@ -26,6 +26,13 @@ export interface BoardMetadata {
   transcriptions_count: number;
 }
 
+export interface AppVersionInfo {
+  version: string;
+  notes: string;
+  url: string;
+  sha256: string;
+}
+
 class ApiClientClass {
   private client: AxiosInstance;
 
@@ -173,5 +180,24 @@ export class ApiClient {
     boardId: string
   ): Promise<{ data: BoardMetadata; message: string }> {
     return apiClient.get(`/board/${boardId}/metadata`);
+  }
+
+  static async getLatestAppVersion(): Promise<{
+    message: string;
+    data: AppVersionInfo;
+  }> {
+    return apiClient.get(`/updates/latest`);
+  }
+
+  static async publishAppVersion(
+    releaseUrl: string,
+    versionKey: string,
+    notes: string
+  ): Promise<{ message: string }> {
+    return apiClient.post(`/updates/publish`, {
+      release_url: releaseUrl,
+      version_key: versionKey,
+      notes,
+    });
   }
 }

@@ -1,8 +1,8 @@
+import { useAuthStore } from "@/stores/auth-store";
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
-import { useAuthStore } from "../../stores/auth-store";
 
-export const Route = createFileRoute("/dashboard/__layout")({
+export const Route = createFileRoute("/dashboard/_layout")({
   component: DashboardLayout,
 });
 

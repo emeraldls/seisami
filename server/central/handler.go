@@ -886,6 +886,7 @@ func (h *handler) getLatestAppVersion(c *gin.Context) {
 type createAppVersionPayload struct {
 	ReleaseURL string `json:"release_url" validate:"required,url"`
 	VersionKey string `json:"version_key" validate:"required"`
+	Notes      string `json:"notes" validate:"required"`
 }
 
 func (h *handler) createNewAppVersion(c *gin.Context) {
@@ -909,7 +910,7 @@ func (h *handler) createNewAppVersion(c *gin.Context) {
 		return
 	}
 
-	err := h.syncService.createAppNewVersion(c, payload.ReleaseURL)
+	err := h.syncService.createAppNewVersion(c, payload.ReleaseURL, payload.Notes)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return

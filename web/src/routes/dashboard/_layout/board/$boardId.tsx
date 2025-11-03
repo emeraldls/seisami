@@ -1,14 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ApiClient, type BoardMetadata } from "../../../lib/api-client";
+import { ApiClient, type BoardMetadata } from "@/lib/api-client";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../../../components/ui/card";
-import { Button } from "../../../components/ui/button";
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Download,
   Loader2,
@@ -19,7 +19,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-export const Route = createFileRoute("/dashboard/board/$boardId")({
+export const Route = createFileRoute("/dashboard/_layout/board/$boardId")({
   component: BoardSharePage,
 });
 

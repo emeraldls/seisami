@@ -1278,7 +1278,7 @@ func (s *SyncService) getAppLatestVersion(ctx context.Context) (types.AppVersion
 	return appVersion, nil
 }
 
-func (s *SyncService) createAppNewVersion(ctx context.Context, releaseURL string) error {
+func (s *SyncService) createAppNewVersion(ctx context.Context, releaseURL, notes string) error {
 	fmt.Println("Downloading about to start:", releaseURL)
 
 	u, err := url.Parse(releaseURL)
@@ -1357,7 +1357,7 @@ func (s *SyncService) createAppNewVersion(ctx context.Context, releaseURL string
 	_, err = s.queries.CreateAppVersion(ctx, centraldb.CreateAppVersionParams{
 		Version: version,
 		Url:     releaseURL,
-		Notes:   pgtype.Text{String: fmt.Sprintf("Automated release for %s", version), Valid: true},
+		Notes:   pgtype.Text{String: notes, Valid: true},
 		Sha256:  pgtype.Text{String: hashHex, Valid: true},
 	})
 	if err != nil {

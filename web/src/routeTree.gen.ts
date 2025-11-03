@@ -12,12 +12,13 @@ import { createFileRoute } from '@tanstack/react-router'
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as Dashboard_layoutRouteImport } from './routes/dashboard/__layout'
+import { Route as DashboardLayoutRouteImport } from './routes/dashboard/_layout'
 import { Route as AuthSignupRouteImport } from './routes/auth/signup'
 import { Route as AuthSigninRouteImport } from './routes/auth/signin'
 import { Route as AuthResetPasswordRouteImport } from './routes/auth/reset-password'
 import { Route as AuthForgotPasswordRouteImport } from './routes/auth/forgot-password'
-import { Route as DashboardBoardBoardIdRouteImport } from './routes/dashboard/board/$boardId'
+import { Route as DashboardLayoutReleasesRouteImport } from './routes/dashboard/_layout/releases'
+import { Route as DashboardLayoutBoardBoardIdRouteImport } from './routes/dashboard/_layout/board/$boardId'
 
 const DashboardRouteImport = createFileRoute('/dashboard')()
 
@@ -31,8 +32,8 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const Dashboard_layoutRoute = Dashboard_layoutRouteImport.update({
-  id: '/__layout',
+const DashboardLayoutRoute = DashboardLayoutRouteImport.update({
+  id: '/_layout',
   getParentRoute: () => DashboardRoute,
 } as any)
 const AuthSignupRoute = AuthSignupRouteImport.update({
@@ -55,11 +56,17 @@ const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
   path: '/auth/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DashboardBoardBoardIdRoute = DashboardBoardBoardIdRouteImport.update({
-  id: '/board/$boardId',
-  path: '/board/$boardId',
-  getParentRoute: () => DashboardRoute,
+const DashboardLayoutReleasesRoute = DashboardLayoutReleasesRouteImport.update({
+  id: '/releases',
+  path: '/releases',
+  getParentRoute: () => DashboardLayoutRoute,
 } as any)
+const DashboardLayoutBoardBoardIdRoute =
+  DashboardLayoutBoardBoardIdRouteImport.update({
+    id: '/board/$boardId',
+    path: '/board/$boardId',
+    getParentRoute: () => DashboardLayoutRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -67,8 +74,9 @@ export interface FileRoutesByFullPath {
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/signin': typeof AuthSigninRoute
   '/auth/signup': typeof AuthSignupRoute
-  '/dashboard': typeof Dashboard_layoutRoute
-  '/dashboard/board/$boardId': typeof DashboardBoardBoardIdRoute
+  '/dashboard': typeof DashboardLayoutRouteWithChildren
+  '/dashboard/releases': typeof DashboardLayoutReleasesRoute
+  '/dashboard/board/$boardId': typeof DashboardLayoutBoardBoardIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -76,8 +84,9 @@ export interface FileRoutesByTo {
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/signin': typeof AuthSigninRoute
   '/auth/signup': typeof AuthSignupRoute
-  '/dashboard': typeof Dashboard_layoutRoute
-  '/dashboard/board/$boardId': typeof DashboardBoardBoardIdRoute
+  '/dashboard': typeof DashboardLayoutRouteWithChildren
+  '/dashboard/releases': typeof DashboardLayoutReleasesRoute
+  '/dashboard/board/$boardId': typeof DashboardLayoutBoardBoardIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -87,8 +96,9 @@ export interface FileRoutesById {
   '/auth/signin': typeof AuthSigninRoute
   '/auth/signup': typeof AuthSignupRoute
   '/dashboard': typeof DashboardRouteWithChildren
-  '/dashboard/__layout': typeof Dashboard_layoutRoute
-  '/dashboard/board/$boardId': typeof DashboardBoardBoardIdRoute
+  '/dashboard/_layout': typeof DashboardLayoutRouteWithChildren
+  '/dashboard/_layout/releases': typeof DashboardLayoutReleasesRoute
+  '/dashboard/_layout/board/$boardId': typeof DashboardLayoutBoardBoardIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -99,6 +109,7 @@ export interface FileRouteTypes {
     | '/auth/signin'
     | '/auth/signup'
     | '/dashboard'
+    | '/dashboard/releases'
     | '/dashboard/board/$boardId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -108,6 +119,7 @@ export interface FileRouteTypes {
     | '/auth/signin'
     | '/auth/signup'
     | '/dashboard'
+    | '/dashboard/releases'
     | '/dashboard/board/$boardId'
   id:
     | '__root__'
@@ -117,8 +129,9 @@ export interface FileRouteTypes {
     | '/auth/signin'
     | '/auth/signup'
     | '/dashboard'
-    | '/dashboard/__layout'
-    | '/dashboard/board/$boardId'
+    | '/dashboard/_layout'
+    | '/dashboard/_layout/releases'
+    | '/dashboard/_layout/board/$boardId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -146,11 +159,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dashboard/__layout': {
-      id: '/dashboard/__layout'
+    '/dashboard/_layout': {
+      id: '/dashboard/_layout'
       path: '/dashboard'
       fullPath: '/dashboard'
-      preLoaderRoute: typeof Dashboard_layoutRouteImport
+      preLoaderRoute: typeof DashboardLayoutRouteImport
       parentRoute: typeof DashboardRoute
     }
     '/auth/signup': {
@@ -181,24 +194,43 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthForgotPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dashboard/board/$boardId': {
-      id: '/dashboard/board/$boardId'
+    '/dashboard/_layout/releases': {
+      id: '/dashboard/_layout/releases'
+      path: '/releases'
+      fullPath: '/dashboard/releases'
+      preLoaderRoute: typeof DashboardLayoutReleasesRouteImport
+      parentRoute: typeof DashboardLayoutRoute
+    }
+    '/dashboard/_layout/board/$boardId': {
+      id: '/dashboard/_layout/board/$boardId'
       path: '/board/$boardId'
       fullPath: '/dashboard/board/$boardId'
-      preLoaderRoute: typeof DashboardBoardBoardIdRouteImport
-      parentRoute: typeof DashboardRoute
+      preLoaderRoute: typeof DashboardLayoutBoardBoardIdRouteImport
+      parentRoute: typeof DashboardLayoutRoute
     }
   }
 }
 
+interface DashboardLayoutRouteChildren {
+  DashboardLayoutReleasesRoute: typeof DashboardLayoutReleasesRoute
+  DashboardLayoutBoardBoardIdRoute: typeof DashboardLayoutBoardBoardIdRoute
+}
+
+const DashboardLayoutRouteChildren: DashboardLayoutRouteChildren = {
+  DashboardLayoutReleasesRoute: DashboardLayoutReleasesRoute,
+  DashboardLayoutBoardBoardIdRoute: DashboardLayoutBoardBoardIdRoute,
+}
+
+const DashboardLayoutRouteWithChildren = DashboardLayoutRoute._addFileChildren(
+  DashboardLayoutRouteChildren,
+)
+
 interface DashboardRouteChildren {
-  Dashboard_layoutRoute: typeof Dashboard_layoutRoute
-  DashboardBoardBoardIdRoute: typeof DashboardBoardBoardIdRoute
+  DashboardLayoutRoute: typeof DashboardLayoutRouteWithChildren
 }
 
 const DashboardRouteChildren: DashboardRouteChildren = {
-  Dashboard_layoutRoute: Dashboard_layoutRoute,
-  DashboardBoardBoardIdRoute: DashboardBoardBoardIdRoute,
+  DashboardLayoutRoute: DashboardLayoutRouteWithChildren,
 }
 
 const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
