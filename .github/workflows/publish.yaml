@@ -39,7 +39,7 @@ jobs:
       - name: Archive DMG
         run: |
           mkdir -p artifacts
-          cp Seisami.dmg artifacts/Seisami-${GITHUB_REF_NAME}-macos.dmg
+          cp app/Seisami.dmg artifacts/Seisami-${GITHUB_REF_NAME}-macos.dmg
 
 
       - name: Upload artifact
