@@ -110,6 +110,12 @@ func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
 		boardRts.GET("/:boardId/metadata", h.getBoardMetadata)
 	}
 
+	updates := router.Group("/updates")
+	{
+		updates.GET("/latest", h.getLatestAppVersion)
+		updates.POST("/publish", h.createNewAppVersion)
+	}
+
 	return router
 }
 
@@ -864,4 +870,50 @@ func (h *handler) getBoardMetadata(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "successful", "data": metadata})
+}
+
+func (h *handler) getLatestAppVersion(c *gin.Context) {
+
+	version, err := h.syncService.getAppLatestVersion(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "successful", "data": version})
+}
+
+type createAppVersionPayload struct {
+	ReleaseURL string `json:"release_url" validate:"required,url"`
+	VersionKey string `json:"version_key" validate:"required"`
+}
+
+func (h *handler) createNewAppVersion(c *gin.Context) {
+	var payload createAppVersionPayload
+
+	if err := c.BindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid JSON body"})
+		return
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "missing fields: " + err.Error()})
+		return
+	}
+
+	versionKey := h.authService.versionKey
+
+	if payload.VersionKey != versionKey {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+
+	err := h.syncService.createAppNewVersion(c, payload.ReleaseURL)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "successful"})
 }

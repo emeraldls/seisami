@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -603,4 +604,37 @@ func (r *repo) ImportTranscription(id, boardId, transcription, recordingPath, in
 		return query.Transcription{}, fmt.Errorf("unable to import transcription: %v", err)
 	}
 	return t, nil
+}
+
+func (r *repo) UpdateLocalVersion(version string) error {
+	return r.queries.UpsertAppMeta(r.ctx, query.UpsertAppMetaParams{
+		Key: "local_version",
+		Value: sql.NullString{
+			String: version,
+			Valid:  true,
+		},
+	})
+}
+
+func (r *repo) GetLocalVersion() (string, error) {
+	meta, err := r.queries.GetAppMeta(r.ctx, "local_version")
+	localVersion := meta.String
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			fmt.Println("no local version found, setting to 0.0.0")
+			localVersion := "0.0.0"
+
+			if err := r.UpdateLocalVersion(localVersion); err != nil {
+
+				return "", fmt.Errorf("failed to set default version: %v", err)
+			}
+
+		} else {
+
+			return "", fmt.Errorf("unable to get local version: %v", err)
+		}
+	}
+
+	return localVersion, nil
+
 }

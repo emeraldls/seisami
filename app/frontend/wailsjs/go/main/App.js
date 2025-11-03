@@ -94,6 +94,10 @@ export function ImportNewBoard(arg1) {
   return window['go']['main']['App']['ImportNewBoard'](arg1);
 }
 
+export function InstallUpdate(arg1) {
+  return window['go']['main']['App']['InstallUpdate'](arg1);
+}
+
 export function JoinCollaborationRoom(arg1) {
   return window['go']['main']['App']['JoinCollaborationRoom'](arg1);
 }

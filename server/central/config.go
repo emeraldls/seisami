@@ -6,13 +6,13 @@ import (
 	"time"
 )
 
-// Config bundles the runtime configuration required for the auth HTTP service.
 type Config struct {
 	DatabaseURL          string
 	JWTSecret            string
 	JWTExpiration        time.Duration
 	ResetTokenExpiration time.Duration
 	HTTPAddr             string
+	VERSION_SECURE_KEY   string
 }
 
 // LoadConfigFromEnv reads the required configuration from environment variables.
@@ -45,6 +45,11 @@ func LoadConfigFromEnv() (Config, error) {
 		resetTTL = dur
 	}
 
+	versionKey := os.Getenv("VERSION_SECURE_KEY")
+	if versionKey == "" {
+		return Config{}, fmt.Errorf("VERSION_SECURE_KEY must be set")
+	}
+
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
 		addr = "0.0.0.0:8080"
@@ -56,5 +61,6 @@ func LoadConfigFromEnv() (Config, error) {
 		JWTExpiration:        jwtTTL,
 		ResetTokenExpiration: resetTTL,
 		HTTPAddr:             addr,
+		VERSION_SECURE_KEY:   versionKey,
 	}, nil
 }

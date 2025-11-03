@@ -8,6 +8,11 @@ import (
 	"database/sql"
 )
 
+type AppMetum struct {
+	Key   string
+	Value sql.NullString
+}
+
 type Board struct {
 	ID        string
 	Name      string

@@ -6,12 +6,15 @@ package central
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"seisami/server/centraldb"
 	"seisami/server/types"
 	"strconv"
@@ -1275,50 +1278,94 @@ func (s *SyncService) getAppLatestVersion(ctx context.Context) (types.AppVersion
 	return appVersion, nil
 }
 
-func (s *SyncService) createAppNewVersion(ctx context.Context, releaseUrl string) error {
-	// eg url :// https://github.com/emeraldls/seisami/releases/download/test-build6/Seisami-test-build6-macos.zip
-	// download build
+func (s *SyncService) createAppNewVersion(ctx context.Context, releaseURL string) error {
+	fmt.Println("Downloading about to start:", releaseURL)
 
-	f, err := os.Create("release.zip")
+	u, err := url.Parse(releaseURL)
 	if err != nil {
-		return fmt.Errorf("unable to create file: %v", err)
+		return fmt.Errorf("invalid URL: %w", err)
 	}
 
-	resp, err := http.Get(releaseUrl)
-	if err != nil {
-		return err
+	segments := strings.Split(u.Path, "/")
+	if len(segments) < 3 {
+		return fmt.Errorf("unexpected URL format")
 	}
+	version := segments[len(segments)-2]
+	fileName := segments[len(segments)-1]
 
+	resp, err := http.Get(releaseURL)
+	if err != nil {
+		return fmt.Errorf("failed to fetch release: %w", err)
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	_, err = io.Copy(f, resp.Body)
-
+	tmpFile := filepath.Join(os.TempDir(), fileName)
+	outFile, err := os.Create(tmpFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to create file: %w", err)
+	}
+	defer outFile.Close()
+
+	total := resp.ContentLength
+	if total <= 0 {
+		fmt.Println("unknown file size, showing bytes instead of percent")
 	}
 
 	hasher := sha256.New()
-	if _, err := io.Copy(hasher, f); err != nil {
-		return err
+	mw := io.MultiWriter(outFile, hasher)
+
+	buf := make([]byte, 32*1024)
+	var downloaded int64
+	start := time.Now()
+
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			if _, wErr := mw.Write(buf[:n]); wErr != nil {
+				return wErr
+			}
+			downloaded += int64(n)
+
+			if total > 0 {
+				percent := float64(downloaded) / float64(total) * 100
+				fmt.Printf("\rDownloading %.2f MB (%.1f%%)", float64(downloaded)/1024/1024, percent)
+			} else {
+				fmt.Printf("\rDownloaded %.2f MB", float64(downloaded)/1024/1024)
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("download failed: %w", err)
+		}
 	}
 
+	fmt.Println("\nDownload complete")
+	elapsed := time.Since(start)
+
+	fmt.Printf("File size: %.2f MB\n", float64(downloaded)/1024/1024)
+	fmt.Printf("Elapsed: %s\n", elapsed)
+
+	hashHex := hex.EncodeToString(hasher.Sum(nil))
+	fmt.Printf("✅ Downloaded %s\nSHA256: %s\n", fileName, hashHex)
+
+	_, err = s.queries.CreateAppVersion(ctx, centraldb.CreateAppVersionParams{
+		Version: version,
+		Url:     releaseURL,
+		Notes:   pgtype.Text{String: fmt.Sprintf("Automated release for %s", version), Valid: true},
+		Sha256:  pgtype.Text{String: hashHex, Valid: true},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to record version: %w", err)
+	}
+
+	fmt.Printf("📦 Published app version %s successfully\n", version)
 	return nil
-
-	// hash := hasher.Sum(nil)
-	// hex := hex.EncodeToString(hash[:])
-
-	// 	v, err := s.queries.CreateAppVersion(ctx, centraldb.CreateAppVersionParams{
-	//     Version: "1.0.5",
-	//     URL: releaseURL,
-	//     Notes: "Auto-uploaded from build pipeline",
-	//     Sha256: hashHex,
-	// })
-
-	// compute sha456
 }
 
 func selectTimestamp(values ...string) time.Time {

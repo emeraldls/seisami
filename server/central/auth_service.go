@@ -31,6 +31,7 @@ type AuthService struct {
 	jwtSecret            []byte
 	jwtExpiration        time.Duration
 	resetTokenExpiration time.Duration
+	versionKey           string
 }
 
 type AuthResult struct {
@@ -45,6 +46,7 @@ func NewAuthService(queries *centraldb.Queries, cfg Config) *AuthService {
 		jwtSecret:            []byte(cfg.JWTSecret),
 		jwtExpiration:        cfg.JWTExpiration,
 		resetTokenExpiration: cfg.ResetTokenExpiration,
+		versionKey:           cfg.VERSION_SECURE_KEY,
 	}
 }
 

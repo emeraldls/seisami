@@ -280,3 +280,13 @@ ON CONFLICT(id) DO UPDATE SET
     assistant_response = excluded.assistant_response,
     updated_at = excluded.updated_at
 RETURNING *;
+
+-- name: UpsertAppMeta :exec
+INSERT INTO app_meta (key, value)
+VALUES (?, ?)
+ON CONFLICT(key) DO UPDATE
+SET value = EXCLUDED.value;
+
+-- name: GetAppMeta :one
+SELECT value FROM app_meta
+WHERE key = ?;

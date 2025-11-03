@@ -311,6 +311,18 @@ func (q *Queries) GetAllOperations(ctx context.Context, arg GetAllOperationsPara
 	return items, nil
 }
 
+const getAppMeta = `-- name: GetAppMeta :one
+SELECT value FROM app_meta
+WHERE key = ?
+`
+
+func (q *Queries) GetAppMeta(ctx context.Context, key string) (sql.NullString, error) {
+	row := q.db.QueryRowContext(ctx, getAppMeta, key)
+	var value sql.NullString
+	err := row.Scan(&value)
+	return value, err
+}
+
 const getBoard = `-- name: GetBoard :one
 
 SELECT id, name, created_at, updated_at FROM boards
@@ -1168,6 +1180,23 @@ func (q *Queries) UpdateTranscriptionResponse(ctx context.Context, arg UpdateTra
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const upsertAppMeta = `-- name: UpsertAppMeta :exec
+INSERT INTO app_meta (key, value)
+VALUES (?, ?)
+ON CONFLICT(key) DO UPDATE
+SET value = EXCLUDED.value
+`
+
+type UpsertAppMetaParams struct {
+	Key   string
+	Value sql.NullString
+}
+
+func (q *Queries) UpsertAppMeta(ctx context.Context, arg UpsertAppMetaParams) error {
+	_, err := q.db.ExecContext(ctx, upsertAppMeta, arg.Key, arg.Value)
+	return err
 }
 
 const upsertSyncState = `-- name: UpsertSyncState :exec

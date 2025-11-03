@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -127,6 +131,7 @@ func (a *App) startup(ctx context.Context) {
 	}()
 
 	go a.handleMutations()
+	go a.appVersionCheck()
 
 	// Platform-specific initialization (handles hotkey listener setup)
 	a.initPlatformSpecific()
@@ -267,6 +272,178 @@ func (a *App) ImportNewBoard(boardID string) error {
 
 func (a *App) GetLoginToken() string {
 	return a.loginToken
+}
+
+func (a *App) appVersionCheck() {
+	time.Sleep(20 * time.Second) //just to ensure the app has full started before you run this
+	fmt.Println("running app version check")
+	localVersion, err := a.repository.GetLocalVersion()
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	cloud, err := a.cloud.FetchAppVersion()
+	if err != nil {
+		fmt.Printf("unable to fetch cloud version: %v\n", err)
+		return
+	}
+
+	fmt.Printf("local version: %s\n", localVersion)
+	fmt.Printf("cloud version: %s\n", cloud.Version)
+
+	if cloud.Version == "" {
+		fmt.Println("invalid cloud response: missing version")
+		return
+	}
+
+	if localVersion == cloud.Version {
+		fmt.Println("App is up to date.")
+		return
+	}
+
+	fmt.Println("New version available:", cloud.Version)
+
+	runtime.EventsEmit(a.ctx, "update:available", map[string]string{
+		"version": cloud.Version,
+		"notes":   cloud.Notes,
+		"url":     cloud.URL,
+		"sha256":  cloud.Sha256,
+	})
+
+}
+
+func (a *App) InstallUpdate(cloud types.AppVersion) error {
+	dest := filepath.Join(os.TempDir(), fmt.Sprintf("seisami-%s.dmg", cloud.Version))
+	if err := a.downloadAndVerify(cloud.URL, cloud.Sha256, dest); err != nil {
+		return err
+	}
+
+	if err := exec.Command("open", dest).Run(); err != nil {
+		return fmt.Errorf("failed to open installer: %w", err)
+	}
+
+	return a.repository.UpdateLocalVersion(cloud.Version)
+}
+
+func (a *App) downloadAndVerify(url, expectedHash, dest string) error {
+	emitError := func(message string) {
+		if a.ctx != nil {
+			runtime.EventsEmit(a.ctx, "update:download_error", message)
+		}
+	}
+
+	resp, err := http.Get(url)
+	if err != nil {
+		emitError(err.Error())
+		return fmt.Errorf("failed to fetch file: %w", err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		emitError(resp.Status)
+		return fmt.Errorf("bad status: %s", resp.Status)
+	}
+
+	out, err := os.Create(dest)
+	if err != nil {
+		emitError(err.Error())
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer out.Close()
+
+	total := resp.ContentLength
+	if total <= 0 {
+		fmt.Println("unknown file size, showing bytes instead of percent")
+	}
+
+	if a.ctx != nil {
+		totalMB := float64(total) / 1024.0 / 1024.0
+		payload := map[string]interface{}{
+			"totalBytes": total,
+			"totalMB":    totalMB,
+		}
+		if total <= 0 {
+			payload["totalMB"] = nil
+		}
+		runtime.EventsEmit(a.ctx, "update:download_started", payload)
+	}
+
+	hasher := sha256.New()
+	mw := io.MultiWriter(out, hasher)
+
+	buf := make([]byte, 32*1024)
+
+	var downloaded int64
+	var lastEmit time.Time
+
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			if _, wErr := mw.Write(buf[:n]); wErr != nil {
+				emitError(wErr.Error())
+				return wErr
+			}
+			downloaded += int64(n)
+
+			if total > 0 {
+				percent := float64(downloaded) / float64(total) * 100
+				fmt.Printf("\rDownloading %.2f MB (%.1f%%)", float64(downloaded)/1024/1024, percent)
+				if a.ctx != nil {
+					now := time.Now()
+					if lastEmit.IsZero() || now.Sub(lastEmit) >= 200*time.Millisecond || downloaded == total {
+						runtime.EventsEmit(a.ctx, "update:download_progress", map[string]interface{}{
+							"downloadedBytes": downloaded,
+							"totalBytes":      total,
+							"percent":         percent,
+							"downloadedMB":    float64(downloaded) / 1024.0 / 1024.0,
+							"totalMB":         float64(total) / 1024.0 / 1024.0,
+						})
+						lastEmit = now
+					}
+				}
+			} else {
+				fmt.Printf("\rDownloaded %.2f MB", float64(downloaded)/1024/1024)
+				if a.ctx != nil {
+					now := time.Now()
+					if lastEmit.IsZero() || now.Sub(lastEmit) >= 200*time.Millisecond {
+						runtime.EventsEmit(a.ctx, "update:download_progress", map[string]interface{}{
+							"downloadedBytes": downloaded,
+							"totalBytes":      total,
+							"percent":         nil,
+							"downloadedMB":    float64(downloaded) / 1024.0 / 1024.0,
+							"totalMB":         nil,
+						})
+						lastEmit = now
+					}
+				}
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			emitError(err.Error())
+			return fmt.Errorf("download failed: %w", err)
+		}
+	}
+
+	fmt.Println()
+
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	if hash != expectedHash {
+		emitError("checksum mismatch")
+		return fmt.Errorf("sha256 mismatch: expected %s, got %s", expectedHash, hash)
+	}
+
+	if a.ctx != nil {
+		runtime.EventsEmit(a.ctx, "update:download_complete", map[string]interface{}{
+			"downloadedBytes": downloaded,
+			"totalBytes":      total,
+		})
+	}
+
+	return nil
 }
 
 func (a *App) ensureCollabConnectionLocked() error {

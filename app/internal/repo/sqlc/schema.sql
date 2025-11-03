@@ -114,4 +114,10 @@ CREATE TABLE IF NOT EXISTS sync_state (
   "table_name" TEXT PRIMARY KEY,
   last_synced_at INTEGER NOT NULL,
   last_synced_op_id TEXT NOT NULL
-)
+);
+
+CREATE TABLE IF NOT EXISTS app_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+

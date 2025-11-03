@@ -49,4 +49,7 @@ type Repository interface {
 	ImportColumn(id, boardId, name string, position int64, createdAt, updatedAt string) (query.Column, error)
 	ImportCard(id, columnId, title, description, attachments, createdAt, updatedAt string) (query.Card, error)
 	ImportTranscription(id, boardId, transcription, recordingPath, intent, assistantResponse, createdAt, updatedAt string) (query.Transcription, error)
+
+	GetLocalVersion() (string, error)
+	UpdateLocalVersion(version string) error
 }

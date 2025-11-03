@@ -22,4 +22,5 @@ type Cloud interface {
 	UpdateSessionToken(token string)
 
 	InitCloud() error
+	FetchAppVersion() (types.AppVersion, error)
 }
