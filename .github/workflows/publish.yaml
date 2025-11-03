@@ -34,7 +34,7 @@ jobs:
         run: brew install create-dmg
 
       - name: Build Universal App + DMG
-        run: cd app && make installer
+        run: cd app && make installer-macos
 
       - name: Archive DMG
         run: |
