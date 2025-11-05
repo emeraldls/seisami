@@ -59,6 +59,7 @@ import { EventsEmit } from "../../wailsjs/runtime/runtime";
 import { useCollaborationStore } from "~/stores/collab-store";
 import { wsService, type CollabResponse } from "~/lib/websocket-service";
 import type {
+  BoardEventData,
   ColumnEventData,
   ColumnDeleteEventData,
   CardEventData,
@@ -126,7 +127,7 @@ export default function KanbanView() {
     null
   );
 
-  const { currentBoard } = useBoardStore();
+  const { currentBoard, setCurrentBoard } = useBoardStore();
   const { roomId, initialize, teardown } = useCollaborationStore();
   const draggedCardSnapshotRef = useRef<Feature | null>(null);
 
@@ -195,6 +196,9 @@ export default function KanbanView() {
           console.log("Received WebSocket event:", eventType, eventData);
 
           switch (eventType) {
+            case "board:data":
+              handleRemoteBoardUpdate(eventData);
+              break;
             case "column:create":
               handleRemoteColumnCreate(eventData);
               break;
@@ -227,6 +231,16 @@ export default function KanbanView() {
 
     return () => unsubscribe();
   }, [roomId]);
+
+  const handleRemoteBoardUpdate = (data: BoardEventData) => {
+    if (currentBoard && currentBoard.id === data.id) {
+      setCurrentBoard({
+        ...currentBoard,
+        name: data.name,
+        updated_at: data.updated_at || currentBoard.updated_at,
+      });
+    }
+  };
 
   const handleRemoteColumnCreate = (data: ColumnEventData) => {
     const newColumn: Column = {

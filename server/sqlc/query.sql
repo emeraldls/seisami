@@ -106,11 +106,19 @@ ORDER BY created_at DESC;
 ---- Operations -------
 
 -- name: SyncUpsertBoard :exec
-INSERT INTO boards (id, user_id, name, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (id) DO UPDATE SET
-    name = EXCLUDED.name,
-    updated_at = EXCLUDED.updated_at;
+WITH board_insert AS (
+    INSERT INTO boards (id, user_id, name, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        updated_at = EXCLUDED.updated_at
+    RETURNING id, user_id, (xmax = 0) AS was_inserted
+)
+INSERT INTO board_members (board_id, user_id, role)
+SELECT id, user_id, 'owner'
+FROM board_insert
+WHERE was_inserted
+ON CONFLICT (board_id, user_id) DO NOTHING;
 
 -- name: SyncDeleteBoard :exec
 DELETE FROM boards
