@@ -1,14 +1,13 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
 import { useDesktopAuthStore } from "~/stores/auth-store";
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
+import { CLOUD_API_URL } from "./constants";
 
 class ApiClientClass {
   private client: AxiosInstance;
 
   constructor() {
     this.client = axios.create({
-      baseURL: API_BASE_URL,
+      baseURL: CLOUD_API_URL,
       headers: {
         "Content-Type": "application/json",
       },

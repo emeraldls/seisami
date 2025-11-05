@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Users, Copy, Share2, LogOut, PlusCircle } from "lucide-react";
+import { useEffect, useMemo } from "react";
+import { Users, Copy, Share2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -8,7 +8,6 @@ import {
   CardTitle,
 } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
 import { Badge } from "~/components/ui/badge";
 import {
   useCollaborationStore,
@@ -58,85 +57,19 @@ const statusConfig: Record<
 */
 
 export const CollaborationPanel = () => {
-  const [action, setAction] = useState<"create" | "join" | "leave" | null>(
-    null
-  );
-  const [joinInput, setJoinInput] = useState("");
-  const {
-    initialize,
-    status,
-    roomId,
-    address,
-    lastError,
-    createRoom,
-    joinRoom,
-    leaveRoom,
-  } = useCollaborationStore();
-
-  useEffect(() => {
-    initialize();
-  }, [initialize]);
-
-  useEffect(() => {
-    if (roomId) {
-      setJoinInput(roomId);
-    }
-  }, [roomId]);
+  const { status, roomId, address, lastError } = useCollaborationStore();
 
   const statusMeta = useMemo(() => statusConfig[status], [status]);
-  const isBusy = status === "busy" && action !== null;
   const isInRoom = status === "in-room" && !!roomId;
-
-  const handleCreateRoom = async () => {
-    setAction("create");
-    try {
-      const created = await createRoom();
-      if (created) {
-        setJoinInput(created);
-      }
-    } finally {
-      setAction(null);
-    }
-  };
-
-  const handleJoinRoom = async () => {
-    if (!joinInput.trim()) {
-      toast.error("Room ID is required", {
-        description: "Enter a valid room ID to join",
-      });
-      return;
-    }
-
-    setAction("join");
-    try {
-      const joined = await joinRoom(joinInput);
-      if (joined) {
-        setJoinInput(joined);
-      }
-    } finally {
-      setAction(null);
-    }
-  };
-
-  const handleLeaveRoom = async () => {
-    if (!isInRoom) return;
-    setAction("leave");
-    try {
-      await leaveRoom();
-      setJoinInput("");
-    } finally {
-      setAction(null);
-    }
-  };
 
   const handleCopyRoomId = async () => {
     if (!roomId) return;
     try {
       await navigator.clipboard.writeText(roomId);
-      toast.success("Room ID copied", { description: roomId });
+      toast.success("Board ID copied", { description: roomId });
     } catch (error) {
-      console.error("Failed to copy room id", error);
-      toast.error("Unable to copy room ID", {
+      console.error("Failed to copy board id", error);
+      toast.error("Unable to copy board ID", {
         description: "Copy it manually instead",
       });
     }
@@ -144,12 +77,12 @@ export const CollaborationPanel = () => {
 
   const handleShareRoom = async () => {
     if (!roomId) return;
-    const shareMessage = `Join my Seisami room: ${roomId}`;
+    const shareMessage = `Collaborate on my Seisami board: ${roomId}`;
 
     if (navigator.share) {
       try {
         await navigator.share({
-          title: "Join my Seisami room",
+          title: "Join my Seisami board",
           text: shareMessage,
         });
       } catch (error) {
@@ -178,7 +111,7 @@ export const CollaborationPanel = () => {
               Live Collaboration
             </CardTitle>
             <CardDescription>
-              Create or join a shared workspace to collaborate in real time.
+              Collaborate with your team in real-time on this board.
             </CardDescription>
             {address && (
               <p className="mt-1 text-xs text-muted-foreground">
@@ -199,37 +132,10 @@ export const CollaborationPanel = () => {
       </CardHeader>
 
       <CardContent className="space-y-4 pt-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            onClick={handleCreateRoom}
-            variant="default"
-            disabled={isBusy || action === "join"}
-          >
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Create new room
-          </Button>
-
-          <div className="flex flex-1 min-w-[240px] items-center gap-2">
-            <Input
-              value={joinInput}
-              onChange={(event) => setJoinInput(event.target.value)}
-              placeholder="Enter room ID to join"
-              disabled={status === "busy" && action === "create"}
-            />
-            <Button
-              variant="secondary"
-              onClick={handleJoinRoom}
-              disabled={isBusy || !joinInput.trim()}
-            >
-              Join
-            </Button>
-          </div>
-        </div>
-
         {isInRoom ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/30 p-4">
             <div>
-              <p className="text-sm font-semibold">Current room</p>
+              <p className="text-sm font-semibold">Collaborating on board</p>
               <p className="font-mono text-sm text-muted-foreground">
                 {roomId}
               </p>
@@ -243,16 +149,6 @@ export const CollaborationPanel = () => {
                 <Share2 className="mr-1 h-3 w-3" />
                 Share
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLeaveRoom}
-                disabled={isBusy && action !== "leave"}
-                className="text-destructive hover:text-destructive"
-              >
-                <LogOut className="mr-1 h-3 w-3" />
-                Leave
-              </Button>
             </div>
           </div>
         ) : (
@@ -261,7 +157,8 @@ export const CollaborationPanel = () => {
               <span className="text-destructive">{lastError}</span>
             ) : (
               <span>
-                Create a new room or join one that a teammate shared with you.
+                Real-time collaboration is ready. Changes will be synced
+                automatically.
               </span>
             )}
           </div>

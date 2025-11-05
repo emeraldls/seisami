@@ -127,8 +127,18 @@ export default function KanbanView() {
   );
 
   const { currentBoard } = useBoardStore();
-  const { roomId } = useCollaborationStore();
+  const { roomId, initialize, teardown } = useCollaborationStore();
   const draggedCardSnapshotRef = useRef<Feature | null>(null);
+
+  useEffect(() => {
+    if (currentBoard?.id) {
+      initialize(currentBoard.id);
+    }
+
+    return () => {
+      teardown();
+    };
+  }, [currentBoard?.id, initialize, teardown]);
 
   const fetchBoard = useCallback(async () => {
     if (!currentBoard) return;

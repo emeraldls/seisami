@@ -24,6 +24,13 @@ func NewRoom() *Room {
 	}
 }
 
+func NewRoomWithID(id string) *Room {
+	return &Room{
+		id:      id,
+		clients: make([]*client.Client, 0),
+	}
+}
+
 func (r *Room) GetRoomId() string {
 	return r.id
 }

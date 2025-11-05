@@ -3,10 +3,23 @@ package main
 import "os"
 
 func getCloudApiUrl() string {
-	const CLOUD_API_URL = "http://localhost:8080"
+	fixedCloudUrl := "https://cloud.seisami.hooklytics.com"
+
 	apiUrl := os.Getenv("CLOUD_API_URL")
-	if apiUrl == "" {
-		return CLOUD_API_URL //hosting url
+	if apiUrl != "" {
+		return apiUrl
 	}
-	return CLOUD_API_URL
+
+	return fixedCloudUrl
+}
+
+func getWebUrl() string {
+	fixedWebUrl := "https://seisami.hooklytics.com"
+
+	webUrlEnv := os.Getenv("WEB_URL")
+	if webUrlEnv != "" {
+		return webUrlEnv
+	}
+	return fixedWebUrl
+
 }

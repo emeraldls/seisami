@@ -1,15 +1,13 @@
 import { EventsOn, BrowserOpenURL } from "../../wailsjs/runtime";
 import { useDesktopAuthStore } from "~/stores/auth-store";
 import { SetLoginToken } from "../../wailsjs/go/main/App";
-
-const WEB_BASE_URL = import.meta.env.VITE_WEB_URL || "http://localhost:3000";
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
+import { CLOUD_API_URL, WEB_URL } from "./constants";
 
 export const DesktopAuthService = {
   startAuthFlow: async (): Promise<void> => {
     try {
       const state = generateRandomState();
-      const loginUrl = `${WEB_BASE_URL}/auth/signin?state=${state}&desktop=true`;
+      const loginUrl = `${WEB_URL}/auth/signin?state=${state}&desktop=true`;
 
       EventsOn(
         "auth:desktop_callback",
@@ -53,7 +51,7 @@ async function exchangeCodeForToken(
   code: string,
   state: string
 ): Promise<string> {
-  const response = await fetch(`${API_BASE_URL}/auth/desktop/exchange`, {
+  const response = await fetch(`${CLOUD_API_URL}/auth/desktop/exchange`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
