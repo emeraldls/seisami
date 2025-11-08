@@ -16,11 +16,11 @@ import { Button } from "./ui/button";
 import { BoardSelector } from "./board-selector";
 import { useEffect, useMemo, useState } from "react";
 import { useDesktopAuthStore } from "~/stores/auth-store";
-import { DesktopAuthService } from "~/lib/desktop-auth-service";
 import { BoardMembersPanel } from "./board-members-panel";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import { InstallUpdate } from "../../wailsjs/go/main/App";
 import { types } from "../../wailsjs/go/models";
+import { CloudLoginDialog } from "./cloud-login-dialog";
 
 interface NavItem {
   id: string;
@@ -49,7 +49,7 @@ export const Sidebar = () => {
 
   const { pathname } = useLocation();
   const { collapsed, toggleCollapsed } = useSidebar();
-  const { isAuthenticated, email, setToken, logout, setLoading, setError } =
+  const { isAuthenticated, logout, setError } =
     useDesktopAuthStore();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
@@ -57,6 +57,7 @@ export const Sidebar = () => {
     useState<types.AppVersion | null>(null);
   const [downloadProgress, setDownloadProgress] =
     useState<DownloadProgressState | null>(null);
+  const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribeUpdateAvailable = EventsOn(
@@ -142,20 +143,9 @@ export const Sidebar = () => {
     };
   }, []);
 
-  const handleCloudLogin = async () => {
-    setIsAuthenticating(true);
-    setLoading(true);
-    try {
-      await DesktopAuthService.startAuthFlow();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Authentication failed";
-      setError(message);
-      console.error("Cloud login error:", error);
-    } finally {
-      setIsAuthenticating(false);
-      setLoading(false);
-    }
+  const handleCloudLogin = () => {
+    setError(null);
+    setIsLoginDialogOpen(true);
   };
 
   const handleLogout = () => {
@@ -225,8 +215,9 @@ export const Sidebar = () => {
   }, [downloadProgress]);
 
   return (
-    <AnimatePresence>
-      <motion.aside
+    <>
+      <AnimatePresence>
+        <motion.aside
         animate={{ width: collapsed ? 72 : 256 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className={cn(
@@ -394,7 +385,23 @@ export const Sidebar = () => {
             </div>
           )}
         </div>
-      </motion.aside>
-    </AnimatePresence>
+        </motion.aside>
+      </AnimatePresence>
+      <CloudLoginDialog
+        open={isLoginDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsAuthenticating(false);
+          }
+          setIsLoginDialogOpen(open);
+        }}
+        onAuthStart={() => {
+          setIsAuthenticating(true);
+        }}
+        onAuthEnd={() => {
+          setIsAuthenticating(false);
+        }}
+      />
+    </>
   );
 };
