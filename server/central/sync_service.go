@@ -141,34 +141,6 @@ func (s *SyncService) handleBoardOperation(ctx context.Context, userUUID uuid.UU
 			return fmt.Errorf("unable to upsert board: %v", err)
 		}
 
-		boardUUID, errr := uuid.Parse(payload.ID)
-		if errr != nil {
-			return fmt.Errorf("unable to convert board id to uuid: %v", err)
-		}
-
-		// TODO: would be best to use transactions to ensure atomicity between boards & board_memebers table
-
-		if op.OperationType == "insert" {
-			err = s.queries.InsertBoardMember(ctx, centraldb.InsertBoardMemberParams{
-				BoardID: pgtype.UUID{
-					Bytes: boardUUID,
-					Valid: true,
-				},
-				UserID: pgtype.UUID{
-					Bytes: userUUID,
-					Valid: true,
-				},
-				Role: pgtype.Text{
-					String: types.BoardOwnerRole.String(),
-					Valid:  true,
-				},
-			})
-
-			if err != nil {
-				return fmt.Errorf("unable to create board member: %v", err)
-			}
-		}
-
 	case "delete":
 		boardID, err := uuid.Parse(op.RecordID)
 		if err != nil {
@@ -756,28 +728,6 @@ func (s *SyncService) upsertBoard(ctx context.Context, userUUID uuid.UUID, board
 		},
 	}); err != nil {
 		return fmt.Errorf("unable to upsert board: %v", err)
-	}
-
-	boardUUID, err := uuid.Parse(board.ID)
-	if err != nil {
-		return fmt.Errorf("unable to parse board id into uuid: %v", err)
-	}
-
-	if err := s.queries.InsertBoardMember(ctx, centraldb.InsertBoardMemberParams{
-		BoardID: pgtype.UUID{
-			Bytes: boardUUID,
-			Valid: true,
-		},
-		UserID: pgtype.UUID{
-			Bytes: userUUID,
-			Valid: true,
-		},
-		Role: pgtype.Text{
-			String: types.BoardOwnerRole.String(),
-			Valid:  true,
-		},
-	}); err != nil {
-		return fmt.Errorf("unable to create board member: %v", err)
 	}
 
 	return nil

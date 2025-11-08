@@ -63,14 +63,39 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cl := client.NewClient(conn)
+	userId := r.Header.Get("X-User-ID")
+	boardId := r.Header.Get("X-Board-ID")
+
+	if userId == "" {
+		log.Println("WebSocket connection missing X-User-ID header")
+		conn.Close()
+		return
+	}
+
+	if boardId == "" {
+		log.Println("WebSocket connection missing X-Board-ID header")
+		conn.Close()
+		return
+	}
+
+	cl := client.NewClient(conn, userId)
 	fmt.Println("New client connected:", cl.GetId())
 
-	go handleConn(cl, roomManager)
+	err = roomManager.JoinOrCreateRoom(boardId, cl)
+	if err != nil {
+		log.Printf("Failed to join board room: %v", err)
+		conn.Close()
+		return
+	}
+
+	fmt.Printf("Client %s joined board room: %s\n", cl.GetId(), boardId)
+
+	go handleConn(cl, roomManager, boardId)
 }
 
-func handleConn(c *client.Client, manager *room_manager.RoomManager) {
+func handleConn(c *client.Client, manager *room_manager.RoomManager, boardId string) {
 	defer c.Close()
+	defer manager.LeaveRoomById(boardId, c)
 
 	for {
 		_, message, err := c.Conn().ReadMessage()
@@ -89,29 +114,6 @@ func handleConn(c *client.Client, manager *room_manager.RoomManager) {
 		}
 
 		switch msg.Action {
-		case "join":
-			err := manager.JoinRoomById(msg.RoomID, c)
-			if err != nil {
-				response := map[string]string{"error": fmt.Sprintf("failed to join room: %v", err)}
-				jsonResp, _ := json.Marshal(response)
-				c.Send(jsonResp)
-			} else {
-				response := map[string]string{"status": "joined", "roomId": msg.RoomID}
-				jsonResp, _ := json.Marshal(response)
-				c.Send(jsonResp)
-			}
-		case "create":
-			room := manager.CreateRoom()
-			response := map[string]string{"status": "created", "roomId": room.GetRoomId()}
-			jsonResp, _ := json.Marshal(response)
-			c.Send(jsonResp)
-
-		case "leave":
-			manager.LeaveRoomById(msg.RoomID, c)
-			response := map[string]string{"status": "left", "roomId": msg.RoomID}
-			jsonResp, _ := json.Marshal(response)
-			c.Send(jsonResp)
-
 		case "broadcast":
 			broadcastMsg := map[string]string{
 				"type": msg.Type,
@@ -119,7 +121,7 @@ func handleConn(c *client.Client, manager *room_manager.RoomManager) {
 				"data": msg.Data,
 			}
 			jsonMsg, _ := json.Marshal(broadcastMsg)
-			manager.BroadcastToRoom(msg.RoomID, jsonMsg)
+			manager.BroadcastToRoom(boardId, jsonMsg)
 
 		default:
 			response := map[string]string{"error": "unknown action"}

@@ -3,6 +3,8 @@
  * Handles connection, message sending/receiving, and reconnection logic
  */
 
+import { WEBSOCKET_URL } from "./constants";
+
 export type CollabMessage =
   | {
       action: "create" | "join" | "leave" | "broadcast";
@@ -34,6 +36,7 @@ class WebSocketService {
   private ws: WebSocket | null = null;
   private url: string;
   private authToken: string | null = null;
+  private boardId: string | null = null;
   private messageHandlers: Set<MessageHandler> = new Set();
   private connectionHandlers: Set<ConnectionHandler> = new Set();
   private errorHandlers: Set<ErrorHandler> = new Set();
@@ -43,7 +46,7 @@ class WebSocketService {
   private reconnectDelay = 1000; // ms
   private isIntentionallyClosed = false;
 
-  constructor(url: string = "ws://localhost:8080/ws") {
+  constructor(url: string = WEBSOCKET_URL) {
     this.url = url;
   }
 
@@ -55,15 +58,25 @@ class WebSocketService {
   }
 
   /**
+   * Set the board ID for the collaboration session
+   */
+  setBoardId(boardId: string): void {
+    this.boardId = boardId;
+  }
+
+  /**
    * Connect to the WebSocket server
    */
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        // Build WebSocket URL with auth token as query parameter
+        // Build WebSocket URL with auth token and board_id as query parameters
         const wsUrl = new URL(this.url);
         if (this.authToken) {
           wsUrl.searchParams.append("token", this.authToken);
+        }
+        if (this.boardId) {
+          wsUrl.searchParams.append("board_id", this.boardId);
         }
 
         this.ws = new WebSocket(wsUrl.toString());

@@ -7,6 +7,8 @@ import {
   UpdateBoard,
   DeleteBoard,
 } from "../../wailsjs/go/main/App";
+import { EventsEmit } from "../../wailsjs/runtime/runtime";
+import { useCollaborationStore } from "./collab-store";
 
 export interface Board {
   ID: string;
@@ -98,6 +100,18 @@ export const useBoardStore = create<BoardState>()(
             const rawBoard = await CreateBoard(name);
             const board = normalizeBoard(rawBoard as Board);
 
+            const createdAt = rawBoard.CreatedAt.String;
+            const updatedAt = rawBoard.UpdatedAt.String;
+
+            const payload = {
+              id: board.id,
+              name: board.name,
+              created_at: createdAt,
+              updated_at: updatedAt,
+            };
+
+            EventsEmit("board:create", JSON.stringify(payload));
+
             set((state) => ({
               boards: [board, ...state.boards],
               currentBoard: board,
@@ -121,6 +135,18 @@ export const useBoardStore = create<BoardState>()(
           try {
             const rawBoard = await UpdateBoard(boardId, name);
             const board = normalizeBoard(rawBoard as Board);
+
+            const roomId = useCollaborationStore.getState().roomId;
+            const updatedAt = rawBoard.UpdatedAt.String;
+
+            const payload = {
+              room_id: roomId,
+              id: board.id,
+              name: board.name,
+              updated_at: updatedAt,
+            };
+
+            EventsEmit("board:data", JSON.stringify(payload));
 
             set((state) => ({
               boards: state.boards.map((b) => (b.id === boardId ? board : b)),

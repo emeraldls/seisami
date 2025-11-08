@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { CLOUD_API_URL } from "./constants";
 
 interface SyncBoard {
   id: string;
@@ -71,7 +72,7 @@ interface SyncProgress {
 type SyncProgressCallback = (progress: SyncProgress) => void;
 
 class DataSyncService {
-  private serverUrl: string = "http://localhost:8080";
+  private serverUrl: string = CLOUD_API_URL;
   private progressCallbacks: Set<SyncProgressCallback> = new Set();
 
   setServerUrl(url: string) {

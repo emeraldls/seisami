@@ -3,7 +3,6 @@ package client
 import (
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -25,12 +24,11 @@ type Client struct {
 	mu    sync.Mutex
 }
 
-func NewClient(conn *websocket.Conn) *Client {
-	id := uuid.New().String()
+func NewClient(conn *websocket.Conn, userId string) *Client {
 	return &Client{
 		conn:  conn,
 		state: Idle,
-		id:    id,
+		id:    userId,
 	}
 }
 

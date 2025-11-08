@@ -46,6 +46,19 @@ func (m *RoomManager) DeleteRoom(roomId string) {
 	delete(m.rooms, roomId)
 }
 
+// GetOrCreateRoom gets an existing room or creates a new one with the specified ID
+func (m *RoomManager) GetOrCreateRoom(roomId string) *room.Room {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	r, exists := m.rooms[roomId]
+	if !exists {
+		r = room.NewRoomWithID(roomId)
+		m.rooms[roomId] = r
+	}
+	return r
+}
+
 func (m *RoomManager) JoinRoomById(roomId string, c *client.Client) error {
 	room, err := m.GetRoom(roomId)
 	if err != nil {
@@ -53,6 +66,17 @@ func (m *RoomManager) JoinRoomById(roomId string, c *client.Client) error {
 	}
 
 	err = room.JoinRoom(c)
+	if err == nil {
+		c.UpdateState(client.InRoom)
+	}
+	return err
+}
+
+// JoinOrCreateRoom joins an existing room or creates it if it doesn't exist
+func (m *RoomManager) JoinOrCreateRoom(roomId string, c *client.Client) error {
+	r := m.GetOrCreateRoom(roomId)
+	
+	err := r.JoinRoom(c)
 	if err == nil {
 		c.UpdateState(client.InRoom)
 	}

@@ -20,11 +20,8 @@ interface CollabState {
   lastError: string | null;
   isInitialized: boolean;
   eventUnsubscribers: Unsubscribe[];
-  initialize: () => void;
+  initialize: (boardId: string) => void;
   teardown: () => void;
-  createRoom: () => Promise<string | null>;
-  joinRoom: (roomId: string) => Promise<string | null>;
-  leaveRoom: () => Promise<string | null>;
   setRoomId: (roomId: string) => void;
 }
 
@@ -38,8 +35,20 @@ export const useCollaborationStore = create<CollabState>((set, get) => ({
   isInitialized: false,
   eventUnsubscribers: [],
 
-  initialize: () => {
+  initialize: (boardId: string) => {
     if (get().isInitialized) {
+      return;
+    }
+
+    if (!boardId) {
+      set({
+        status: "error",
+        lastError: "Board ID is required for collaboration",
+        isInitialized: true,
+      });
+      toast.error("Collaboration error", {
+        description: "Board ID is required",
+      });
       return;
     }
 
@@ -59,49 +68,26 @@ export const useCollaborationStore = create<CollabState>((set, get) => ({
     const unsubscribers: Unsubscribe[] = [];
 
     wsService.setAuthToken(authStore.token);
+    wsService.setBoardId(boardId);
 
     const connectPromise = wsService.connect();
 
     const unsubConnect = wsService.onConnect(() => {
-      set((state) => ({
-        status: state.roomId ? "in-room" : "connected",
+      set({
+        status: "in-room",
+        roomId: boardId,
         address: "127.0.0.1:8080",
-      }));
-      toast.success("Connected to collaboration server", {
-        description: "Ready to create or join rooms",
+      });
+      toast.success("Connected to collaboration", {
+        description: "Real-time collaboration is active for this board",
       });
     });
     unsubscribers.push(unsubConnect);
 
     const unsubMessage = wsService.onMessage((message: CollabResponse) => {
-      if ("status" in message && message.status === "created") {
-        const roomId = message.roomId;
-        set({ status: "in-room", roomId, lastError: null });
-        toast.success("Room created", {
-          description: `Share this ID: ${roomId}`,
-        });
-      }
-
-      if ("status" in message && message.status === "joined") {
-        const roomId = message.roomId;
-        set({ status: "in-room", roomId, lastError: null });
-        toast.success("Joined room", {
-          description: `Connected to room ${roomId}`,
-        });
-      }
-
-      if ("status" in message && message.status === "left") {
-        const roomId = message.roomId;
-        set({ status: "connected", roomId: "" });
-        toast.info("Left room", {
-          description: `You left room ${roomId}`,
-        });
-      }
-
       if ("type" in message && message.type === "message") {
         console.log("Broadcast message:", message);
-        // You can handle broadcast messages here
-        // For now, just log them
+        // Handle broadcast messages here
       }
 
       if ("error" in message) {
@@ -153,118 +139,12 @@ export const useCollaborationStore = create<CollabState>((set, get) => ({
       }
     });
     wsService.disconnect();
-    set({ eventUnsubscribers: [], isInitialized: false });
-  },
-
-  createRoom: async () => {
-    set({ status: "busy", lastError: null });
-    try {
-      wsService.createRoom();
-
-      const roomId = await new Promise<string>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          unsubscribe();
-          reject(new Error("Room creation timeout"));
-        }, 5000);
-
-        const unsubscribe = wsService.onMessage((message) => {
-          if ("status" in message && message.status === "created") {
-            clearTimeout(timeout);
-            unsubscribe();
-            resolve(message.roomId);
-          }
-        });
-      });
-
-      const normalized = normalizeRoomId(roomId);
-      set({ roomId: normalized, status: "in-room" });
-      return normalized;
-    } catch (error) {
-      const message = (error as Error).message ?? "Unable to create room";
-      set({ status: "error", lastError: message });
-      toast.error("Failed to create room", { description: message });
-      return null;
-    }
-  },
-
-  joinRoom: async (roomId: string) => {
-    const targetRoomId = normalizeRoomId(roomId);
-    if (!targetRoomId) {
-      const message = "Room ID is required";
-      set({ lastError: message, status: "error" });
-      toast.error("Unable to join room", { description: message });
-      return null;
-    }
-
-    set({ status: "busy", lastError: null });
-
-    try {
-      wsService.joinRoom(targetRoomId);
-
-      const joinedRoomId = await new Promise<string>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          unsubscribe();
-          reject(new Error("Join room timeout"));
-        }, 5000);
-
-        const unsubscribe = wsService.onMessage((message) => {
-          if ("status" in message && message.status === "joined") {
-            clearTimeout(timeout);
-            unsubscribe();
-            resolve(message.roomId);
-          }
-        });
-      });
-
-      const normalized = normalizeRoomId(joinedRoomId);
-      set({ roomId: normalized, status: "in-room" });
-      toast.success("Joined room", {
-        description: `Connected to ${normalized}`,
-      });
-      return normalized;
-    } catch (error) {
-      const message = (error as Error).message ?? "Unable to join room";
-      set({ status: "error", lastError: message });
-      toast.error("Failed to join room", { description: message });
-      return null;
-    }
-  },
-
-  leaveRoom: async () => {
-    const currentRoomId = get().roomId;
-    if (!currentRoomId) {
-      return null;
-    }
-
-    set({ status: "busy", lastError: null });
-
-    try {
-      wsService.leaveRoom(currentRoomId);
-
-      const leftRoomId = await new Promise<string>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          unsubscribe();
-          reject(new Error("Leave room timeout"));
-        }, 5000);
-
-        const unsubscribe = wsService.onMessage((message) => {
-          if ("status" in message && message.status === "left") {
-            clearTimeout(timeout);
-            unsubscribe();
-            resolve(message.roomId);
-          }
-        });
-      });
-
-      set({ roomId: "", status: "connected" });
-      toast.info("Left room", { description: `You left ${leftRoomId}` });
-      return leftRoomId;
-    } catch (error) {
-      const message = (error as Error).message ?? "Unable to leave room";
-      set({ status: "error", lastError: message });
-      toast.error("Failed to leave room", { description: message });
-      return null;
-    }
+    set({
+      eventUnsubscribers: [],
+      isInitialized: false,
+      status: "disconnected",
+      roomId: "",
+    });
   },
 
   setRoomId: (roomId: string) => {

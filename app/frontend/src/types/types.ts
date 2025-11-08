@@ -10,6 +10,13 @@ export interface Transcription {
   recordingPath?: string;
 }
 
+export interface BoardEventData {
+  room_id?: string;
+  id: string;
+  name: string;
+  updated_at?: string;
+}
+
 export interface ColumnEventData {
   room_id: string;
   id: string;
@@ -81,6 +88,7 @@ export interface CardColumnEventData {
 }
 
 export type WebSocketEvent =
+  | { type: "board:data"; data: BoardEventData }
   | { type: "column:create"; data: ColumnEventData }
   | { type: "column:data"; data: ColumnEventData }
   | { type: "column:delete"; data: ColumnDeleteEventData }

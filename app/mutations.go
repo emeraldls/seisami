@@ -38,6 +38,88 @@ func (a *App) handleMutations() {
 		}
 	})
 
+	runtime.EventsOn(a.ctx, "board:create", func(optionalData ...any) {
+		if len(optionalData) > 0 {
+			data, ok := optionalData[0].(string)
+			if !ok {
+				fmt.Println("board:create event received invalid data type")
+				return
+			}
+
+			go func(ctx context.Context, payload string) {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					var boardData map[string]interface{}
+					if err := json.Unmarshal([]byte(payload), &boardData); err != nil {
+						fmt.Printf("unable to unmarshal board data: %v\n", err)
+						return
+					}
+
+					boardID, ok := boardData["id"].(string)
+					if !ok || boardID == "" {
+						fmt.Println("board:create event missing board id")
+						return
+					}
+
+					_, err := a.repository.CreateOperation(types.BoardTable, boardID, payload, types.InsertOperation)
+					if err != nil {
+						fmt.Printf("unable to create board operation: %v\n", err)
+					}
+				}
+			}(a.ctx, data)
+		}
+	})
+
+	runtime.EventsOn(a.ctx, "board:data", func(optionalData ...any) {
+		if len(optionalData) > 0 {
+			data, ok := optionalData[0].(string)
+			if !ok {
+				fmt.Println("board:data event received invalid data type")
+				return
+			}
+
+			go func(ctx context.Context, payload string) {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					var boardData map[string]interface{}
+					if err := json.Unmarshal([]byte(payload), &boardData); err != nil {
+						fmt.Printf("unable to unmarshal board data: %v\n", err)
+						return
+					}
+
+					boardID, ok := boardData["id"].(string)
+					if !ok || boardID == "" {
+						fmt.Println("board:data event missing board id")
+						return
+					}
+
+					_, err := a.repository.CreateOperation(types.BoardTable, boardID, payload, types.UpdateOperation)
+					if err != nil {
+						fmt.Printf("unable to update board operation: %v\n", err)
+						return
+					}
+
+					roomID, _ := boardData["room_id"].(string)
+					if roomID != "" {
+						msg := types.Message{
+							Action: "broadcast",
+							RoomID: roomID,
+							Data:   payload,
+							Type:   "board:data",
+						}
+						if err := a.sendCollabCommand(msg); err != nil {
+							fmt.Printf("unable to broadcast board update: %v\n", err)
+						}
+					}
+				}
+			}(a.ctx, data)
+		}
+	})
+
 	// column name updatedd....
 	runtime.EventsOn(a.ctx, "column:data", func(optionalData ...any) {
 		if len(optionalData) > 0 {

@@ -52,13 +52,37 @@ func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
 			return
 		}
 
+		boardID := c.Query("board_id")
+		if boardID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "missing board_id"})
+			return
+		}
+
 		userID, err := validateToken(token, authService.jwtSecret)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 			return
 		}
 
+		boardUUID, err := uuid.Parse(boardID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid board_id"})
+			return
+		}
+
+		userUUID, err := uuid.Parse(userID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID in token"})
+			return
+		}
+
+		if err := h.syncService.ensureBoardAccess(c, boardUUID, userUUID); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+			return
+		}
+
 		c.Request.Header.Set("X-User-ID", userID)
+		c.Request.Header.Set("X-Board-ID", boardID)
 		if wsHandler != nil {
 			wsHandler(c.Writer, c.Request)
 		} else {
@@ -830,6 +854,7 @@ func (h *handler) getBoardMembers(c *gin.Context) {
 
 	boardMembers, err := h.syncService.getBoardMembers(c, boardUUID, userUUID)
 	if err != nil {
+		fmt.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
 	}
