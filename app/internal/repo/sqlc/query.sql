@@ -204,7 +204,7 @@ FROM operations AS o
 JOIN (
     SELECT inner_op.record_id, MAX(inner_op.created_at) AS max_created_at
     FROM operations AS inner_op
-    WHERE inner_op.created_at > COALESCE((
+    WHERE CAST(strftime('%s', inner_op.created_at) AS INTEGER) > COALESCE((
         SELECT last_synced_at
         FROM sync_state
         WHERE sync_state.table_name = ?
@@ -232,7 +232,6 @@ FROM sync_state
 WHERE table_name = ?
 LIMIT 1;
 
--- name: UpdateSyncState :exec
 -- name: UpdateSyncState :exec
 UPDATE sync_state
 SET last_synced_at = ?, last_synced_op_id = ?

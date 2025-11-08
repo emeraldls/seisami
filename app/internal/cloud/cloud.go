@@ -208,7 +208,13 @@ func (cf *cloudFuncs) GetSyncState(tableName types.TableName) (query.SyncState, 
 }
 
 func (cf *cloudFuncs) UpdateSyncState(state query.SyncState) error {
-	if err := cf.postSyncResource("/sync/state", state); err != nil {
+	payload := types.SyncStatePayload{
+		TableName:      state.TableName,
+		LastSyncedAt:   state.LastSyncedAt,
+		LastSyncedOpID: state.LastSyncedOpID,
+	}
+
+	if err := cf.postSyncResource("/sync/state", payload); err != nil {
 		return fmt.Errorf("unable to update sync state: %w", err)
 	}
 

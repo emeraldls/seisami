@@ -6,6 +6,7 @@ import (
 	"seisami/app/internal/cloud"
 	"seisami/app/internal/local"
 	"seisami/app/internal/repo"
+	"seisami/app/internal/repo/sqlc/query"
 	"seisami/app/types"
 	"time"
 )
@@ -58,9 +59,6 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 		return fmt.Errorf("[CLOUD] -> %v", err)
 	}
 
-	b, _ := json.MarshalIndent(cloudOps, "", " ")
-	fmt.Println(string(b))
-
 	localLatest := latestByRecord(localOps)
 	cloudLatest := latestByRecord(cloudOps)
 
@@ -73,6 +71,7 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 		switch {
 		case !hasLocal:
 			// new record exists in cloud, pull it
+			fmt.Println("new record exists in cloud, pulling it: ", recordId)
 			operation, err := s.cloud.PullRecord(tableName)
 			if err != nil {
 				fmt.Printf("error pulling record from cloud: %v\n", err)
@@ -81,6 +80,7 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 
 			// after pulling record from cloud, you update it local db
 
+			fmt.Println("updating local db with new record pulled")
 			if err := s.local.UpdateLocalDB(operation); err != nil {
 				fmt.Printf("error updating local db: %v\n", err)
 				continue
@@ -89,6 +89,7 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 
 		case !hasCloud:
 			// new record exists locally, push it to cloud
+			fmt.Println("new record exists locally, pushing it to cloud: ", recordId)
 			httpResp := s.cloud.PushRecord(localOp)
 			if httpResp.HasError {
 				fmt.Printf("push error: %v (data: %v)\n", httpResp.Message, httpResp.Data)
@@ -98,6 +99,7 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 
 		default:
 			// both exists
+			fmt.Println("both records exist, comparing timestamps")
 			localTime, err := time.Parse(layout, localOp.CreatedAt)
 			if err != nil {
 				fmt.Printf("error parsing local createdAt: %v\n", err)
@@ -115,6 +117,7 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 
 			switch {
 			case localTs > cloudTs:
+				fmt.Println("local record is newer, pushing to cloud")
 				// local record is newer, push to cloud
 				httpResp := s.cloud.PushRecord(localOp)
 				if httpResp.HasError {
@@ -124,6 +127,7 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 				pushed = true
 
 			case cloudTs > localTs:
+				fmt.Println("cloud record is newer, pulling to local")
 				// cloud record is newer, pull
 				operation, err := s.cloud.PullRecord(tableName)
 				if err != nil {
@@ -142,19 +146,48 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 		}
 	}
 
+	fmt.Printf("Pushed State: %v, Pulled State: %v\n", pushed, pulled)
+
 	if pushed {
-		syncState, err := s.repo.GetSyncState(tableName)
-		if err != nil {
-			fmt.Println(err)
-		} else {
-			if err := s.cloud.UpdateSyncState(syncState); err != nil {
-				fmt.Printf("error updating cloud sync state: %v\n", err)
+		fmt.Printf("\n\n<-------Pushing New Data To Cloud ----------->\n\n")
+
+		lastOpID := ""
+		if len(localOps) > 0 {
+
+			var latestOp types.OperationSync
+			var latestTime int64
+
+			for _, op := range localOps {
+				t, err := time.Parse(layout, op.CreatedAt)
+				if err != nil {
+					continue
+				}
+				ts := t.Unix()
+				if ts > latestTime {
+					latestTime = ts
+					latestOp = op
+				}
 			}
+			lastOpID = latestOp.ID
 		}
 
+		syncState := query.SyncState{
+			TableName:      tableName.String(),
+			LastSyncedAt:   time.Now().Unix(),
+			LastSyncedOpID: lastOpID,
+		}
+
+		if err := s.local.UpsertSyncState(syncState); err != nil {
+			fmt.Printf("error upserting local sync state: %v\n", err)
+		}
+
+		if err := s.cloud.UpdateSyncState(syncState); err != nil {
+			fmt.Printf("error updating cloud sync state: %v\n", err)
+		}
 	}
 
 	if pulled {
+		fmt.Printf("\n\n<-------Pulling New Data From Cloud ----------->\n\n")
 		newState, err := s.cloud.GetSyncState(tableName)
 		if err != nil {
 			fmt.Printf("error fetching cloud sync state: %v\n", err)
