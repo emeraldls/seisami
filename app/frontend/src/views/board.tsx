@@ -1182,9 +1182,9 @@ export default function KanbanView() {
                                   <div className="flex items-center gap-1 text-gray-400">
                                     <Calendar className="h-3 w-3" />
                                     <span>
-                                      {shortDateFormatter.format(
+                                      {/*TODO: imported board time is not in the expected format {shortDateFormatter.format(
                                         feature.startAt
-                                      )}
+                                      )} */}
                                     </span>
                                   </div>
                                 </div>

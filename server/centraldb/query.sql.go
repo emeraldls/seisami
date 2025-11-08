@@ -444,19 +444,14 @@ func (q *Queries) GetBoardByID(ctx context.Context, id pgtype.UUID) (Board, erro
 }
 
 const getBoardColumns = `-- name: GetBoardColumns :many
-SELECT c.id, c.board_id, c.name, c.position, c.created_at, c.updated_at FROM columns c
-JOIN boards b ON b.id = c.board_id
-WHERE c.board_id = $1 AND b.user_id = $2
-ORDER BY position ASC
+SELECT c.id, c.board_id, c.name, c.position, c.created_at, c.updated_at
+FROM columns c
+WHERE c.board_id = $1
+ORDER BY c.created_at ASC
 `
 
-type GetBoardColumnsParams struct {
-	BoardID pgtype.UUID
-	UserID  pgtype.UUID
-}
-
-func (q *Queries) GetBoardColumns(ctx context.Context, arg GetBoardColumnsParams) ([]Column, error) {
-	rows, err := q.db.Query(ctx, getBoardColumns, arg.BoardID, arg.UserID)
+func (q *Queries) GetBoardColumns(ctx context.Context, boardID pgtype.UUID) ([]Column, error) {
+	rows, err := q.db.Query(ctx, getBoardColumns, boardID)
 	if err != nil {
 		return nil, err
 	}

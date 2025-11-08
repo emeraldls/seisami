@@ -26,6 +26,19 @@ func (a *App) handleMutations() {
 		}
 	})
 
+	runtime.EventsOn(a.ctx, "auth:set_current_board", func(optionalData ...any) {
+		if len(optionalData) > 0 {
+			if boardId, ok := optionalData[0].(string); ok && boardId != "" {
+				fmt.Printf("Received current board ID, setting up collaboration\n")
+				a.SetCurrentBoardId(boardId)
+			} else {
+				fmt.Println("Received event 'auth:set_current_board' with invalid board ID")
+			}
+		} else {
+			fmt.Println("Received event 'auth:set_current_board' with no data")
+		}
+	})
+
 	runtime.EventsOn(a.ctx, "board:id", func(optionalData ...any) {
 
 		if len(optionalData) > 0 {

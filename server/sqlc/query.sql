@@ -88,10 +88,11 @@ WHERE user_id = $1
 ORDER BY created_at DESC;
 
 -- name: GetBoardColumns :many
-SELECT c.* FROM columns c
-JOIN boards b ON b.id = c.board_id
-WHERE c.board_id = $1 AND b.user_id = $2
-ORDER BY position ASC;
+SELECT c.*
+FROM columns c
+WHERE c.board_id = $1
+ORDER BY c.created_at ASC;
+
 
 -- name: GetColumnCards :many
 SELECT * FROM cards

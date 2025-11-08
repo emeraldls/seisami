@@ -120,7 +120,9 @@ func handleConn(c *client.Client, manager *room_manager.RoomManager, boardId str
 				"from": c.GetId(),
 				"data": msg.Data,
 			}
-			jsonMsg, _ := json.Marshal(broadcastMsg)
+
+			jsonMsg, _ := json.MarshalIndent(broadcastMsg, "", "  ")
+			fmt.Println(string(jsonMsg))
 			manager.BroadcastToRoom(boardId, jsonMsg)
 
 		default:

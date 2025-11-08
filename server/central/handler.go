@@ -112,7 +112,7 @@ func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
 		sync.POST("/init", h.initSyncState)
 		sync.POST("/upload", h.uploadData)
 		sync.GET("/pull/:table", h.pullData)
-		sync.POST("/export", h.exportData)
+		sync.GET("/export/:boardId", h.exportData)
 
 		sync.POST("/init/cloud", h.initCloud)
 		sync.GET("/cloud/status", h.getCloudStatus)
@@ -422,12 +422,6 @@ func (h *handler) exportData(c *gin.Context) {
 		return
 	}
 
-	var payload types.SyncPayload
-	if err := c.BindJSON(&payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "invalid payload"})
-		return
-	}
-
 	uid, err := uuid.Parse(userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "unable to parse id: " + err.Error()})
@@ -439,6 +433,9 @@ func (h *handler) exportData(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
 	}
+
+	boardData, _ := json.MarshalIndent(data, "", " ")
+	fmt.Println(string(boardData))
 
 	c.JSON(http.StatusCreated, gin.H{"message": "import successful", "data": data})
 }

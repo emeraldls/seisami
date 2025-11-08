@@ -274,6 +274,14 @@ func (a *App) GetLoginToken() string {
 	return a.loginToken
 }
 
+func (a *App) SetCurrentBoardId(boardId string) {
+	a.currentBoardId = boardId
+}
+
+func (a *App) GetCurrentBoardId() string {
+	return a.currentBoardId
+}
+
 func (a *App) appVersionCheck() {
 	time.Sleep(20 * time.Second) //just to ensure the app has full started before you run this
 	fmt.Println("running app version check")
@@ -463,10 +471,12 @@ func (a *App) ensureCollabConnectionLocked() error {
 	wsURL := url.URL{Scheme: "ws", Host: addr, Path: "/ws"}
 	q := wsURL.Query()
 	q.Set("token", a.GetLoginToken())
+	q.Set("board_id", a.currentBoardId)
 	wsURL.RawQuery = q.Encode()
 
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
 	if err != nil {
+		fmt.Println(err)
 		return fmt.Errorf("unable to connect to collaboration server at %s: %w", wsURL.String(), err)
 	}
 

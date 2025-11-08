@@ -36,6 +36,8 @@ export function GetCollaborationRoomId():Promise<string>;
 
 export function GetColumn(arg1:string):Promise<query.Column>;
 
+export function GetCurrentBoardId():Promise<string>;
+
 export function GetLoginToken():Promise<string>;
 
 export function GetPlatformInfo():Promise<Record<string, any>>;
@@ -71,6 +73,8 @@ export function RequestAccessibilityPermission():Promise<void>;
 export function RequestMicrophonePermission():Promise<boolean>;
 
 export function SaveSettings(arg1:string,arg2:any,arg3:any,arg4:any):Promise<query.Setting>;
+
+export function SetCurrentBoardId(arg1:string):Promise<void>;
 
 export function SetLoginToken(arg1:string):Promise<void>;
 

@@ -24,6 +24,7 @@ export const AppLayout = () => {
   const { collapsed } = useSidebar();
   const cloudToastIdRef = useRef<string | number | null>(null);
   const tokenSentRef = useRef(false);
+  const currentBoardSentRef = useRef(false);
   const { token } = useDesktopAuthStore();
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [boardIdToImport, setBoardIdToImport] = useState<string | undefined>();
@@ -46,6 +47,13 @@ export const AppLayout = () => {
       tokenSentRef.current = true;
     }
   }, [token]);
+
+  useEffect(() => {
+    if (currentBoard && !currentBoardSentRef.current) {
+      EventsEmit("auth:set_current_board", currentBoard.id);
+      currentBoardSentRef.current = true;
+    }
+  }, [currentBoard]);
 
   // Helper function to update transcriptions in cache
   const updateTranscriptionInCache = (

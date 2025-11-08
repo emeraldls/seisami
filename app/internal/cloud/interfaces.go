@@ -18,7 +18,7 @@ type Cloud interface {
 	UpsertCard(types.ExportedCard) error
 	InitializeSyncStateForUser() error
 
-	ImportData() (types.ImportUserBoardData, error)
+	ImportData(boardId string) (types.ImportUserBoardData, error)
 	UpdateSessionToken(token string)
 
 	InitCloud() error

@@ -1108,29 +1108,26 @@ func (s *SyncService) ensureBoardOwner(ctx context.Context, boardID, userID uuid
 }
 
 func (s *SyncService) ExportAllData(ctx context.Context, userID uuid.UUID, boardID string) (*types.ExportedData, error) {
+	fmt.Println("exportig cloud board")
 
 	boardUUID, err := uuid.Parse(boardID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse data type into uuid: %v", err)
 	}
 
-	id := pgtype.UUID{
+	boardId := pgtype.UUID{
 		Bytes: boardUUID,
 		Valid: true,
 	}
 
-	board, err := s.queries.GetBoardByID(ctx, id)
+	board, err := s.queries.GetBoardByID(ctx, boardId)
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch board with id (%s): %v", boardID, err)
 	}
 
-	columns, err := s.queries.GetBoardColumns(ctx, centraldb.GetBoardColumnsParams{
-		BoardID: id,
-		UserID: pgtype.UUID{
-			Bytes: userID,
-			Valid: true,
-		},
-	})
+	columns, err := s.queries.GetBoardColumns(ctx, boardId)
+
+	fmt.Println("fetched columns: ", len(columns))
 
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch board columns with id (%s): %v", boardID, err)
@@ -1150,7 +1147,7 @@ func (s *SyncService) ExportAllData(ctx context.Context, userID uuid.UUID, board
 
 	cards, err := s.queries.ListBoardsCards(ctx, centraldb.ListBoardsCardsParams{
 		UserID:  board.UserID,
-		BoardID: id,
+		BoardID: boardId,
 	})
 
 	if err != nil {
@@ -1173,7 +1170,7 @@ func (s *SyncService) ExportAllData(ctx context.Context, userID uuid.UUID, board
 	transcriptions, err := s.queries.ListBoardTranscriptions(ctx, centraldb.ListBoardTranscriptionsParams{
 		Limit:  1000,
 		Offset: 0,
-		ID:     id,
+		ID:     boardId,
 		UserID: pgtype.UUID{
 			Bytes: userID,
 			Valid: true,
@@ -1187,7 +1184,7 @@ func (s *SyncService) ExportAllData(ctx context.Context, userID uuid.UUID, board
 	for i, t := range transcriptions {
 		exportedTranscriptions[i] = types.ExportedTranscription{
 			ID:                t.ID,
-			BoardID:           id.String(),
+			BoardID:           boardId.String(),
 			Transcription:     t.Transcription,
 			RecordingPath:     t.RecordingPath.String,
 			Intent:            t.Intent.String,

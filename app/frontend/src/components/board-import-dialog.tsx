@@ -83,6 +83,7 @@ export const BoardImportDialog = ({
       setMetadata(null);
       setError(null);
     } catch (err) {
+      console.error(err);
       const message =
         err instanceof Error ? err.message : "Failed to import board";
       setError(message);

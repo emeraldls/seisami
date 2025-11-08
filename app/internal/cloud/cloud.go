@@ -45,8 +45,8 @@ func (cf *cloudFuncs) GetAllOperations(tableName types.TableName) ([]types.Opera
 
 type HttpResponse struct {
 	HasError bool
-	Message  string
-	Data     any
+	Message  string `json:"message"`
+	Data     any    `json:"data"`
 }
 
 func (cf *cloudFuncs) buildURL(path string) string {
@@ -257,8 +257,8 @@ Then when it has pulled all the data for a particular board, the user will now u
 I think this is perfect.
 */
 
-func (cf *cloudFuncs) ImportData() (types.ImportUserBoardData, error) {
-	status, body, err := cf.doJSONRequest("GET", "/sync/export", nil)
+func (cf *cloudFuncs) ImportData(boardId string) (types.ImportUserBoardData, error) {
+	status, body, err := cf.doJSONRequest("GET", "/sync/export/"+boardId, nil)
 
 	if err != nil {
 		return types.ImportUserBoardData{}, err

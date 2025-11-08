@@ -66,6 +66,10 @@ export function GetColumn(arg1) {
   return window['go']['main']['App']['GetColumn'](arg1);
 }
 
+export function GetCurrentBoardId() {
+  return window['go']['main']['App']['GetCurrentBoardId']();
+}
+
 export function GetLoginToken() {
   return window['go']['main']['App']['GetLoginToken']();
 }
@@ -136,6 +140,10 @@ export function RequestMicrophonePermission() {
 
 export function SaveSettings(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['SaveSettings'](arg1, arg2, arg3, arg4);
+}
+
+export function SetCurrentBoardId(arg1) {
+  return window['go']['main']['App']['SetCurrentBoardId'](arg1);
 }
 
 export function SetLoginToken(arg1) {

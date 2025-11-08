@@ -1,14 +1,36 @@
-## Here are some fixes that I temporarily ignored:
+## Pending Fixes & Improvements
 
-Aside from the listed todos here, there are alot of inline TODOs throughout the codebase. Some might have been fixed & the comment wasnt removed sha... But alot might still be valid.
+Aside from the items below, there are several inline TODOs scattered throughout the codebase. Some may already be resolved but not yet cleaned up; others are still valid and should be reviewed.
 
-### App 
-- Alot of errors are silent & arent being sent to the frontend
-- Add error logging to capture and display errors in the UI
-- When a user that already has an account, logins on a new device, add support to download all data from cloud. 
-- If a user hasnt completed onboarding, dont allow them to be able to record. 
-- Local sync_state valid with cloud has an error. it keeps pushing the last_synced_at local data to cloud even when there is no new data.
-- Codebase structure is poorMake the codebase have a very good structure
-- there's alot of duplicates between app & cloud server.. eg types. Unify things would be better, they can share one module
-- Because sync data only runs every 30s, when a new board is created locally, it's gonna take 30s before it's on cloud, which doesnt really make sense, we should be able to create new boards in cloud instantly.
-- implement soft delete
+---
+
+### App
+
+* Many errors are currently silent and not surfaced to the frontend.
+  → Add proper error propagation and UI logging.
+
+* Implement centralized error logging and display errors directly in the UI for visibility.
+
+* When a returning user logs in on a new device, automatically download all their existing cloud data to ensure full sync.
+
+* Prevent users who haven’t completed onboarding from recording or creating new content.
+
+* Fix the `sync_state` validation logic — currently, it keeps pushing the `last_synced_at` value from local storage to the cloud even when no new data exists.
+
+* Improve overall codebase structure and organization for better readability and maintainability.
+
+* Reduce duplication between the app and cloud server (e.g., shared types).
+  → Extract and unify common modules or type definitions.
+
+* Improve sync frequency: newly created boards should sync to the cloud instantly rather than waiting for the 30-second sync interval.
+
+* Implement soft delete functionality for recoverable item deletion.
+
+* Fix import logic: board import currently fails due to unexpected date format.
+
+* Eliminate duplicate websocket handling — currently, board updates are sent both via the app backend and websocket, causing redundant writes.
+  → Directly write changes to the websocket connection.
+
+* Tie sync state management to a dedicated board for better consistency tracking.
+
+* During board import, ensure that both board data and its associated sync state are imported together.

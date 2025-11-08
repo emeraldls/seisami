@@ -230,10 +230,13 @@ func (s *SyncEngine) BootstrapCloud() error {
 }
 
 func (s *SyncEngine) ImportNewBoard(boardID string) error {
-	boardData, err := s.cloud.ImportData()
+	boardData, err := s.cloud.ImportData(boardID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch board data from cloud: %v", err)
 	}
+
+	bByte, _ := json.MarshalIndent(boardData, "", " ")
+	fmt.Println(string(bByte))
 
 	existingBoard, err := s.repo.GetBoard(boardData.Board.ID)
 	if err == nil && existingBoard.ID != "" {

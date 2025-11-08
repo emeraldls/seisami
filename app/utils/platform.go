@@ -6,6 +6,13 @@ import (
 	"runtime"
 )
 
+var customDBPath string
+
+// SetCustomDBPath sets a custom database path for testing multiple instances
+func SetCustomDBPath(path string) {
+	customDBPath = path
+}
+
 func GetAppDataDir() string {
 	home, _ := os.UserHomeDir()
 
@@ -53,5 +60,8 @@ func GetRecordingsDir() string {
 }
 
 func GetDBPath() string {
+	if customDBPath != "" {
+		return customDBPath
+	}
 	return filepath.Join(GetAppDataDir(), "seisami.db")
 }

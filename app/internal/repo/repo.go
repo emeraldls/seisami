@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"seisami/app/internal/repo/sqlc/query"
 	"seisami/app/types"
 	"seisami/app/utils"
@@ -26,9 +27,12 @@ type repo struct {
 var schema string
 
 func dbPath() string {
-	appDir := utils.GetAppDataDir()
-	os.MkdirAll(appDir, 0755)
-	return utils.GetDBPath()
+	dbPath := utils.GetDBPath()
+
+	dbDir := filepath.Dir(dbPath)
+	os.MkdirAll(dbDir, 0755)
+
+	return dbPath
 }
 
 func NewRepo() *repo {
