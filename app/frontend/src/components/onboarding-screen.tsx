@@ -312,6 +312,16 @@ export function OnboardingScreen() {
             You're signed in. Any boards you have will appear once synced.
           </div>
         )}
+        <div className="border-t pt-3">
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full text-neutral-500"
+            onClick={handleEnterApp}
+          >
+            Skip for now
+          </Button>
+        </div>
       </div>
     </div>
   );

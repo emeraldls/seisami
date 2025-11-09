@@ -34,9 +34,9 @@ func NewCloudFuncs(repo repo.Repository, sessionToken string, ctx context.Contex
 	}
 }
 
-func (cf *cloudFuncs) GetAllOperations(tableName types.TableName) ([]types.OperationSync, error) {
+func (cf *cloudFuncs) GetAllOperations(tableName types.TableName, since int64) ([]types.OperationSync, error) {
 	// Get all operations without filters - this will return all operations for the user
-	operations, err := cf.PullRecords(tableName)
+	operations, err := cf.PullRecords(tableName, since)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all operations: %w", err)
 	}
@@ -142,8 +142,8 @@ func (cf *cloudFuncs) PushRecord(payload types.OperationSync) HttpResponse {
 	}
 }
 
-func (cf *cloudFuncs) PullRecord(tableName types.TableName) (types.OperationSync, error) {
-	operations, err := cf.PullRecords(tableName)
+func (cf *cloudFuncs) PullRecord(tableName types.TableName, since int64) (types.OperationSync, error) {
+	operations, err := cf.PullRecords(tableName, since)
 	if err != nil {
 		return types.OperationSync{}, err
 	}
@@ -155,8 +155,8 @@ func (cf *cloudFuncs) PullRecord(tableName types.TableName) (types.OperationSync
 	return operations[0], nil
 }
 
-func (cf *cloudFuncs) PullRecords(tableName types.TableName) ([]types.OperationSync, error) {
-	status, resBody, err := cf.doJSONRequest(http.MethodGet, fmt.Sprintf("/sync/pull/%s", tableName.String()), nil)
+func (cf *cloudFuncs) PullRecords(tableName types.TableName, since int64) ([]types.OperationSync, error) {
+	status, resBody, err := cf.doJSONRequest(http.MethodGet, fmt.Sprintf("/sync/pull/%s?since=%d", tableName.String(), since), nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to pull records: %w", err)
 	}
@@ -263,7 +263,7 @@ Then when it has pulled all the data for a particular board, the user will now u
 I think this is perfect.
 */
 
-func (cf *cloudFuncs) ImportData(boardId string) (types.ImportUserBoardData, error) {
+func (cf *cloudFuncs) ImportBoardData(boardId string) (types.ImportUserBoardData, error) {
 	status, body, err := cf.doJSONRequest("GET", "/sync/export/"+boardId, nil)
 
 	if err != nil {
@@ -290,6 +290,38 @@ func (cf *cloudFuncs) ImportData(boardId string) (types.ImportUserBoardData, err
 	err = json.Unmarshal(dataBytes, &data)
 	if err != nil {
 		return types.ImportUserBoardData{}, err
+	}
+
+	return data, nil
+}
+
+func (cf *cloudFuncs) ImportAllUserData() (types.ExportedData, error) {
+	status, body, err := cf.doJSONRequest("GET", "/sync/export/", nil)
+
+	if err != nil {
+		return types.ExportedData{}, err
+	}
+
+	var httpResp HttpResponse
+
+	if err = json.Unmarshal(body, &httpResp); err != nil {
+		return types.ExportedData{}, fmt.Errorf("unable to unmarshal body: %v", err)
+	}
+
+	if status != http.StatusOK && status != http.StatusCreated {
+		return types.ExportedData{}, fmt.Errorf("sync api returned status %d: %s", status, string(body))
+	}
+
+	dataBytes, err := json.Marshal(httpResp.Data)
+	if err != nil {
+		return types.ExportedData{}, fmt.Errorf("unable to re-marshal data: %w", err)
+	}
+
+	var data types.ExportedData
+
+	err = json.Unmarshal(dataBytes, &data)
+	if err != nil {
+		return types.ExportedData{}, err
 	}
 
 	return data, nil

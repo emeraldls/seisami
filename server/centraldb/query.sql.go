@@ -356,6 +356,77 @@ func (q *Queries) EnsureBoardOwner(ctx context.Context, arg EnsureBoardOwnerPara
 	return is_owner, err
 }
 
+const getAllCards = `-- name: GetAllCards :many
+SELECT ca.id, ca.column_id, ca.title, ca.description, ca.attachments, ca.created_at, ca.updated_at
+FROM cards ca
+JOIN columns col ON ca.column_id = col.id
+JOIN boards b ON col.board_id = b.id
+WHERE b.user_id = $1
+ORDER BY ca.created_at ASC
+`
+
+func (q *Queries) GetAllCards(ctx context.Context, userID pgtype.UUID) ([]Card, error) {
+	rows, err := q.db.Query(ctx, getAllCards, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Card
+	for rows.Next() {
+		var i Card
+		if err := rows.Scan(
+			&i.ID,
+			&i.ColumnID,
+			&i.Title,
+			&i.Description,
+			&i.Attachments,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllColumns = `-- name: GetAllColumns :many
+SELECT c.id, c.board_id, c.name, c.position, c.created_at, c.updated_at 
+  FROM columns c
+  JOIN boards b ON b.id = c.board_id
+  WHERE b.user_id = $1 ORDER BY c.created_at ASC
+`
+
+func (q *Queries) GetAllColumns(ctx context.Context, userID pgtype.UUID) ([]Column, error) {
+	rows, err := q.db.Query(ctx, getAllColumns, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Column
+	for rows.Next() {
+		var i Column
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Name,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllOperations = `-- name: GetAllOperations :many
 SELECT o.id, o.table_name, o.record_id, o.operation_type, o.device_id, o.payload, o.created_at, o.updated_at
 FROM operations AS o
@@ -390,7 +461,7 @@ type GetAllOperationsParams struct {
 	UserID      pgtype.UUID
 }
 
-// - TODO: created_at in operation table shouldnt be text, update it & update this function
+// - This is now legacy, client should pass in the timestamp they wanna get
 func (q *Queries) GetAllOperations(ctx context.Context, arg GetAllOperationsParams) ([]Operation, error) {
 	rows, err := q.db.Query(ctx, getAllOperations,
 		arg.TableName,
@@ -412,6 +483,103 @@ func (q *Queries) GetAllOperations(ctx context.Context, arg GetAllOperationsPara
 			&i.OperationType,
 			&i.DeviceID,
 			&i.Payload,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllOperationsSinceClient = `-- name: GetAllOperationsSinceClient :many
+SELECT o.id, o.table_name, o.record_id, o.operation_type, o.device_id, o.payload, o.created_at, o.updated_at
+FROM operations AS o
+JOIN (
+    SELECT inner_op.record_id, MAX(inner_op.created_at) AS max_created_at
+    FROM operations AS inner_op
+    WHERE inner_op.created_at > to_char(to_timestamp($1), 'YYYY-MM-DD"T"HH24:MI:SS')
+    AND inner_op."table_name" = $2
+    GROUP BY inner_op.record_id
+) AS latest
+  ON o.record_id = latest.record_id
+  AND o.created_at = latest.max_created_at
+  AND o."table_name" = $3
+JOIN columns AS c ON c.id = o.record_id
+JOIN boards AS b ON b.id = c.board_id
+WHERE b.user_id = $4
+ORDER BY o.created_at ASC
+`
+
+type GetAllOperationsSinceClientParams struct {
+	ToTimestamp float64
+	TableName   string
+	TableName_2 string
+	UserID      pgtype.UUID
+}
+
+func (q *Queries) GetAllOperationsSinceClient(ctx context.Context, arg GetAllOperationsSinceClientParams) ([]Operation, error) {
+	rows, err := q.db.Query(ctx, getAllOperationsSinceClient,
+		arg.ToTimestamp,
+		arg.TableName,
+		arg.TableName_2,
+		arg.UserID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Operation
+	for rows.Next() {
+		var i Operation
+		if err := rows.Scan(
+			&i.ID,
+			&i.TableName,
+			&i.RecordID,
+			&i.OperationType,
+			&i.DeviceID,
+			&i.Payload,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getAllTranscriptions = `-- name: GetAllTranscriptions :many
+SELECT t.id, t.board_id, t.transcription, t.recording_path, t.intent, t.assistant_response, t.created_at, t.updated_at
+FROM transcriptions t
+JOIN boards b ON t.board_id = b.id
+WHERE b.user_id = $1
+ORDER BY t.created_at DESC
+`
+
+func (q *Queries) GetAllTranscriptions(ctx context.Context, userID pgtype.UUID) ([]Transcription, error) {
+	rows, err := q.db.Query(ctx, getAllTranscriptions, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Transcription
+	for rows.Next() {
+		var i Transcription
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.Transcription,
+			&i.RecordingPath,
+			&i.Intent,
+			&i.AssistantResponse,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

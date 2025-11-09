@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -112,6 +113,7 @@ func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
 		sync.POST("/init", h.initSyncState)
 		sync.POST("/upload", h.uploadData)
 		sync.GET("/pull/:table", h.pullData)
+		sync.GET("/export", h.exportAllData)
 		sync.GET("/export/:boardId", h.exportData)
 
 		sync.POST("/init/cloud", h.initCloud)
@@ -428,7 +430,33 @@ func (h *handler) exportData(c *gin.Context) {
 		return
 	}
 
-	data, err := h.syncService.ExportAllData(c.Request.Context(), uid, boardID)
+	data, err := h.syncService.ExportBoardData(c.Request.Context(), uid, boardID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
+		return
+	}
+
+	boardData, _ := json.MarshalIndent(data, "", " ")
+	fmt.Println(string(boardData))
+
+	c.JSON(http.StatusCreated, gin.H{"message": "import successful", "data": data})
+}
+
+func (h *handler) exportAllData(c *gin.Context) {
+
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "unable to parse id: " + err.Error()})
+		return
+	}
+
+	data, err := h.syncService.ExportAllData(c.Request.Context(), uid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
@@ -738,7 +766,19 @@ func (h *handler) pullData(c *gin.Context) {
 		return
 	}
 
-	operations, err := h.syncService.PullOperations(c.Request.Context(), userID, tableName)
+	since := c.Query("since")
+
+	var sinceTimestamp int64
+
+	if since != "" {
+		sinceTimestamp, err = strconv.ParseInt(since, 10, 0)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid since parameter"})
+			return
+		}
+	}
+
+	operations, err := h.syncService.PullOperations(c.Request.Context(), userID, tableName, sinceTimestamp)
 	if err != nil {
 		log.Printf("sync pull failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to pull sync data"})

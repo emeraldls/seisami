@@ -161,6 +161,7 @@ func handleDeepLink(app *App, deepLink string) {
 
 		go func() {
 			if err := app.bootstrapCloud(); err != nil {
+				fmt.Printf("bootstrap failed: %v\n", err)
 				wailsRuntime.EventsEmit(ctx, "cloud:setup_failed", err.Error())
 				return
 			}

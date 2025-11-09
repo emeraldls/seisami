@@ -93,6 +93,26 @@ FROM columns c
 WHERE c.board_id = $1
 ORDER BY c.created_at ASC;
 
+-- name: GetAllColumns :many
+SELECT c.* 
+  FROM columns c
+  JOIN boards b ON b.id = c.board_id
+  WHERE b.user_id = $1 ORDER BY c.created_at ASC;
+
+-- name: GetAllCards :many
+SELECT ca.*
+FROM cards ca
+JOIN columns col ON ca.column_id = col.id
+JOIN boards b ON col.board_id = b.id
+WHERE b.user_id = $1
+ORDER BY ca.created_at ASC;
+
+-- name: GetAllTranscriptions :many
+SELECT t.*
+FROM transcriptions t
+JOIN boards b ON t.board_id = b.id
+WHERE b.user_id = $1
+ORDER BY t.created_at DESC;
 
 -- name: GetColumnCards :many
 SELECT * FROM cards
@@ -176,7 +196,7 @@ SELECT c.id, c.board_id, c.name, c.position, c.created_at, c.updated_at
   JOIN boards b ON b.id = c.board_id
   WHERE b.user_id = $1;
 
---- TODO: created_at in operation table shouldnt be text, update it & update this function
+--- This is now legacy, client should pass in the timestamp they wanna get
 -- name: GetAllOperations :many
 SELECT o.*
 FROM operations AS o
@@ -192,6 +212,24 @@ JOIN (
         WHERE ss."table_name" = $1
           AND ss."user_id" = $4
     )
+    AND inner_op."table_name" = $2
+    GROUP BY inner_op.record_id
+) AS latest
+  ON o.record_id = latest.record_id
+  AND o.created_at = latest.max_created_at
+  AND o."table_name" = $3
+JOIN columns AS c ON c.id = o.record_id
+JOIN boards AS b ON b.id = c.board_id
+WHERE b.user_id = $4
+ORDER BY o.created_at ASC;
+
+-- name: GetAllOperationsSinceClient :many
+SELECT o.*
+FROM operations AS o
+JOIN (
+    SELECT inner_op.record_id, MAX(inner_op.created_at) AS max_created_at
+    FROM operations AS inner_op
+    WHERE inner_op.created_at > to_char(to_timestamp($1), 'YYYY-MM-DD"T"HH24:MI:SS')
     AND inner_op."table_name" = $2
     GROUP BY inner_op.record_id
 ) AS latest

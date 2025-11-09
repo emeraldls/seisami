@@ -6,9 +6,9 @@ import (
 )
 
 type Cloud interface {
-	GetAllOperations(tableName types.TableName) ([]types.OperationSync, error)
-	PullRecord(tableName types.TableName) (types.OperationSync, error)
-	PullRecords(tableName types.TableName) ([]types.OperationSync, error)
+	GetAllOperations(tableName types.TableName, since int64) ([]types.OperationSync, error)
+	PullRecord(tableName types.TableName, since int64) (types.OperationSync, error)
+	PullRecords(tableName types.TableName, since int64) ([]types.OperationSync, error)
 	PushRecord(op types.OperationSync) HttpResponse
 	UpdateSyncState(state query.SyncState) error
 	GetSyncState(tableName types.TableName) (query.SyncState, error)
@@ -18,9 +18,11 @@ type Cloud interface {
 	UpsertCard(types.ExportedCard) error
 	InitializeSyncStateForUser() error
 
-	ImportData(boardId string) (types.ImportUserBoardData, error)
+	ImportBoardData(boardId string) (types.ImportUserBoardData, error)
 	UpdateSessionToken(token string)
 
 	InitCloud() error
 	FetchAppVersion() (types.AppVersion, error)
+
+	ImportAllUserData() (types.ExportedData, error)
 }

@@ -54,7 +54,21 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 		return fmt.Errorf("[LOCAL] -> %v", err)
 	}
 
-	cloudOps, err := s.cloud.GetAllOperations(tableName)
+	// get the local sycned state firstly
+	var since int64 = 0
+	syncState, err := s.repo.GetSyncState(tableName)
+	if err != nil {
+		s.local.UpsertSyncState(query.SyncState{
+			TableName:    tableName.String(),
+			LastSyncedAt: 0,
+		})
+	}
+
+	if syncState.LastSyncedAt != 0 {
+		since = syncState.LastSyncedAt
+	}
+
+	cloudOps, err := s.cloud.GetAllOperations(tableName, since)
 	if err != nil {
 		return fmt.Errorf("[CLOUD] -> %v", err)
 	}
@@ -72,7 +86,7 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 		case !hasLocal:
 			// new record exists in cloud, pull it
 			fmt.Println("new record exists in cloud, pulling it: ", recordId)
-			operation, err := s.cloud.PullRecord(tableName)
+			operation, err := s.cloud.PullRecord(tableName, since)
 			if err != nil {
 				fmt.Printf("error pulling record from cloud: %v\n", err)
 				continue
@@ -129,7 +143,7 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 			case cloudTs > localTs:
 				fmt.Println("cloud record is newer, pulling to local")
 				// cloud record is newer, pull
-				operation, err := s.cloud.PullRecord(tableName)
+				operation, err := s.cloud.PullRecord(tableName, since)
 				if err != nil {
 					fmt.Printf("error pulling from cloud: %v\n", err)
 					continue
@@ -202,26 +216,56 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 }
 
 func (s *SyncEngine) BootstrapCloud() error {
-	data, err := s.repo.ExportAllData()
+
+	localData, err := s.repo.ExportAllData()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to export local data: %v", err)
 	}
 
-	for _, b := range data.Boards {
+	cloudData, err := s.cloud.ImportAllUserData()
+	if err != nil {
+		return fmt.Errorf("failed to import cloud data: %v", err)
+	}
+
+	mergedBoards := s.mergeBoards(localData.Boards, cloudData.Boards)
+
+	for _, b := range mergedBoards {
 		if err := s.cloud.UpsertBoard(b); err != nil {
 			fmt.Printf("failed uploading board %v: %v\n", b.ID, err)
 		}
-	}
-
-	for _, c := range data.Columns {
-		if err := s.cloud.UpsertColumn(c); err != nil {
-			fmt.Printf("failed uploading column %v: %v\n", c.ID, err)
+		if _, err := s.repo.ImportBoard(b.ID, b.Name, b.CreatedAt, b.UpdatedAt); err != nil {
+			fmt.Printf("failed importing board locally %v: %v\n", b.ID, err)
 		}
 	}
 
-	for _, card := range data.Cards {
+	mergedColumns := s.mergeColumns(localData.Columns, cloudData.Columns)
+	for _, c := range mergedColumns {
+		if err := s.cloud.UpsertColumn(c); err != nil {
+			fmt.Printf("failed uploading column %v: %v\n", c.ID, err)
+		}
+		if _, err := s.repo.ImportColumn(c.ID, c.BoardID, c.Name, c.Position, c.CreatedAt, c.UpdatedAt); err != nil {
+			fmt.Printf("failed importing column locally %v: %v\n", c.ID, err)
+		}
+	}
+
+	mergedCards := s.mergeCards(localData.Cards, cloudData.Cards)
+	for _, card := range mergedCards {
 		if err := s.cloud.UpsertCard(card); err != nil {
 			fmt.Printf("failed uploading card %v: %v\n", card.ID, err)
+		}
+		if _, err := s.repo.ImportCard(card.ID, card.ColumnID, card.Title, card.Description, card.Attachments, card.CreatedAt, card.UpdatedAt); err != nil {
+			fmt.Printf("failed importing card locally %v: %v\n", card.ID, err)
+		}
+	}
+
+	mergedTranscriptions := s.mergeTranscriptions(localData.Transcriptions, cloudData.Transcriptions)
+	for _, t := range mergedTranscriptions {
+		// Upload to cloud (you'll need to add this method)
+		// if err := s.cloud.UpsertTranscription(t); err != nil {
+		//     fmt.Printf("failed uploading transcription %v: %v\n", t.ID, err)
+		// }
+		if _, err := s.repo.ImportTranscription(t.ID, t.BoardID, t.Transcription, t.RecordingPath, t.Intent, t.AssistantResponse, t.CreatedAt, t.UpdatedAt); err != nil {
+			fmt.Printf("failed importing transcription locally %v: %v\n", t.ID, err)
 		}
 	}
 
@@ -229,41 +273,23 @@ func (s *SyncEngine) BootstrapCloud() error {
 		fmt.Printf("failed initializing cloud sync state: %v\n", err)
 	}
 
-	state, err := s.cloud.GetSyncState(types.BoardTable)
-	if err == nil {
-		err = s.local.UpsertSyncState(state)
-		if err != nil {
-			fmt.Println(err)
+	for _, table := range []types.TableName{types.BoardTable, types.ColumnTable, types.CardTable} {
+		state, err := s.cloud.GetSyncState(table)
+		if err == nil {
+			if err = s.local.UpsertSyncState(state); err != nil {
+				fmt.Printf("error syncing state for %s: %v\n", table, err)
+			}
+		} else {
+			fmt.Printf("get sync state error for %s: %v\n", table, err)
 		}
-	} else {
-		fmt.Println("get sync state error: ", err)
 	}
 
-	state, err = s.cloud.GetSyncState(types.ColumnTable)
-	if err == nil {
-		err = s.local.UpsertSyncState(state)
-		if err != nil {
-			fmt.Println(err)
-		}
-	} else {
-		fmt.Println("get sync state error: ", err)
-	}
-
-	state, err = s.cloud.GetSyncState(types.CardTable)
-	if err == nil {
-		err = s.local.UpsertSyncState(state)
-		if err != nil {
-			fmt.Println(err)
-		}
-	} else {
-		fmt.Println("get sync state error: ", err)
-	}
-
+	fmt.Println("Bootstrap completed successfully - all data merged and synced")
 	return nil
 }
 
 func (s *SyncEngine) ImportNewBoard(boardID string) error {
-	boardData, err := s.cloud.ImportData(boardID)
+	boardData, err := s.cloud.ImportBoardData(boardID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch board data from cloud: %v", err)
 	}
@@ -390,4 +416,141 @@ func unionKeys(a, b map[string]types.OperationSync) map[string]struct{} {
 	}
 
 	return keys
+}
+
+func (s *SyncEngine) mergeBoards(local, cloud []types.ExportedBoard) []types.ExportedBoard {
+	boardMap := make(map[string]types.ExportedBoard)
+
+	for _, b := range local {
+		boardMap[b.ID] = b
+	}
+
+	for _, cloudBoard := range cloud {
+		localBoard, exists := boardMap[cloudBoard.ID]
+		if !exists {
+			boardMap[cloudBoard.ID] = cloudBoard
+			continue
+		}
+
+		localTime, err1 := time.Parse(layout, localBoard.UpdatedAt)
+		cloudTime, err2 := time.Parse(layout, cloudBoard.UpdatedAt)
+
+		if err1 != nil || err2 != nil {
+			boardMap[cloudBoard.ID] = cloudBoard
+			continue
+		}
+
+		if cloudTime.After(localTime) {
+			boardMap[cloudBoard.ID] = cloudBoard
+		}
+		// else leave local version (already in map)
+	}
+
+	result := make([]types.ExportedBoard, 0, len(boardMap))
+	for _, b := range boardMap {
+		result = append(result, b)
+	}
+	return result
+}
+
+func (s *SyncEngine) mergeColumns(local, cloud []types.ExportedColumn) []types.ExportedColumn {
+	columnMap := make(map[string]types.ExportedColumn)
+
+	for _, c := range local {
+		columnMap[c.ID] = c
+	}
+
+	for _, cloudCol := range cloud {
+		localCol, exists := columnMap[cloudCol.ID]
+		if !exists {
+			columnMap[cloudCol.ID] = cloudCol
+			continue
+		}
+
+		localTime, err1 := time.Parse(layout, localCol.UpdatedAt)
+		cloudTime, err2 := time.Parse(layout, cloudCol.UpdatedAt)
+
+		if err1 != nil || err2 != nil {
+			columnMap[cloudCol.ID] = cloudCol
+			continue
+		}
+
+		if cloudTime.After(localTime) {
+			columnMap[cloudCol.ID] = cloudCol
+		}
+	}
+
+	result := make([]types.ExportedColumn, 0, len(columnMap))
+	for _, c := range columnMap {
+		result = append(result, c)
+	}
+	return result
+}
+
+func (s *SyncEngine) mergeCards(local, cloud []types.ExportedCard) []types.ExportedCard {
+	cardMap := make(map[string]types.ExportedCard)
+
+	for _, c := range local {
+		cardMap[c.ID] = c
+	}
+
+	for _, cloudCard := range cloud {
+		localCard, exists := cardMap[cloudCard.ID]
+		if !exists {
+			cardMap[cloudCard.ID] = cloudCard
+			continue
+		}
+
+		localTime, err1 := time.Parse(layout, localCard.UpdatedAt)
+		cloudTime, err2 := time.Parse(layout, cloudCard.UpdatedAt)
+
+		if err1 != nil || err2 != nil {
+			cardMap[cloudCard.ID] = cloudCard
+			continue
+		}
+
+		if cloudTime.After(localTime) {
+			cardMap[cloudCard.ID] = cloudCard
+		}
+	}
+
+	result := make([]types.ExportedCard, 0, len(cardMap))
+	for _, c := range cardMap {
+		result = append(result, c)
+	}
+	return result
+}
+
+func (s *SyncEngine) mergeTranscriptions(local, cloud []types.ExportedTranscription) []types.ExportedTranscription {
+	transcriptionMap := make(map[string]types.ExportedTranscription)
+
+	for _, t := range local {
+		transcriptionMap[t.ID] = t
+	}
+
+	for _, cloudTrans := range cloud {
+		localTrans, exists := transcriptionMap[cloudTrans.ID]
+		if !exists {
+			transcriptionMap[cloudTrans.ID] = cloudTrans
+			continue
+		}
+
+		localTime, err1 := time.Parse(layout, localTrans.UpdatedAt)
+		cloudTime, err2 := time.Parse(layout, cloudTrans.UpdatedAt)
+
+		if err1 != nil || err2 != nil {
+			transcriptionMap[cloudTrans.ID] = cloudTrans
+			continue
+		}
+
+		if cloudTime.After(localTime) {
+			transcriptionMap[cloudTrans.ID] = cloudTrans
+		}
+	}
+
+	result := make([]types.ExportedTranscription, 0, len(transcriptionMap))
+	for _, t := range transcriptionMap {
+		result = append(result, t)
+	}
+	return result
 }

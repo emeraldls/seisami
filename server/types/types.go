@@ -124,6 +124,13 @@ type ExportedData struct {
 	Transcriptions []ExportedTranscription `json:"transcriptions"`
 }
 
+type ExportedAllData struct {
+	Boards         []ExportedBoard         `json:"boards"`
+	Columns        []ExportedColumn        `json:"columns"`
+	Cards          []ExportedCard          `json:"cards"`
+	Transcriptions []ExportedTranscription `json:"transcriptions"`
+}
+
 type BoardMember struct {
 	UserID   string `json:"user_id"`
 	Role     string `json:"role"`

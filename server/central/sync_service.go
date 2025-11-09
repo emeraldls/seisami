@@ -536,7 +536,7 @@ func (s *SyncService) handleTranscriptionOperation(ctx context.Context, userUUID
 	})
 }
 
-func (s *SyncService) PullOperations(ctx context.Context, userID, tableName string) ([]SyncOperation, error) {
+func (s *SyncService) PullOperations(ctx context.Context, userID, tableName string, since int64) ([]SyncOperation, error) {
 	userUUID, err := uuid.Parse(userID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user id: %w", err)
@@ -551,11 +551,11 @@ func (s *SyncService) PullOperations(ctx context.Context, userID, tableName stri
 
 	switch strings.ToLower(tableName) {
 	case "boards":
-		s.pullBoardOperations(ctx, userUUID)
+		s.pullBoardOperations(ctx, userUUID, since)
 	case "columns":
-		return s.pullColumnOperations(ctx, userUUID)
+		return s.pullColumnOperations(ctx, userUUID, since)
 	case "cards":
-		return s.pullCardOperations(ctx, userUUID)
+		return s.pullCardOperations(ctx, userUUID, since)
 	case "transcriptions":
 
 	default:
@@ -565,12 +565,12 @@ func (s *SyncService) PullOperations(ctx context.Context, userID, tableName stri
 	return []SyncOperation{}, nil
 }
 
-func (s *SyncService) pullBoardOperations(ctx context.Context, userUUID uuid.UUID) ([]SyncOperation, error) {
-	userOperations, err := s.queries.GetAllOperations(ctx, centraldb.GetAllOperationsParams{
+func (s *SyncService) pullBoardOperations(ctx context.Context, userUUID uuid.UUID, since int64) ([]SyncOperation, error) {
+	userOperations, err := s.queries.GetAllOperationsSinceClient(ctx, centraldb.GetAllOperationsSinceClientParams{
 		TableName:   "boards",
 		TableName_2: "boards",
-		TableName_3: "boards",
 		UserID:      pgtype.UUID{Bytes: userUUID, Valid: true},
+		ToTimestamp: float64(since),
 	})
 
 	if err != nil {
@@ -601,13 +601,13 @@ func (s *SyncService) pullBoardOperations(ctx context.Context, userUUID uuid.UUI
 	return operations, nil
 }
 
-func (s *SyncService) pullColumnOperations(ctx context.Context, userUUID uuid.UUID) ([]SyncOperation, error) {
+func (s *SyncService) pullColumnOperations(ctx context.Context, userUUID uuid.UUID, since int64) ([]SyncOperation, error) {
 
-	userOperations, err := s.queries.GetAllOperations(ctx, centraldb.GetAllOperationsParams{
+	userOperations, err := s.queries.GetAllOperationsSinceClient(ctx, centraldb.GetAllOperationsSinceClientParams{
 		TableName:   "columns",
 		TableName_2: "columns",
-		TableName_3: "columns",
 		UserID:      pgtype.UUID{Bytes: userUUID, Valid: true},
+		ToTimestamp: float64(since),
 	})
 
 	if err != nil {
@@ -634,12 +634,12 @@ func (s *SyncService) pullColumnOperations(ctx context.Context, userUUID uuid.UU
 	return operations, nil
 }
 
-func (s *SyncService) pullCardOperations(ctx context.Context, userUUID uuid.UUID) ([]SyncOperation, error) {
-	userOperations, err := s.queries.GetAllOperations(ctx, centraldb.GetAllOperationsParams{
+func (s *SyncService) pullCardOperations(ctx context.Context, userUUID uuid.UUID, since int64) ([]SyncOperation, error) {
+	userOperations, err := s.queries.GetAllOperationsSinceClient(ctx, centraldb.GetAllOperationsSinceClientParams{
 		TableName:   "cards",
 		TableName_2: "cards",
-		TableName_3: "cards",
 		UserID:      pgtype.UUID{Bytes: userUUID, Valid: true},
+		ToTimestamp: float64(since),
 	})
 
 	if err != nil {
@@ -1107,7 +1107,7 @@ func (s *SyncService) ensureBoardOwner(ctx context.Context, boardID, userID uuid
 	return nil
 }
 
-func (s *SyncService) ExportAllData(ctx context.Context, userID uuid.UUID, boardID string) (*types.ExportedData, error) {
+func (s *SyncService) ExportBoardData(ctx context.Context, userID uuid.UUID, boardID string) (*types.ExportedData, error) {
 	fmt.Println("exportig cloud board")
 
 	boardUUID, err := uuid.Parse(boardID)
@@ -1203,6 +1203,103 @@ func (s *SyncService) ExportAllData(ctx context.Context, userID uuid.UUID, board
 
 	return &types.ExportedData{
 		Board:          exportedBoard,
+		Columns:        exportedColumns,
+		Cards:          exportedCards,
+		Transcriptions: exportedTranscriptions,
+	}, nil
+}
+
+func (s *SyncService) ExportAllData(ctx context.Context, userUUID uuid.UUID) (*types.ExportedAllData, error) {
+	fmt.Println("exporting all data. userId: ", userUUID.String())
+
+	userId := pgtype.UUID{
+		Bytes: userUUID,
+		Valid: true,
+	}
+
+	boards, err := s.queries.ListBoards(ctx, centraldb.ListBoardsParams{
+		UserID: userId,
+		Limit:  100,
+		Offset: 0,
+	})
+
+	fmt.Println(len(boards))
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse data type into uuid: %v", err)
+	}
+
+	exportedBoards := make([]types.ExportedBoard, len(boards))
+	for i, b := range boards {
+		exportedBoards[i] = types.ExportedBoard{
+			ID:        b.ID.String(),
+			Name:      b.Name,
+			CreatedAt: b.CreatedAt.Time.String(),
+			UpdatedAt: b.UpdatedAt.Time.String(),
+		}
+	}
+
+	columns, err := s.queries.GetAllColumns(ctx, userId)
+
+	fmt.Println("fetched columns: ", len(columns))
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to fetch board columns: %v", err)
+	}
+
+	exportedColumns := make([]types.ExportedColumn, len(columns))
+	for i, c := range columns {
+		exportedColumns[i] = types.ExportedColumn{
+			ID:        c.ID,
+			BoardID:   c.BoardID.String(),
+			Name:      c.Name,
+			Position:  int64(c.Position),
+			CreatedAt: c.CreatedAt.Time.String(),
+			UpdatedAt: c.UpdatedAt.Time.String(),
+		}
+	}
+
+	cards, err := s.queries.GetAllCards(ctx, userId)
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to fetch board cards: %v", err)
+	}
+
+	exportedCards := make([]types.ExportedCard, len(cards))
+	for i, card := range cards {
+		exportedCards[i] = types.ExportedCard{
+			ID:          card.ID,
+			ColumnID:    card.ColumnID,
+			Title:       card.Title,
+			Description: card.Description.String,
+			Attachments: card.Attachments.String,
+			CreatedAt:   card.CreatedAt.Time.String(),
+			UpdatedAt:   card.UpdatedAt.Time.String(),
+		}
+	}
+
+	transcriptions, err := s.queries.GetAllTranscriptions(ctx, userId)
+
+	if err != nil {
+		return nil, fmt.Errorf("error exporting transcriptions: %v", err)
+	}
+
+	exportedTranscriptions := make([]types.ExportedTranscription, len(transcriptions))
+	for i, t := range transcriptions {
+		exportedTranscriptions[i] = types.ExportedTranscription{
+			ID:                t.ID,
+			BoardID:           t.BoardID.String(),
+			Transcription:     t.Transcription,
+			RecordingPath:     t.RecordingPath.String,
+			Intent:            t.Intent.String,
+			AssistantResponse: t.AssistantResponse.String,
+			CreatedAt:         t.CreatedAt.Time.String(),
+			UpdatedAt:         t.UpdatedAt.Time.String(),
+		}
+	}
+
+	return &types.ExportedAllData{
+		Boards:         exportedBoards,
 		Columns:        exportedColumns,
 		Cards:          exportedCards,
 		Transcriptions: exportedTranscriptions,
