@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -33,6 +34,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/sashabaranov/go-openai"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+
+	_ "embed"
 )
 
 /*
@@ -72,9 +75,29 @@ type App struct {
 	syncEngine       *sync_engine.SyncEngine
 }
 
+func dbPath() string {
+	dbPath := utils.GetDBPath()
+
+	dbDir := filepath.Dir(dbPath)
+	os.MkdirAll(dbDir, 0755)
+
+	return dbPath
+}
+
 // NewApp creates a new App application struct
 func NewApp() *App {
-	repo := repo.NewRepo()
+	db, err := sql.Open("sqlite3", dbPath())
+	if err != nil {
+		log.Fatalf("unable to setup sqlite: %v\n", err)
+	}
+
+	ctx := context.Background()
+
+	if _, err := db.ExecContext(ctx, repo.Schema); err != nil {
+		log.Fatalf("unable to create tables: %v\n", err)
+	}
+	repo := repo.NewRepo(db, ctx)
+
 	addr := os.Getenv("COLLAB_SERVER_ADDR")
 	if addr == "" {
 		addr = defaultCollabServerAddr

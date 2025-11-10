@@ -5,12 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
 	"seisami/app/internal/repo/sqlc/query"
 	"seisami/app/types"
-	"seisami/app/utils"
 
 	_ "embed"
 
@@ -18,34 +14,15 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+//go:embed sqlc/schema.sql
+var Schema string
+
 type repo struct {
 	queries *query.Queries
 	ctx     context.Context
 }
 
-//go:embed sqlc/schema.sql
-var schema string
-
-func dbPath() string {
-	dbPath := utils.GetDBPath()
-
-	dbDir := filepath.Dir(dbPath)
-	os.MkdirAll(dbDir, 0755)
-
-	return dbPath
-}
-
-func NewRepo() *repo {
-	ctx := context.Background()
-	db, err := sql.Open("sqlite3", dbPath())
-	if err != nil {
-		log.Fatalf("unable to setup sqlite: %v\n", err)
-	}
-
-	if _, err := db.ExecContext(ctx, schema); err != nil {
-		log.Fatalf("unable to create tables: %v\n", err)
-	}
-
+func NewRepo(db *sql.DB, ctx context.Context) *repo {
 	queries := query.New(db)
 
 	return &repo{
@@ -626,7 +603,7 @@ func (r *repo) GetLocalVersion() (string, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			fmt.Println("no local version found, setting to 0.0.0")
-			localVersion := "0.0.0"
+			localVersion = "0.0.0"
 
 			if err := r.UpdateLocalVersion(localVersion); err != nil {
 
