@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom";
 import BoardManagement from "~/views/board-management";
 import { AppLayout } from "~/layouts/app-layout";
 import { SidebarProvider } from "~/contexts/sidebar-context";
+import { CommandPaletteProvider } from "~/contexts/command-palette-context";
 import { OnboardingScreen } from "~/components/onboarding-screen";
 import { ErrorBoundary } from "~/components/error-boundary";
 import { LoadingScreen } from "~/components/loading";
@@ -33,17 +34,19 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <SidebarProvider>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route element={<KanbanView />} path="/" />
-            <Route element={<Transcriptions />} path="/transcriptions" />
-            <Route element={<BoardManagement />} path="/boards" />
-            <Route element={<Settings />} path="/settings" />
-          </Route>
-        </Routes>
-        <Toaster />
-      </SidebarProvider>
+      <CommandPaletteProvider>
+        <SidebarProvider>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route element={<KanbanView />} path="/" />
+              <Route element={<Transcriptions />} path="/transcriptions" />
+              <Route element={<BoardManagement />} path="/boards" />
+              <Route element={<Settings />} path="/settings" />
+            </Route>
+          </Routes>
+          <Toaster />
+        </SidebarProvider>
+      </CommandPaletteProvider>
     </ErrorBoundary>
   );
 }

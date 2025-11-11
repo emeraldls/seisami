@@ -10,19 +10,6 @@ import {
 import { EventsEmit } from "../../wailsjs/runtime/runtime";
 import { useCollaborationStore } from "./collab-store";
 
-export interface Board {
-  ID: string;
-  Name: string;
-  CreatedAt: {
-    String: string;
-    Valid: boolean;
-  };
-  UpdatedAt: {
-    String: string;
-    Valid: boolean;
-  };
-}
-
 // Helper interface for normalized board data used in components
 export interface NormalizedBoard {
   id: string;
@@ -30,18 +17,6 @@ export interface NormalizedBoard {
   created_at: string;
   updated_at: string;
 }
-
-// Helper function to normalize board data
-export const normalizeBoard = (board: Board): NormalizedBoard => ({
-  id: board.ID,
-  name: board.Name,
-  created_at: board.CreatedAt.Valid ? board.CreatedAt.String : "",
-  updated_at: board.UpdatedAt.Valid ? board.UpdatedAt.String : "",
-});
-
-// Helper function to normalize board array
-export const normalizeBoards = (boards: Board[]): NormalizedBoard[] =>
-  boards.map(normalizeBoard);
 
 interface BoardState {
   boards: NormalizedBoard[];
@@ -77,13 +52,11 @@ export const useBoardStore = create<BoardState>()(
           set({ isLoading: true, error: null });
           try {
             const result = await GetBoards(page, pageSize);
-            const rawBoards = Array.isArray(result) ? (result as Board[]) : [];
-            const boards = normalizeBoards(rawBoards);
             set({
-              boards,
+              boards: result,
               isLoading: false,
               hasCompletedOnboarding:
-                get().hasCompletedOnboarding || boards.length > 0,
+                get().hasCompletedOnboarding || result.length > 0,
             });
           } catch (error) {
             console.error("Failed to fetch boards:", error);
@@ -98,14 +71,13 @@ export const useBoardStore = create<BoardState>()(
           set({ isLoading: true, error: null });
           try {
             const rawBoard = await CreateBoard(name);
-            const board = normalizeBoard(rawBoard as Board);
 
-            const createdAt = rawBoard.CreatedAt.String;
-            const updatedAt = rawBoard.UpdatedAt.String;
+            const createdAt = rawBoard.created_at;
+            const updatedAt = rawBoard.updated_at;
 
             const payload = {
-              id: board.id,
-              name: board.name,
+              id: rawBoard.id,
+              name: rawBoard.name,
               created_at: createdAt,
               updated_at: updatedAt,
             };
@@ -113,13 +85,13 @@ export const useBoardStore = create<BoardState>()(
             EventsEmit("board:create", JSON.stringify(payload));
 
             set((state) => ({
-              boards: [board, ...state.boards],
-              currentBoard: board,
+              boards: [rawBoard, ...state.boards],
+              currentBoard: rawBoard,
               isLoading: false,
               hasCompletedOnboarding: true,
             }));
 
-            return board;
+            return rawBoard;
           } catch (error) {
             console.error("Failed to create board:", error);
             set({
@@ -134,28 +106,31 @@ export const useBoardStore = create<BoardState>()(
           set({ isLoading: true, error: null });
           try {
             const rawBoard = await UpdateBoard(boardId, name);
-            const board = normalizeBoard(rawBoard as Board);
 
             const roomId = useCollaborationStore.getState().roomId;
-            const updatedAt = rawBoard.UpdatedAt.String;
+            const updatedAt = rawBoard.updated_at;
 
             const payload = {
               room_id: roomId,
-              id: board.id,
-              name: board.name,
+              id: rawBoard.id,
+              name: rawBoard.name,
               updated_at: updatedAt,
             };
 
             EventsEmit("board:data", JSON.stringify(payload));
 
             set((state) => ({
-              boards: state.boards.map((b) => (b.id === boardId ? board : b)),
+              boards: state.boards.map((b) =>
+                b.id === boardId ? rawBoard : b
+              ),
               currentBoard:
-                state.currentBoard?.id === boardId ? board : state.currentBoard,
+                state.currentBoard?.id === boardId
+                  ? rawBoard
+                  : state.currentBoard,
               isLoading: false,
             }));
 
-            return board;
+            return rawBoard;
           } catch (error) {
             console.error("Failed to update board:", error);
             set({
@@ -204,9 +179,8 @@ export const useBoardStore = create<BoardState>()(
           set({ isLoading: true, error: null });
           try {
             const rawBoard = await GetBoardByID(boardId);
-            const board = normalizeBoard(rawBoard as Board);
             set({
-              currentBoard: board,
+              currentBoard: rawBoard,
               isLoading: false,
             });
           } catch (error) {

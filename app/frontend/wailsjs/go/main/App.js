@@ -42,10 +42,6 @@ export function DeleteColumn(arg1) {
   return window['go']['main']['App']['DeleteColumn'](arg1);
 }
 
-export function ExportDataForSync() {
-  return window['go']['main']['App']['ExportDataForSync']();
-}
-
 export function GetBoardByID(arg1) {
   return window['go']['main']['App']['GetBoardByID'](arg1);
 }
@@ -128,6 +124,10 @@ export function OpenFileDialog(arg1, arg2) {
 
 export function OpenMicrophoneSettings() {
   return window['go']['main']['App']['OpenMicrophoneSettings']();
+}
+
+export function ReprocessTranscription(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ReprocessTranscription'](arg1, arg2, arg3);
 }
 
 export function RequestAccessibilityPermission() {

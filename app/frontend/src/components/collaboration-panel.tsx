@@ -101,6 +101,8 @@ export const CollaborationPanel = () => {
     });
   };
 
+  return null;
+
   return (
     <Card className="border-dashed">
       <CardHeader className="pb-0">

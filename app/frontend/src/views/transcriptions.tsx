@@ -25,13 +25,13 @@ export default function Transcriptions() {
       if (!currentBoard) return [];
       const result = await GetTranscriptions(currentBoard.id, 1, 50);
       const formattedTranscriptions: Transcription[] = result.map((t) => ({
-        id: t.ID,
-        text: t.Transcription,
-        timestamp: new Date(t.CreatedAt.String || new Date()),
+        id: t.id,
+        text: t.transcription,
+        timestamp: new Date(t.created_at || new Date()),
         isTranscribing: false,
-        intent: t.Intent?.String || undefined,
-        assistantResponse: t.AssistantResponse?.String || undefined,
-        recordingPath: t.RecordingPath?.String || undefined,
+        intent: t.intent,
+        assistantResponse: t.assistant_response,
+        recordingPath: t.recording_path,
       }));
       return formattedTranscriptions;
     },

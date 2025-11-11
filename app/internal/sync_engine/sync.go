@@ -1,7 +1,9 @@
 package sync_engine
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"seisami/app/internal/cloud"
 	"seisami/app/internal/local"
@@ -9,6 +11,8 @@ import (
 	"seisami/app/internal/repo/sqlc/query"
 	"seisami/app/types"
 	"time"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 /*
@@ -19,15 +23,29 @@ type SyncEngine struct {
 	local local.Local
 	cloud cloud.Cloud
 	repo  repo.Repository
+	ctx   context.Context
 }
 
-func NewSyncEngine(repo repo.Repository, cloud cloud.Cloud) *SyncEngine {
+func NewSyncEngine(repo repo.Repository, cloud cloud.Cloud, ctx context.Context) *SyncEngine {
 	local := local.NewLocalFuncs(repo)
 
 	return &SyncEngine{
 		local: local,
 		cloud: cloud,
 		repo:  repo,
+		ctx:   ctx,
+	}
+}
+
+func (s *SyncEngine) emitError(event string, message string) {
+	if s.ctx != nil {
+		runtime.EventsEmit(s.ctx, event, message)
+	}
+}
+
+func (s *SyncEngine) emitSuccess(event string, data interface{}) {
+	if s.ctx != nil {
+		runtime.EventsEmit(s.ctx, event, data)
 	}
 }
 
@@ -49,12 +67,16 @@ Something is wrong
 
 func (s *SyncEngine) SyncData(tableName types.TableName) error {
 	fmt.Println("syncing data for table: ", tableName.String())
+	s.emitSuccess("sync:started", map[string]string{"table": tableName.String()})
+
 	localOps, err := s.local.GetAllOperations(tableName)
 	if err != nil {
-		return fmt.Errorf("[LOCAL] -> %v", err)
+		errMsg := fmt.Sprintf("[LOCAL] failed to get operations: %v", err)
+		s.emitError("sync:error", errMsg)
+		return errors.New(errMsg)
 	}
 
-	// get the local sycned state firstly
+	// get the local synced state firstly
 	var since int64 = 0
 	syncState, err := s.repo.GetSyncState(tableName)
 	if err != nil {
@@ -68,9 +90,18 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 		since = syncState.LastSyncedAt
 	}
 
-	cloudOps, err := s.cloud.GetAllOperations(tableName, since)
-	if err != nil {
-		return fmt.Errorf("[CLOUD] -> %v", err)
+	cloudResp := s.cloud.GetAllOperations(tableName, since)
+	if cloudResp.Error != "" {
+		errMsg := fmt.Sprintf("[CLOUD] failed to get operations: %s", cloudResp.Error)
+		s.emitError("sync:error", errMsg)
+		return errors.New(errMsg)
+	}
+
+	cloudOps, ok := cloudResp.Data.([]types.OperationSync)
+	if !ok {
+		errMsg := "[CLOUD] invalid response data type"
+		s.emitError("sync:error", errMsg)
+		return errors.New(errMsg)
 	}
 
 	localLatest := latestByRecord(localOps)
@@ -86,17 +117,28 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 		case !hasLocal:
 			// new record exists in cloud, pull it
 			fmt.Println("new record exists in cloud, pulling it: ", recordId)
-			operation, err := s.cloud.PullRecord(tableName, since)
-			if err != nil {
-				fmt.Printf("error pulling record from cloud: %v\n", err)
+			pullResp := s.cloud.PullRecord(tableName, since)
+			if pullResp.Error != "" {
+				errMsg := fmt.Sprintf("error pulling record from cloud: %s", pullResp.Error)
+				fmt.Println(errMsg)
+				s.emitError("sync:pull_error", errMsg)
+				continue
+			}
+
+			operation, ok := pullResp.Data.(types.OperationSync)
+			if !ok {
+				errMsg := "invalid pull response data type"
+				fmt.Println(errMsg)
+				s.emitError("sync:pull_error", errMsg)
 				continue
 			}
 
 			// after pulling record from cloud, you update it local db
-
 			fmt.Println("updating local db with new record pulled")
 			if err := s.local.UpdateLocalDB(operation); err != nil {
-				fmt.Printf("error updating local db: %v\n", err)
+				errMsg := fmt.Sprintf("error updating local db: %v", err)
+				fmt.Println(errMsg)
+				s.emitError("sync:local_update_error", errMsg)
 				continue
 			}
 			pulled = true
@@ -104,9 +146,11 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 		case !hasCloud:
 			// new record exists locally, push it to cloud
 			fmt.Println("new record exists locally, pushing it to cloud: ", recordId)
-			httpResp := s.cloud.PushRecord(localOp)
-			if httpResp.HasError {
-				fmt.Printf("push error: %v (data: %v)\n", httpResp.Message, httpResp.Data)
+			pushResp := s.cloud.PushRecord(localOp)
+			if pushResp.Error != "" {
+				errMsg := fmt.Sprintf("push error: %s", pushResp.Error)
+				fmt.Println(errMsg)
+				s.emitError("sync:push_error", errMsg)
 				continue
 			}
 			pushed = true
@@ -133,9 +177,11 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 			case localTs > cloudTs:
 				fmt.Println("local record is newer, pushing to cloud")
 				// local record is newer, push to cloud
-				httpResp := s.cloud.PushRecord(localOp)
-				if httpResp.HasError {
-					fmt.Printf("[Push error]: %v\n", httpResp.Message)
+				pushResp := s.cloud.PushRecord(localOp)
+				if pushResp.Error != "" {
+					errMsg := fmt.Sprintf("[Push error]: %s", pushResp.Error)
+					fmt.Println(errMsg)
+					s.emitError("sync:push_error", errMsg)
 					continue
 				}
 				pushed = true
@@ -143,13 +189,26 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 			case cloudTs > localTs:
 				fmt.Println("cloud record is newer, pulling to local")
 				// cloud record is newer, pull
-				operation, err := s.cloud.PullRecord(tableName, since)
-				if err != nil {
-					fmt.Printf("error pulling from cloud: %v\n", err)
+				pullResp := s.cloud.PullRecord(tableName, since)
+				if pullResp.Error != "" {
+					errMsg := fmt.Sprintf("error pulling from cloud: %s", pullResp.Error)
+					fmt.Println(errMsg)
+					s.emitError("sync:pull_error", errMsg)
 					continue
 				}
+
+				operation, ok := pullResp.Data.(types.OperationSync)
+				if !ok {
+					errMsg := "invalid pull response data type"
+					fmt.Println(errMsg)
+					s.emitError("sync:pull_error", errMsg)
+					continue
+				}
+
 				if err := s.local.UpdateLocalDB(operation); err != nil {
-					fmt.Printf("error updating local db: %v\n", err)
+					errMsg := fmt.Sprintf("error updating local db: %v", err)
+					fmt.Println(errMsg)
+					s.emitError("sync:local_update_error", errMsg)
 					continue
 				}
 				pulled = true
@@ -192,69 +251,118 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 		}
 
 		if err := s.local.UpsertSyncState(syncState); err != nil {
-			fmt.Printf("error upserting local sync state: %v\n", err)
+			errMsg := fmt.Sprintf("error upserting local sync state: %v", err)
+			fmt.Println(errMsg)
+			s.emitError("sync:state_error", errMsg)
 		}
 
-		if err := s.cloud.UpdateSyncState(syncState); err != nil {
-			fmt.Printf("error updating cloud sync state: %v\n", err)
+		updateResp := s.cloud.UpdateSyncState(syncState)
+		if updateResp.Error != "" {
+			errMsg := fmt.Sprintf("error updating cloud sync state: %s", updateResp.Error)
+			fmt.Println(errMsg)
+			s.emitError("sync:state_error", errMsg)
 		}
 	}
 
 	if pulled {
 		fmt.Printf("\n\n<-------Pulling New Data From Cloud ----------->\n\n")
-		newState, err := s.cloud.GetSyncState(tableName)
-		if err != nil {
-			fmt.Printf("error fetching cloud sync state: %v\n", err)
+		stateResp := s.cloud.GetSyncState(tableName)
+		if stateResp.Error != "" {
+			errMsg := fmt.Sprintf("error fetching cloud sync state: %s", stateResp.Error)
+			fmt.Println(errMsg)
+			s.emitError("sync:state_error", errMsg)
 		} else {
-			if err := s.local.UpdateSyncState(newState); err != nil {
-				fmt.Printf("error updating local sync state: %v\n", err)
+			newState, ok := stateResp.Data.(query.SyncState)
+			if !ok {
+				errMsg := "invalid sync state response data type"
+				fmt.Println(errMsg)
+				s.emitError("sync:state_error", errMsg)
+			} else {
+				if err := s.local.UpdateSyncState(newState); err != nil {
+					errMsg := fmt.Sprintf("error updating local sync state: %v", err)
+					fmt.Println(errMsg)
+					s.emitError("sync:state_error", errMsg)
+				}
 			}
 		}
 	}
+
+	s.emitSuccess("sync:completed", map[string]interface{}{
+		"table":  tableName.String(),
+		"pushed": pushed,
+		"pulled": pulled,
+	})
 
 	return nil
 }
 
 func (s *SyncEngine) BootstrapCloud() error {
+	s.emitSuccess("bootstrap:started", "Starting cloud bootstrap")
 
 	localData, err := s.repo.ExportAllData()
 	if err != nil {
-		return fmt.Errorf("failed to export local data: %v", err)
+		errMsg := fmt.Sprintf("failed to export local data: %v", err)
+		s.emitError("bootstrap:error", errMsg)
+		return errors.New(errMsg)
 	}
 
-	cloudData, err := s.cloud.ImportAllUserData()
-	if err != nil {
-		return fmt.Errorf("failed to import cloud data: %v", err)
+	cloudResp := s.cloud.ImportAllUserData()
+	if cloudResp.Error != "" {
+		errMsg := fmt.Sprintf("failed to import cloud data: %s", cloudResp.Error)
+		s.emitError("bootstrap:error", errMsg)
+		return errors.New(errMsg)
+	}
+
+	cloudData, ok := cloudResp.Data.(types.ExportedData)
+	if !ok {
+		errMsg := "invalid cloud data response type"
+		s.emitError("bootstrap:error", errMsg)
+		return errors.New(errMsg)
 	}
 
 	mergedBoards := s.mergeBoards(localData.Boards, cloudData.Boards)
 
 	for _, b := range mergedBoards {
-		if err := s.cloud.UpsertBoard(b); err != nil {
-			fmt.Printf("failed uploading board %v: %v\n", b.ID, err)
+		upsertResp := s.cloud.UpsertBoard(b)
+		if upsertResp.Error != "" {
+			errMsg := fmt.Sprintf("failed uploading board %v: %s", b.ID, upsertResp.Error)
+			fmt.Println(errMsg)
+			s.emitError("bootstrap:board_error", errMsg)
 		}
 		if _, err := s.repo.ImportBoard(b.ID, b.Name, b.CreatedAt, b.UpdatedAt); err != nil {
-			fmt.Printf("failed importing board locally %v: %v\n", b.ID, err)
+			errMsg := fmt.Sprintf("failed importing board locally %v: %v", b.ID, err)
+			fmt.Println(errMsg)
+			s.emitError("bootstrap:board_error", errMsg)
 		}
 	}
 
 	mergedColumns := s.mergeColumns(localData.Columns, cloudData.Columns)
 	for _, c := range mergedColumns {
-		if err := s.cloud.UpsertColumn(c); err != nil {
-			fmt.Printf("failed uploading column %v: %v\n", c.ID, err)
+		upsertResp := s.cloud.UpsertColumn(c)
+		if upsertResp.Error != "" {
+			errMsg := fmt.Sprintf("failed uploading column %v: %s", c.ID, upsertResp.Error)
+			fmt.Println(errMsg)
+			s.emitError("bootstrap:column_error", errMsg)
 		}
 		if _, err := s.repo.ImportColumn(c.ID, c.BoardID, c.Name, c.Position, c.CreatedAt, c.UpdatedAt); err != nil {
-			fmt.Printf("failed importing column locally %v: %v\n", c.ID, err)
+			errMsg := fmt.Sprintf("failed importing column locally %v: %v", c.ID, err)
+			fmt.Println(errMsg)
+			s.emitError("bootstrap:column_error", errMsg)
 		}
 	}
 
 	mergedCards := s.mergeCards(localData.Cards, cloudData.Cards)
 	for _, card := range mergedCards {
-		if err := s.cloud.UpsertCard(card); err != nil {
-			fmt.Printf("failed uploading card %v: %v\n", card.ID, err)
+		upsertResp := s.cloud.UpsertCard(card)
+		if upsertResp.Error != "" {
+			errMsg := fmt.Sprintf("failed uploading card %v: %s", card.ID, upsertResp.Error)
+			fmt.Println(errMsg)
+			s.emitError("bootstrap:card_error", errMsg)
 		}
 		if _, err := s.repo.ImportCard(card.ID, card.ColumnID, card.Title, card.Description, card.Attachments, card.CreatedAt, card.UpdatedAt); err != nil {
-			fmt.Printf("failed importing card locally %v: %v\n", card.ID, err)
+			errMsg := fmt.Sprintf("failed importing card locally %v: %v", card.ID, err)
+			fmt.Println(errMsg)
+			s.emitError("bootstrap:card_error", errMsg)
 		}
 	}
 
@@ -265,33 +373,62 @@ func (s *SyncEngine) BootstrapCloud() error {
 		//     fmt.Printf("failed uploading transcription %v: %v\n", t.ID, err)
 		// }
 		if _, err := s.repo.ImportTranscription(t.ID, t.BoardID, t.Transcription, t.RecordingPath, t.Intent, t.AssistantResponse, t.CreatedAt, t.UpdatedAt); err != nil {
-			fmt.Printf("failed importing transcription locally %v: %v\n", t.ID, err)
+			errMsg := fmt.Sprintf("failed importing transcription locally %v: %v", t.ID, err)
+			fmt.Println(errMsg)
+			s.emitError("bootstrap:transcription_error", errMsg)
 		}
 	}
 
-	if err := s.cloud.InitializeSyncStateForUser(); err != nil {
-		fmt.Printf("failed initializing cloud sync state: %v\n", err)
+	initResp := s.cloud.InitializeSyncStateForUser()
+	if initResp.Error != "" {
+		errMsg := fmt.Sprintf("failed initializing cloud sync state: %s", initResp.Error)
+		fmt.Println(errMsg)
+		s.emitError("bootstrap:init_error", errMsg)
 	}
 
 	for _, table := range []types.TableName{types.BoardTable, types.ColumnTable, types.CardTable} {
-		state, err := s.cloud.GetSyncState(table)
-		if err == nil {
-			if err = s.local.UpsertSyncState(state); err != nil {
-				fmt.Printf("error syncing state for %s: %v\n", table, err)
-			}
+		stateResp := s.cloud.GetSyncState(table)
+		if stateResp.Error != "" {
+			errMsg := fmt.Sprintf("get sync state error for %s: %s", table, stateResp.Error)
+			fmt.Println(errMsg)
+			s.emitError("bootstrap:state_error", errMsg)
 		} else {
-			fmt.Printf("get sync state error for %s: %v\n", table, err)
+			state, ok := stateResp.Data.(query.SyncState)
+			if !ok {
+				errMsg := fmt.Sprintf("invalid sync state response for %s", table)
+				fmt.Println(errMsg)
+				s.emitError("bootstrap:state_error", errMsg)
+				continue
+			}
+
+			if err := s.local.UpsertSyncState(state); err != nil {
+				errMsg := fmt.Sprintf("error syncing state for %s: %v", table, err)
+				fmt.Println(errMsg)
+				s.emitError("bootstrap:state_error", errMsg)
+			}
 		}
 	}
 
 	fmt.Println("Bootstrap completed successfully - all data merged and synced")
+	s.emitSuccess("bootstrap:completed", "Bootstrap completed successfully")
 	return nil
 }
 
 func (s *SyncEngine) ImportNewBoard(boardID string) error {
-	boardData, err := s.cloud.ImportBoardData(boardID)
-	if err != nil {
-		return fmt.Errorf("failed to fetch board data from cloud: %v", err)
+	s.emitSuccess("import:started", map[string]string{"boardId": boardID})
+
+	boardResp := s.cloud.ImportBoardData(boardID)
+	if boardResp.Error != "" {
+		errMsg := fmt.Sprintf("failed to fetch board data from cloud: %s", boardResp.Error)
+		s.emitError("import:error", errMsg)
+		return errors.New(errMsg)
+	}
+
+	boardData, ok := boardResp.Data.(types.ImportUserBoardData)
+	if !ok {
+		errMsg := "invalid board data response type"
+		s.emitError("import:error", errMsg)
+		return errors.New(errMsg)
 	}
 
 	bByte, _ := json.MarshalIndent(boardData, "", " ")
@@ -299,7 +436,9 @@ func (s *SyncEngine) ImportNewBoard(boardID string) error {
 
 	existingBoard, err := s.repo.GetBoard(boardData.Board.ID)
 	if err == nil && existingBoard.ID != "" {
-		return fmt.Errorf("board '%s' already exists locally", boardData.Board.Name)
+		errMsg := fmt.Sprintf("board '%s' already exists locally", boardData.Board.Name)
+		s.emitError("import:error", errMsg)
+		return errors.New(errMsg)
 	}
 
 	_, err = s.repo.ImportBoard(
@@ -309,7 +448,9 @@ func (s *SyncEngine) ImportNewBoard(boardID string) error {
 		boardData.Board.UpdatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to import board: %v", err)
+		errMsg := fmt.Sprintf("failed to import board: %v", err)
+		s.emitError("import:error", errMsg)
+		return errors.New(errMsg)
 	}
 
 	for _, col := range boardData.Columns {
@@ -322,7 +463,9 @@ func (s *SyncEngine) ImportNewBoard(boardID string) error {
 			col.UpdatedAt,
 		)
 		if err != nil {
-			fmt.Printf("failed to import column %s: %v\n", col.ID, err)
+			errMsg := fmt.Sprintf("failed to import column %s: %v", col.ID, err)
+			fmt.Println(errMsg)
+			s.emitError("import:column_error", errMsg)
 			continue
 		}
 	}
@@ -338,7 +481,9 @@ func (s *SyncEngine) ImportNewBoard(boardID string) error {
 			card.UpdatedAt,
 		)
 		if err != nil {
-			fmt.Printf("failed to import card %s: %v\n", card.ID, err)
+			errMsg := fmt.Sprintf("failed to import card %s: %v", card.ID, err)
+			fmt.Println(errMsg)
+			s.emitError("import:card_error", errMsg)
 			continue
 		}
 	}
@@ -355,17 +500,27 @@ func (s *SyncEngine) ImportNewBoard(boardID string) error {
 			t.UpdatedAt,
 		)
 		if err != nil {
-			fmt.Printf("failed to import transcription %s: %v\n", t.ID, err)
+			errMsg := fmt.Sprintf("failed to import transcription %s: %v", t.ID, err)
+			fmt.Println(errMsg)
+			s.emitError("import:transcription_error", errMsg)
 			continue
 		}
 	}
 
-	fmt.Printf("Successfully imported board %s with %d columns, %d cards, and %d transcriptions\n",
+	successMsg := fmt.Sprintf("Successfully imported board %s with %d columns, %d cards, and %d transcriptions",
 		boardData.Board.ID,
 		len(boardData.Columns),
 		len(boardData.Cards),
 		len(boardData.Transcriptions),
 	)
+	fmt.Println(successMsg)
+	s.emitSuccess("import:completed", map[string]interface{}{
+		"boardId":        boardData.Board.ID,
+		"boardName":      boardData.Board.Name,
+		"columnsCount":   len(boardData.Columns),
+		"cardsCount":     len(boardData.Cards),
+		"transcriptions": len(boardData.Transcriptions),
+	})
 
 	return nil
 }

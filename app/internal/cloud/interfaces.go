@@ -6,23 +6,23 @@ import (
 )
 
 type Cloud interface {
-	GetAllOperations(tableName types.TableName, since int64) ([]types.OperationSync, error)
-	PullRecord(tableName types.TableName, since int64) (types.OperationSync, error)
+	GetAllOperations(tableName types.TableName, since int64) HttpResponse
+	PullRecord(tableName types.TableName, since int64) HttpResponse
 	PullRecords(tableName types.TableName, since int64) ([]types.OperationSync, error)
 	PushRecord(op types.OperationSync) HttpResponse
-	UpdateSyncState(state query.SyncState) error
-	GetSyncState(tableName types.TableName) (query.SyncState, error)
+	UpdateSyncState(state query.SyncState) HttpResponse
+	GetSyncState(tableName types.TableName) HttpResponse
 
-	UpsertBoard(types.ExportedBoard) error
-	UpsertColumn(types.ExportedColumn) error
-	UpsertCard(types.ExportedCard) error
-	InitializeSyncStateForUser() error
+	UpsertBoard(types.ExportedBoard) HttpResponse
+	UpsertColumn(types.ExportedColumn) HttpResponse
+	UpsertCard(types.ExportedCard) HttpResponse
+	InitializeSyncStateForUser() HttpResponse
 
-	ImportBoardData(boardId string) (types.ImportUserBoardData, error)
+	ImportBoardData(boardId string) HttpResponse
 	UpdateSessionToken(token string)
 
-	InitCloud() error
-	FetchAppVersion() (types.AppVersion, error)
+	InitCloud() HttpResponse
+	FetchAppVersion() HttpResponse
 
-	ImportAllUserData() (types.ExportedData, error)
+	ImportAllUserData() HttpResponse
 }

@@ -34,19 +34,25 @@ func NewCloudFuncs(repo repo.Repository, sessionToken string, ctx context.Contex
 	}
 }
 
-func (cf *cloudFuncs) GetAllOperations(tableName types.TableName, since int64) ([]types.OperationSync, error) {
+func (cf *cloudFuncs) GetAllOperations(tableName types.TableName, since int64) HttpResponse {
 	// Get all operations without filters - this will return all operations for the user
 	operations, err := cf.PullRecords(tableName, since)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all operations: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "failed to get all operations",
+		}
 	}
-	return operations, nil
+	return HttpResponse{
+		Message: "operations retrieved successfully",
+		Data:    operations,
+	}
 }
 
 type HttpResponse struct {
-	HasError bool
-	Message  string `json:"message"`
-	Data     any    `json:"data"`
+	Message string `json:"message,omitempty"`
+	Data    any    `json:"data,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 func (cf *cloudFuncs) buildURL(path string) string {
@@ -121,38 +127,45 @@ func (cf *cloudFuncs) PushRecord(payload types.OperationSync) HttpResponse {
 	status, resBody, err := cf.doJSONRequest(http.MethodPost, "/sync/upload", payload)
 	if err != nil {
 		return HttpResponse{
-			HasError: true,
-			Message:  "unable to sync data",
-			Data:     err.Error(),
+			Error:   err.Error(),
+			Message: "unable to sync data",
 		}
 	}
 
 	if status != http.StatusCreated {
 		return HttpResponse{
-			HasError: true,
-			Message:  "error syncing data",
-			Data:     string(resBody),
+			Error:   string(resBody),
+			Message: "error syncing data",
 		}
 	}
 
 	return HttpResponse{
-		HasError: false,
-		Message:  "data synced successfully",
-		Data:     resBody,
+		Error:   "",
+		Message: "data synced successfully",
+		Data:    resBody,
 	}
 }
 
-func (cf *cloudFuncs) PullRecord(tableName types.TableName, since int64) (types.OperationSync, error) {
+func (cf *cloudFuncs) PullRecord(tableName types.TableName, since int64) HttpResponse {
 	operations, err := cf.PullRecords(tableName, since)
 	if err != nil {
-		return types.OperationSync{}, err
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to pull record",
+		}
 	}
 
 	if len(operations) == 0 {
-		return types.OperationSync{}, fmt.Errorf("no operations available for table %s", tableName.String())
+		return HttpResponse{
+			Error:   fmt.Sprintf("no operations available for table %s", tableName.String()),
+			Message: "no records found",
+		}
 	}
 
-	return operations[0], nil
+	return HttpResponse{
+		Message: "record retrieved successfully",
+		Data:    operations[0],
+	}
 }
 
 func (cf *cloudFuncs) PullRecords(tableName types.TableName, since int64) ([]types.OperationSync, error) {
@@ -178,36 +191,88 @@ func (cf *cloudFuncs) PullRecords(tableName types.TableName, since int64) ([]typ
 	return response.Operations, nil
 }
 
-// TODO: work on this function  in cloud & return HttpResponse also
-func (cf *cloudFuncs) GetSyncState(tableName types.TableName) (query.SyncState, error) {
-	status, resBody, err := cf.doJSONRequest(http.MethodGet, "/sync/state/"+tableName.String(), nil)
+func (cf *cloudFuncs) PullRecordsV2(tableName types.TableName, since int64) HttpResponse {
+	status, resBody, err := cf.doJSONRequest(http.MethodGet, fmt.Sprintf("/sync/pull/%s?since=%d", tableName.String(), since), nil)
 	if err != nil {
-		return query.SyncState{}, fmt.Errorf("unable to get sync state: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to pull records",
+		}
 	}
 
 	if status != http.StatusOK {
-		return query.SyncState{}, fmt.Errorf("api request failed with status %d: %s", status, string(resBody))
+		return HttpResponse{
+			Error:   string(resBody),
+			Message: fmt.Sprintf("api request failed with status %d", status),
+		}
+	}
+
+	var response struct {
+		Table      string                `json:"table"`
+		Count      int                   `json:"count"`
+		Operations []types.OperationSync `json:"operations"`
+	}
+
+	if err := json.Unmarshal(resBody, &response); err != nil {
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to decode response",
+		}
+	}
+
+	return HttpResponse{
+		Message: "records retrieved successfully",
+		Data:    response.Operations,
+	}
+}
+
+func (cf *cloudFuncs) GetSyncState(tableName types.TableName) HttpResponse {
+	status, resBody, err := cf.doJSONRequest(http.MethodGet, "/sync/state/"+tableName.String(), nil)
+	if err != nil {
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to get sync state",
+		}
+	}
+
+	if status != http.StatusOK {
+		return HttpResponse{
+			Error:   string(resBody),
+			Message: fmt.Sprintf("api request failed with status %d", status),
+		}
 	}
 
 	var response HttpResponse
 	if err := json.Unmarshal(resBody, &response); err != nil {
-		return query.SyncState{}, fmt.Errorf("unable to deserialize data: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to deserialize data",
+		}
 	}
 
 	dataBytes, err := json.Marshal(response.Data)
 	if err != nil {
-		return query.SyncState{}, fmt.Errorf("unable to re-marshal data: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to re-marshal data",
+		}
 	}
 
 	var syncState types.SyncStatePayload
 	if err := json.Unmarshal(dataBytes, &syncState); err != nil {
-		return query.SyncState{}, fmt.Errorf("unable to decode sync state: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to decode sync state",
+		}
 	}
 
-	return query.SyncState(syncState), nil
+	return HttpResponse{
+		Message: "sync state retrieved successfully",
+		Data:    query.SyncState(syncState),
+	}
 }
 
-func (cf *cloudFuncs) UpdateSyncState(state query.SyncState) error {
+func (cf *cloudFuncs) UpdateSyncState(state query.SyncState) HttpResponse {
 	payload := types.SyncStatePayload{
 		TableName:      state.TableName,
 		LastSyncedAt:   state.LastSyncedAt,
@@ -215,42 +280,67 @@ func (cf *cloudFuncs) UpdateSyncState(state query.SyncState) error {
 	}
 
 	if err := cf.postSyncResource("/sync/state", payload); err != nil {
-		return fmt.Errorf("unable to update sync state: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to update sync state",
+		}
 	}
 
-	return nil
+	return HttpResponse{
+		Message: "sync state updated successfully",
+	}
 }
 
-func (cf *cloudFuncs) UpsertBoard(board types.ExportedBoard) error {
+func (cf *cloudFuncs) UpsertBoard(board types.ExportedBoard) HttpResponse {
 	if err := cf.postSyncResource("/sync/board", board); err != nil {
-		return fmt.Errorf("unable to upsert board: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to upsert board",
+		}
 	}
 
-	return nil
+	return HttpResponse{
+		Message: "board upserted successfully",
+	}
 }
 
-func (cf *cloudFuncs) UpsertColumn(column types.ExportedColumn) error {
+func (cf *cloudFuncs) UpsertColumn(column types.ExportedColumn) HttpResponse {
 	if err := cf.postSyncResource("/sync/column", column); err != nil {
-		return fmt.Errorf("unable to upsert column: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to upsert column",
+		}
 	}
 
-	return nil
+	return HttpResponse{
+		Message: "column upserted successfully",
+	}
 }
 
-func (cf *cloudFuncs) UpsertCard(card types.ExportedCard) error {
+func (cf *cloudFuncs) UpsertCard(card types.ExportedCard) HttpResponse {
 	if err := cf.postSyncResource("/sync/card", card); err != nil {
-		return fmt.Errorf("unable to upsert card: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to upsert card",
+		}
 	}
 
-	return nil
+	return HttpResponse{
+		Message: "card upserted successfully",
+	}
 }
 
-func (cf *cloudFuncs) InitializeSyncStateForUser() error {
+func (cf *cloudFuncs) InitializeSyncStateForUser() HttpResponse {
 	if err := cf.postSyncResource("/sync/init", nil); err != nil {
-		return fmt.Errorf("unable to init sync state: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to init sync state",
+		}
 	}
 
-	return nil
+	return HttpResponse{
+		Message: "sync state initialized successfully",
+	}
 }
 
 /**
@@ -263,106 +353,165 @@ Then when it has pulled all the data for a particular board, the user will now u
 I think this is perfect.
 */
 
-func (cf *cloudFuncs) ImportBoardData(boardId string) (types.ImportUserBoardData, error) {
+func (cf *cloudFuncs) ImportBoardData(boardId string) HttpResponse {
 	status, body, err := cf.doJSONRequest("GET", "/sync/export/"+boardId, nil)
 
 	if err != nil {
-		return types.ImportUserBoardData{}, err
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to import board data",
+		}
 	}
 
 	var httpResp HttpResponse
 
 	if err = json.Unmarshal(body, &httpResp); err != nil {
-		return types.ImportUserBoardData{}, fmt.Errorf("unable to unmarshal body: %v", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to unmarshal body",
+		}
 	}
 
 	if status != http.StatusOK && status != http.StatusCreated {
-		return types.ImportUserBoardData{}, fmt.Errorf("sync api returned status %d: %s", status, string(body))
+		return HttpResponse{
+			Error:   string(body),
+			Message: fmt.Sprintf("sync api returned status %d", status),
+		}
 	}
 
 	dataBytes, err := json.Marshal(httpResp.Data)
 	if err != nil {
-		return types.ImportUserBoardData{}, fmt.Errorf("unable to re-marshal data: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to re-marshal data",
+		}
 	}
 
 	var data types.ImportUserBoardData
 
 	err = json.Unmarshal(dataBytes, &data)
 	if err != nil {
-		return types.ImportUserBoardData{}, err
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to decode board data",
+		}
 	}
 
-	return data, nil
+	return HttpResponse{
+		Message: "board data imported successfully",
+		Data:    data,
+	}
 }
 
-func (cf *cloudFuncs) ImportAllUserData() (types.ExportedData, error) {
+func (cf *cloudFuncs) ImportAllUserData() HttpResponse {
 	status, body, err := cf.doJSONRequest("GET", "/sync/export/", nil)
 
 	if err != nil {
-		return types.ExportedData{}, err
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to import user data",
+		}
 	}
 
 	var httpResp HttpResponse
 
 	if err = json.Unmarshal(body, &httpResp); err != nil {
-		return types.ExportedData{}, fmt.Errorf("unable to unmarshal body: %v", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to unmarshal body",
+		}
 	}
 
 	if status != http.StatusOK && status != http.StatusCreated {
-		return types.ExportedData{}, fmt.Errorf("sync api returned status %d: %s", status, string(body))
+		return HttpResponse{
+			Error:   string(body),
+			Message: fmt.Sprintf("sync api returned status %d", status),
+		}
 	}
 
 	dataBytes, err := json.Marshal(httpResp.Data)
 	if err != nil {
-		return types.ExportedData{}, fmt.Errorf("unable to re-marshal data: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to re-marshal data",
+		}
 	}
 
 	var data types.ExportedData
 
 	err = json.Unmarshal(dataBytes, &data)
 	if err != nil {
-		return types.ExportedData{}, err
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to decode user data",
+		}
 	}
 
-	return data, nil
+	return HttpResponse{
+		Message: "user data imported successfully",
+		Data:    data,
+	}
 }
 
-func (cf *cloudFuncs) InitCloud() error {
+func (cf *cloudFuncs) InitCloud() HttpResponse {
 	if err := cf.postSyncResource("/init/cloud", nil); err != nil {
-		return fmt.Errorf("unable to init cloud status: %v", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to init cloud status",
+		}
 	}
 
-	return nil
+	return HttpResponse{
+		Message: "cloud initialized successfully",
+	}
 }
 
-func (cf *cloudFuncs) FetchAppVersion() (types.AppVersion, error) {
+func (cf *cloudFuncs) FetchAppVersion() HttpResponse {
 	status, body, err := cf.doJSONRequest("GET", "/updates/latest", nil)
 
 	if err != nil {
-		return types.AppVersion{}, err
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to fetch app version",
+		}
 	}
 
 	if status != http.StatusOK && status != http.StatusCreated {
-		return types.AppVersion{}, fmt.Errorf("updates api returned status %d: %s", status, string(body))
+		return HttpResponse{
+			Error:   string(body),
+			Message: fmt.Sprintf("updates api returned status %d", status),
+		}
 	}
 
 	var httpResp HttpResponse
 
 	if err = json.Unmarshal(body, &httpResp); err != nil {
-		return types.AppVersion{}, fmt.Errorf("unable to unmarshal body: %v", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to unmarshal body",
+		}
 	}
 
 	dataBytes, err := json.Marshal(httpResp.Data)
 	if err != nil {
-		return types.AppVersion{}, fmt.Errorf("unable to re-marshal data: %w", err)
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to re-marshal data",
+		}
 	}
 
 	var appVersion types.AppVersion
 
 	err = json.Unmarshal(dataBytes, &appVersion)
 	if err != nil {
-		return types.AppVersion{}, err
+		return HttpResponse{
+			Error:   err.Error(),
+			Message: "unable to decode app version",
+		}
 	}
 
-	return appVersion, nil
+	return HttpResponse{
+		Message: "app version fetched successfully",
+		Data:    appVersion,
+	}
 }

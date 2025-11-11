@@ -1,6 +1,5 @@
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "~/components/sidebar";
-import { CloudSyncProgress } from "~/components/cloud-sync-progress";
 import { useEffect, useRef, useState } from "react";
 import { useSidebar } from "~/contexts/sidebar-context";
 import { EventsOn, EventsEmit } from "../../wailsjs/runtime/runtime";
@@ -19,6 +18,7 @@ import { useRecordingStore } from "~/stores/recording-store";
 import { useBoardStore } from "~/stores/board-store";
 import { Transcription } from "~/types/types";
 import { useQueryClient } from "@tanstack/react-query";
+import { ErrorListener } from "~/components/error-listener";
 
 export const AppLayout = () => {
   const { collapsed } = useSidebar();
@@ -352,13 +352,13 @@ export const AppLayout = () => {
           </Popover>
         </div>
       </div>
-      <CloudSyncProgress />
       <GlobalWaveform />
       <BoardImportDialog
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
         boardId={boardIdToImport}
       />
+      <ErrorListener />
     </>
   );
 };

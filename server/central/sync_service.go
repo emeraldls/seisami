@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"seisami/server/centraldb"
 	"seisami/server/types"
+	"seisami/server/utils"
 	"strconv"
 	"strings"
 	"time"
@@ -1054,16 +1055,19 @@ func (s *SyncService) getBoardMembers(ctx context.Context, boardID, userId uuid.
 
 	boardMembers := make([]types.BoardMember, len(members))
 
-	//TODO: should include user email
-
 	for i, member := range members {
+		joinedAt := utils.ConvertTimestamptzToLocal(member.JoinedAt)
+
 		boardMembers[i] = types.BoardMember{
 			UserID:   member.UserID.String(),
 			Role:     member.Role.String,
-			JoinedAt: member.JoinedAt.Time.String(),
+			JoinedAt: joinedAt,
 			Email:    member.Email,
 		}
 	}
+
+	jBytes, _ := json.MarshalIndent(boardMembers, "", " ")
+	fmt.Println(string(jBytes))
 
 	return boardMembers, nil
 
@@ -1082,8 +1086,8 @@ func (s *SyncService) getBoardMetadata(ctx context.Context, boardID, userID uuid
 	return &types.BoardMetadata{
 		ID:                  metadata.ID.String(),
 		Name:                metadata.Name,
-		CreatedAt:           metadata.CreatedAt.Time.String(),
-		UpdatedAt:           metadata.UpdatedAt.Time.String(),
+		CreatedAt:           utils.ConvertTimestamptzToLocal(metadata.CreatedAt),
+		UpdatedAt:           utils.ConvertTimestamptzToLocal(metadata.UpdatedAt),
 		ColumnsCount:        int(metadata.ColumnsCount),
 		CardsCount:          int(metadata.CardsCount),
 		TranscriptionsCount: int(metadata.TranscriptionsCount),
@@ -1140,8 +1144,8 @@ func (s *SyncService) ExportBoardData(ctx context.Context, userID uuid.UUID, boa
 			BoardID:   c.BoardID.String(),
 			Name:      c.Name,
 			Position:  int64(c.Position),
-			CreatedAt: c.CreatedAt.Time.String(),
-			UpdatedAt: c.UpdatedAt.Time.String(),
+			CreatedAt: utils.ConvertTimestamptzToLocal(c.CreatedAt),
+			UpdatedAt: utils.ConvertTimestamptzToLocal(c.UpdatedAt),
 		}
 	}
 
@@ -1162,8 +1166,8 @@ func (s *SyncService) ExportBoardData(ctx context.Context, userID uuid.UUID, boa
 			Title:       card.Title,
 			Description: card.Description.String,
 			Attachments: card.Attachments.String,
-			CreatedAt:   card.CreatedAt.Time.String(),
-			UpdatedAt:   card.UpdatedAt.Time.String(),
+			CreatedAt:   utils.ConvertTimestamptzToLocal(card.CreatedAt),
+			UpdatedAt:   utils.ConvertTimestamptzToLocal(card.UpdatedAt),
 		}
 	}
 
@@ -1189,16 +1193,16 @@ func (s *SyncService) ExportBoardData(ctx context.Context, userID uuid.UUID, boa
 			RecordingPath:     t.RecordingPath.String,
 			Intent:            t.Intent.String,
 			AssistantResponse: t.AssistantResponse.String,
-			CreatedAt:         t.CreatedAt.Time.String(),
-			UpdatedAt:         t.UpdatedAt.Time.String(),
+			CreatedAt:         utils.ConvertTimestamptzToLocal(t.CreatedAt),
+			UpdatedAt:         utils.ConvertTimestamptzToLocal(t.UpdatedAt),
 		}
 	}
 
 	exportedBoard := types.ExportedBoard{
 		ID:        board.ID.String(),
 		Name:      board.Name,
-		CreatedAt: board.CreatedAt.Time.String(),
-		UpdatedAt: board.UpdatedAt.Time.String(),
+		CreatedAt: utils.ConvertTimestamptzToLocal(board.CreatedAt),
+		UpdatedAt: utils.ConvertTimestamptzToLocal(board.UpdatedAt),
 	}
 
 	return &types.ExportedData{
@@ -1234,8 +1238,8 @@ func (s *SyncService) ExportAllData(ctx context.Context, userUUID uuid.UUID) (*t
 		exportedBoards[i] = types.ExportedBoard{
 			ID:        b.ID.String(),
 			Name:      b.Name,
-			CreatedAt: b.CreatedAt.Time.String(),
-			UpdatedAt: b.UpdatedAt.Time.String(),
+			CreatedAt: utils.ConvertTimestamptzToLocal(b.CreatedAt),
+			UpdatedAt: utils.ConvertTimestamptzToLocal(b.UpdatedAt),
 		}
 	}
 
@@ -1254,8 +1258,8 @@ func (s *SyncService) ExportAllData(ctx context.Context, userUUID uuid.UUID) (*t
 			BoardID:   c.BoardID.String(),
 			Name:      c.Name,
 			Position:  int64(c.Position),
-			CreatedAt: c.CreatedAt.Time.String(),
-			UpdatedAt: c.UpdatedAt.Time.String(),
+			CreatedAt: utils.ConvertTimestamptzToLocal(c.CreatedAt),
+			UpdatedAt: utils.ConvertTimestamptzToLocal(c.UpdatedAt),
 		}
 	}
 
@@ -1273,8 +1277,8 @@ func (s *SyncService) ExportAllData(ctx context.Context, userUUID uuid.UUID) (*t
 			Title:       card.Title,
 			Description: card.Description.String,
 			Attachments: card.Attachments.String,
-			CreatedAt:   card.CreatedAt.Time.String(),
-			UpdatedAt:   card.UpdatedAt.Time.String(),
+			CreatedAt:   utils.ConvertTimestamptzToLocal(card.CreatedAt),
+			UpdatedAt:   utils.ConvertTimestamptzToLocal(card.UpdatedAt),
 		}
 	}
 
@@ -1293,8 +1297,8 @@ func (s *SyncService) ExportAllData(ctx context.Context, userUUID uuid.UUID) (*t
 			RecordingPath:     t.RecordingPath.String,
 			Intent:            t.Intent.String,
 			AssistantResponse: t.AssistantResponse.String,
-			CreatedAt:         t.CreatedAt.Time.String(),
-			UpdatedAt:         t.UpdatedAt.Time.String(),
+			CreatedAt:         utils.ConvertTimestamptzToLocal(t.CreatedAt),
+			UpdatedAt:         utils.ConvertTimestamptzToLocal(t.UpdatedAt),
 		}
 	}
 

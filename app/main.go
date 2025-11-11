@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"embed"
-	"flag"
 	"fmt"
 	"net/url"
 	"os"
@@ -27,19 +26,8 @@ var assets embed.FS
 func main() {
 	_ = godotenv.Load(".env")
 
-	// Check for custom DB path from environment variable (for dev mode) or flag (for production)
 	customDBPath := os.Getenv("SEISAMI_DB_PATH")
 
-	// If no env var, try parsing command line flags (for production builds)
-	if customDBPath == "" {
-		dbPath := flag.String("db", "", "Path to custom database file (e.g., -db=/path/to/custom.db)")
-		flag.Parse()
-		if *dbPath != "" {
-			customDBPath = *dbPath
-		}
-	}
-
-	// Set custom DB path if provided
 	if customDBPath != "" {
 		utils.SetCustomDBPath(customDBPath)
 		fmt.Printf("Using custom database path: %s\n", customDBPath)

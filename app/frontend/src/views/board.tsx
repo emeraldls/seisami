@@ -18,9 +18,6 @@ import {
   Trash2,
   Save,
   Upload,
-  Search,
-  ChevronUp,
-  ChevronDown,
   Mic,
   MicOff,
   Zap,
@@ -66,12 +63,15 @@ import type {
   CardDeleteEventData,
   CardColumnEventData,
 } from "~/types/types";
+import { CommandPalette } from "~/components/command-palette";
+import { useCommandPalette } from "~/contexts/command-palette-context";
+import { useGlobalKeyboardShortcut } from "~/hooks/use-global-keyboard-shortcut";
 
 type Feature = {
   id: string;
   name: string;
-  description: string;
-  attachments: string;
+  description?: string;
+  attachments?: string;
   startAt: Date;
   endAt: Date;
   column: string;
@@ -120,15 +120,14 @@ export default function KanbanView() {
   const [editingColumnPosition, setEditingColumnPosition] = useState<
     number | null
   >(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<Feature[]>([]);
-  const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
-  const [highlightedCardId, setHighlightedCardId] = useState<string | null>(
-    null
-  );
 
   const { currentBoard, setCurrentBoard } = useBoardStore();
   const { roomId, initialize, teardown } = useCollaborationStore();
+  const {
+    isOpen: isCommandPaletteOpen,
+    open: openCommandPalette,
+    close: closeCommandPalette,
+  } = useCommandPalette();
   const draggedCardSnapshotRef = useRef<Feature | null>(null);
 
   useEffect(() => {
@@ -147,32 +146,32 @@ export default function KanbanView() {
       const columnsData = await ListColumnsByBoard(currentBoard.id);
 
       const transformedColumns: Column[] = columnsData.map((c) => ({
-        id: c.ID.toString(),
-        name: c.Name,
+        id: c.id,
+        name: c.name,
         color: "#10B981", //TODO: add a column in *column* table to include color
-        position: c.Position,
+        position: c.position,
       }));
 
       setColumns(transformedColumns);
 
       const allFeatures: Feature[] = [];
       for (const col of columnsData) {
-        const tickets = await ListCardsByColumn(col.ID);
+        const tickets = await ListCardsByColumn(col.id);
         if (tickets) {
           const featuresForColumn: Feature[] = tickets.map((t) => ({
-            id: t.ID.toString(),
-            name: t.Title,
-            description: t.Description.Valid ? t.Description.String : "",
-            attachments: t.Attachments.Valid ? t.Attachments.String : "",
-            startAt: new Date(t.CreatedAt.String!),
-            endAt: new Date(
-              t.UpdatedAt.Valid ? t.UpdatedAt.String! : t.CreatedAt.String!
-            ),
-            column: col.ID.toString(),
+            id: t.id,
+            name: t.title,
+            description: t.description,
+            attachments: t.attachments,
+            startAt: new Date(t.created_at),
+            endAt: new Date(t.updated_at),
+            column: col.id,
           }));
           allFeatures.push(...featuresForColumn);
+          console.log(tickets);
         }
       }
+
       setFeatures(allFeatures);
     } catch (err) {
       console.error(err);
@@ -449,13 +448,8 @@ export default function KanbanView() {
       const column = columns.find((col) => col.id === columnId);
       if (column) {
         const cardsInColumn = features.filter((f) => f.column === columnId);
-        const createdAt =
-          createdCard.CreatedAt?.Valid && createdCard.CreatedAt.String
-            ? createdCard.CreatedAt.String
-            : new Date().toISOString();
-        const updatedAt = createdCard.UpdatedAt?.Valid
-          ? createdCard.UpdatedAt.String
-          : createdAt;
+        const createdAt = createdCard.created_at;
+        const updatedAt = createdCard.updated_at;
 
         const payload = {
           column: {
@@ -466,11 +460,9 @@ export default function KanbanView() {
             position: column.position,
           },
           card: {
-            id: createdCard.ID,
-            name: createdCard.Title,
-            description: createdCard.Description?.Valid
-              ? createdCard.Description.String
-              : "",
+            id: createdCard.id,
+            name: createdCard.title,
+            description: createdCard.description ? createdCard.description : "",
             column_id: columnId,
             index: cardsInColumn.length,
             created_at: createdAt,
@@ -495,19 +487,17 @@ export default function KanbanView() {
       setNewColumnName("");
       setIsAddingColumn(false);
 
-      const createdAt = createdColumn.CreatedAt?.Valid
-        ? createdColumn.CreatedAt.String
-        : new Date().toISOString();
-      const updatedAt = createdColumn.UpdatedAt?.Valid
-        ? createdColumn.UpdatedAt.String
+      const createdAt = createdColumn.created_at;
+      const updatedAt = createdColumn.updated_at
+        ? createdColumn.updated_at
         : createdAt;
 
       const payload = {
         room_id: roomId,
-        id: createdColumn.ID,
-        board_id: createdColumn.BoardID,
-        name: createdColumn.Name,
-        position: createdColumn.Position,
+        id: createdColumn.id,
+        board_id: createdColumn.board_id,
+        name: createdColumn.name,
+        position: createdColumn.position,
         created_at: createdAt,
         updated_at: updatedAt,
       };
@@ -633,7 +623,11 @@ export default function KanbanView() {
     if (!selectedCard || !editingTitle.trim()) return;
 
     try {
-      await UpdateCard(selectedCard.id, editingTitle, selectedCard.description);
+      await UpdateCard(
+        selectedCard.id,
+        editingTitle,
+        selectedCard.description!
+      );
       setIsEditingTitle(false);
       fetchBoard();
 
@@ -760,131 +754,7 @@ export default function KanbanView() {
     }
   };
 
-  const performSearch = useCallback(
-    (query: string) => {
-      if (!query.trim()) {
-        setSearchResults([]);
-        setHighlightedCardId(null);
-        setCurrentSearchIndex(0);
-        return;
-      }
-
-      const lowercaseQuery = query.toLowerCase();
-      const results: Feature[] = [];
-
-      features.forEach((feature) => {
-        const matchesTitle = feature.name
-          .toLowerCase()
-          .includes(lowercaseQuery);
-        const matchesDescription = feature.description
-          .toLowerCase()
-          .includes(lowercaseQuery);
-
-        const column = columns.find((col) => col.id === feature.column);
-        const matchesColumn = column?.name
-          .toLowerCase()
-          .includes(lowercaseQuery);
-
-        if (matchesTitle || matchesDescription || matchesColumn) {
-          results.push(feature);
-        }
-      });
-
-      setSearchResults(results);
-      setCurrentSearchIndex(0);
-
-      if (results.length > 0) {
-        setHighlightedCardId(results[0].id);
-        scrollToCard(results[0].id);
-      } else {
-        setHighlightedCardId(null);
-      }
-    },
-    [features, columns]
-  );
-
-  const navigateSearchResults = (direction: "next" | "prev") => {
-    if (searchResults.length === 0) return;
-
-    let newIndex = currentSearchIndex;
-
-    if (direction === "next") {
-      newIndex = (currentSearchIndex + 1) % searchResults.length;
-    } else {
-      newIndex =
-        currentSearchIndex === 0
-          ? searchResults.length - 1
-          : currentSearchIndex - 1;
-    }
-
-    setCurrentSearchIndex(newIndex);
-    setHighlightedCardId(searchResults[newIndex].id);
-    scrollToCard(searchResults[newIndex].id);
-  };
-
-  const scrollToCard = (cardId: string) => {
-    const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
-    if (cardElement) {
-      cardElement.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-        inline: "center",
-      });
-    }
-  };
-
-  const highlightText = (text: string, query: string) => {
-    if (!query.trim()) return text;
-
-    const regex = new RegExp(
-      `(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
-      "gi"
-    );
-    const parts = text.split(regex);
-
-    return parts.map((part, index) =>
-      regex.test(part) ? (
-        <mark
-          key={index}
-          className="bg-yellow-200 text-yellow-900 px-1 rounded"
-        >
-          {part}
-        </mark>
-      ) : (
-        part
-      )
-    );
-  };
-
-  const clearSearch = () => {
-    setSearchQuery("");
-    setSearchResults([]);
-    setHighlightedCardId(null);
-    setCurrentSearchIndex(0);
-  };
-
-  useEffect(() => {
-    performSearch(searchQuery);
-  }, [searchQuery, performSearch]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (searchResults.length === 0) return;
-
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        navigateSearchResults("next");
-      } else if (e.key === "Enter" && e.shiftKey) {
-        e.preventDefault();
-        navigateSearchResults("prev");
-      } else if (e.key === "Escape" && searchQuery) {
-        clearSearch();
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [searchResults.length, searchQuery]);
+  useGlobalKeyboardShortcut("k", openCommandPalette);
 
   const getCardData = (feature: Feature) => {
     let attachments: string[] = [];
@@ -919,63 +789,15 @@ export default function KanbanView() {
 
   return (
     <div className=" min-h-screen">
-      <div className="bg-white border-b p-4">
-        <div className="max-w-full flex items-center gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search cards, descriptions, columns..."
-              className="pl-10 pr-10 border-gray-200 "
-            />
-            {searchQuery && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearSearch}
-                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            )}
-          </div>
+      <CollaborationPanel />
 
-          {searchResults.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-small text-gray-500 px-2">
-                {currentSearchIndex + 1} of {searchResults.length}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigateSearchResults("prev")}
-                className="h-8 w-8 p-0"
-                title="Previous result (Shift+Enter)"
-              >
-                <ChevronUp className="h-3 w-3" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigateSearchResults("next")}
-                className="h-8 w-8 p-0"
-                title="Next result (Ctrl/Cmd+Enter)"
-              >
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </div>
-          )}
-
-          {searchQuery && searchResults.length === 0 && (
-            <span className="text-small text-gray-500">No results found</span>
-          )}
-        </div>
-
-        <div className="mt-4 max-w-3xl">
-          <CollaborationPanel />
-        </div>
-      </div>
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={closeCommandPalette}
+        cards={features}
+        columns={columns}
+        boardId={currentBoard.id}
+      />
 
       <div className="p-6 h-full w-full overflow-x-auto">
         {columns.length === 0 ? (
@@ -1042,7 +864,7 @@ export default function KanbanView() {
                   className="w-80 flex-shrink-0"
                 >
                   <KanbanHeader>
-                    <div>
+                    <div data-column-id={column.id}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8  flex items-center justify-center">
@@ -1067,20 +889,7 @@ export default function KanbanView() {
                               autoFocus
                             />
                           ) : (
-                            <span
-                              className={
-                                searchQuery &&
-                                column.name
-                                  .toLowerCase()
-                                  .includes(searchQuery.toLowerCase())
-                                  ? "bg-neutral-200 text-yellow-900 px-1 rounded"
-                                  : ""
-                              }
-                            >
-                              {searchQuery
-                                ? highlightText(column.name, searchQuery)
-                                : column.name}
-                            </span>
+                            <span>{column.name}</span>
                           )}
                         </div>
                         <DropdownMenu>
@@ -1134,22 +943,13 @@ export default function KanbanView() {
                   ) : (
                     <KanbanCards id={column.id}>
                       {(feature: Feature) => {
-                        const isHighlighted = highlightedCardId === feature.id;
-                        const isInSearchResults = searchResults.some(
-                          (result) => result.id === feature.id
-                        );
-
                         return (
                           <KanbanCard
                             column={column.id}
                             id={feature.id}
                             key={feature.id}
                             name={feature.name}
-                            className={`hover:shadow-lg transition-all duration-200 ${
-                              isHighlighted
-                                ? "ring-2 shadow-lg"
-                                : isInSearchResults
-                            }`}
+                            className="hover:shadow-lg transition-all duration-200"
                           >
                             <div
                               className="flex items-start justify-between gap-2 p-1"
@@ -1158,23 +958,13 @@ export default function KanbanView() {
                               <div className="flex flex-col gap-2 flex-1">
                                 <div className="flex items-start justify-between gap-2">
                                   <p className="m-0 flex-1 font-medium text-sm">
-                                    {searchQuery
-                                      ? highlightText(feature.name, searchQuery)
-                                      : feature.name}
+                                    {feature.name}
                                   </p>
                                 </div>
 
                                 {feature.description && (
                                   <p className="m-0 text-xs text-gray-500 line-clamp-2">
-                                    {searchQuery &&
-                                    feature.description
-                                      .toLowerCase()
-                                      .includes(searchQuery.toLowerCase())
-                                      ? highlightText(
-                                          feature.description,
-                                          searchQuery
-                                        )
-                                      : feature.description}
+                                    {feature.description}
                                   </p>
                                 )}
 
@@ -1182,9 +972,10 @@ export default function KanbanView() {
                                   <div className="flex items-center gap-1 text-gray-400">
                                     <Calendar className="h-3 w-3" />
                                     <span>
-                                      {/*TODO: imported board time is not in the expected format {shortDateFormatter.format(
+                                      {/*  TODO: imported board time is not in the expected format */}
+                                      {shortDateFormatter.format(
                                         feature.startAt
-                                      )} */}
+                                      )}
                                     </span>
                                   </div>
                                 </div>
@@ -1384,7 +1175,7 @@ export default function KanbanView() {
                   </div>
                 </div>
 
-                <div>
+                {/* <div>
                   <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
                     <Paperclip className="h-4 w-4" />
                     Attachments
@@ -1447,7 +1238,7 @@ export default function KanbanView() {
                       </div>
                     )}
                   </div>
-                </div>
+                </div> */}
 
                 <div className="pt-4 border-t">
                   <div className="flex justify-between text-xs text-muted-foreground">

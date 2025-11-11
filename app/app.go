@@ -124,7 +124,7 @@ func (a *App) startup(ctx context.Context) {
 	cloud := cloud.NewCloudFuncs(a.repository, a.loginToken, a.ctx, a.cloudApiUrl)
 	a.cloud = cloud
 
-	syncEngine := sync_engine.NewSyncEngine(a.repository, cloud)
+	syncEngine := sync_engine.NewSyncEngine(a.repository, cloud, a.ctx)
 	a.syncEngine = syncEngine
 
 	go func() {
@@ -165,76 +165,366 @@ func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
 }
 
-func (a *App) GetBoards(page int64, pageSize int64) ([]query.Board, error) {
-	return a.repository.GetAllBoards(page, pageSize)
+func (a *App) GetBoards(page int64, pageSize int64) ([]types.ExportedBoard, error) {
+	boards, err := a.repository.GetAllBoards(page, pageSize)
+
+	if err != nil {
+		return []types.ExportedBoard{}, err
+	}
+
+	var boardResponse = make([]types.ExportedBoard, 0)
+
+	for _, board := range boards {
+		boardResponse = append(boardResponse, types.ExportedBoard{
+			ID:        board.ID,
+			Name:      board.Name,
+			CreatedAt: utils.ConvertTimestamptzToLocal(board.CreatedAt),
+			UpdatedAt: utils.ConvertTimestamptzToLocal(board.UpdatedAt),
+		})
+	}
+
+	return boardResponse, nil
 }
 
-func (a *App) CreateBoard(boardName string) (query.Board, error) {
-	return a.repository.CreateBoard(boardName)
+func (a *App) CreateBoard(boardName string) (types.ExportedBoard, error) {
+	createdBoard, err := a.repository.CreateBoard(boardName)
+	if err != nil {
+		return types.ExportedBoard{}, err
+	}
+
+	var board = types.ExportedBoard{
+		ID:        createdBoard.ID,
+		Name:      createdBoard.Name,
+		CreatedAt: utils.ConvertTimestamptzToLocal(createdBoard.CreatedAt),
+		UpdatedAt: utils.ConvertTimestamptzToLocal(createdBoard.UpdatedAt),
+	}
+
+	return board, nil
 }
 
-func (a *App) GetBoardByID(boardId string) (query.Board, error) {
-	return a.repository.GetBoard(boardId)
+func (a *App) GetBoardByID(boardId string) (types.ExportedBoard, error) {
+	gottenBoard, err := a.repository.GetBoard(boardId)
+	if err != nil {
+		return types.ExportedBoard{}, err
+	}
+
+	var board = types.ExportedBoard{
+		ID:        gottenBoard.ID,
+		Name:      gottenBoard.Name,
+		CreatedAt: utils.ConvertTimestamptzToLocal(gottenBoard.CreatedAt),
+		UpdatedAt: utils.ConvertTimestamptzToLocal(gottenBoard.UpdatedAt),
+	}
+
+	return board, nil
 }
 
-func (a *App) UpdateBoard(boardId string, name string) (query.Board, error) {
-	return a.repository.UpdateBoard(boardId, name)
+func (a *App) UpdateBoard(boardId string, name string) (types.ExportedBoard, error) {
+	updatedBoard, err := a.repository.UpdateBoard(boardId, name)
+	if err != nil {
+		return types.ExportedBoard{}, err
+	}
+
+	var board = types.ExportedBoard{
+		ID:        updatedBoard.ID,
+		Name:      updatedBoard.Name,
+		CreatedAt: utils.ConvertTimestamptzToLocal(updatedBoard.CreatedAt),
+		UpdatedAt: utils.ConvertTimestamptzToLocal(updatedBoard.UpdatedAt),
+	}
+
+	return board, nil
+
 }
 
 func (a *App) DeleteBoard(boardId string) error {
 	return a.repository.DeleteBoard(boardId)
 }
 
-func (a *App) CreateColumn(boardId string, columnName string) (query.Column, error) {
-	return a.repository.CreateColumn(boardId, columnName)
+func (a *App) CreateColumn(boardId string, columnName string) (types.ExportedColumn, error) {
+	column, err := a.repository.CreateColumn(boardId, columnName)
+	if err != nil {
+		return types.ExportedColumn{}, err
+	}
+
+	return types.ExportedColumn{
+		ID:        column.ID,
+		BoardID:   column.BoardID,
+		Name:      column.Name,
+		Position:  column.Position,
+		CreatedAt: utils.ConvertTimestamptzToLocal(column.CreatedAt),
+		UpdatedAt: utils.ConvertTimestamptzToLocal(column.UpdatedAt),
+	}, nil
 }
 
 func (a *App) DeleteColumn(columnId string) error {
 	return a.repository.DeleteColumn(columnId)
 }
 
-func (a *App) GetColumn(columnId string) (query.Column, error) {
-	return a.repository.GetColumn(columnId)
+func (a *App) GetColumn(columnId string) (types.ExportedColumn, error) {
+	column, err := a.repository.GetColumn(columnId)
+	if err != nil {
+		return types.ExportedColumn{}, err
+	}
+
+	return types.ExportedColumn{
+		ID:        column.ID,
+		BoardID:   column.BoardID,
+		Name:      column.Name,
+		Position:  column.Position,
+		CreatedAt: utils.ConvertTimestamptzToLocal(column.CreatedAt),
+		UpdatedAt: utils.ConvertTimestamptzToLocal(column.UpdatedAt),
+	}, nil
 }
 
-func (a *App) ListColumnsByBoard(boardId string) ([]query.Column, error) {
-	return a.repository.ListColumnsByBoard(boardId)
+func (a *App) ListColumnsByBoard(boardId string) ([]types.ExportedColumn, error) {
+	columns, err := a.repository.ListColumnsByBoard(boardId)
+	if err != nil {
+		return []types.ExportedColumn{}, err
+	}
+
+	var columnResponse = make([]types.ExportedColumn, 0)
+	for _, column := range columns {
+		columnResponse = append(columnResponse, types.ExportedColumn{
+			ID:        column.ID,
+			BoardID:   column.BoardID,
+			Name:      column.Name,
+			Position:  column.Position,
+			CreatedAt: utils.ConvertTimestamptzToLocal(column.CreatedAt),
+			UpdatedAt: utils.ConvertTimestamptzToLocal(column.UpdatedAt),
+		})
+	}
+
+	return columnResponse, nil
 }
 
-func (a *App) UpdateColumn(columnId string, name string) (query.Column, error) {
-	return a.repository.UpdateColumn(columnId, name)
+func (a *App) UpdateColumn(columnId string, name string) (types.ExportedColumn, error) {
+	column, err := a.repository.UpdateColumn(columnId, name)
+	if err != nil {
+		return types.ExportedColumn{}, err
+	}
+
+	return types.ExportedColumn{
+		ID:        column.ID,
+		BoardID:   column.BoardID,
+		Name:      column.Name,
+		Position:  column.Position,
+		CreatedAt: utils.ConvertTimestamptzToLocal(column.CreatedAt),
+		UpdatedAt: utils.ConvertTimestamptzToLocal(column.UpdatedAt),
+	}, nil
 }
 
-func (a *App) CreateCard(columnId string, title string, description string) (query.Card, error) {
-	return a.repository.CreateCard(columnId, title, description)
+func (a *App) CreateCard(columnId string, title string, description string) (types.ExportedCard, error) {
+	card, err := a.repository.CreateCard(columnId, title, description)
+	if err != nil {
+		return types.ExportedCard{}, err
+	}
+
+	var desc string
+	if card.Description.Valid {
+		desc = card.Description.String
+	}
+
+	var attachments string
+	if card.Attachments.Valid {
+		attachments = card.Attachments.String
+	}
+
+	return types.ExportedCard{
+		ID:          card.ID,
+		ColumnID:    card.ColumnID,
+		Title:       card.Title,
+		Description: desc,
+		Attachments: attachments,
+		CreatedAt:   utils.ConvertTimestamptzToLocal(card.CreatedAt),
+		UpdatedAt:   utils.ConvertTimestamptzToLocal(card.UpdatedAt),
+	}, nil
 }
 
 func (a *App) DeleteCard(cardId string) error {
 	return a.repository.DeleteCard(cardId)
 }
 
-func (a *App) GetCard(CardId string) (query.Card, error) {
-	return a.repository.GetCard(CardId)
+func (a *App) GetCard(CardId string) (types.ExportedCard, error) {
+	card, err := a.repository.GetCard(CardId)
+	if err != nil {
+		return types.ExportedCard{}, err
+	}
+
+	var desc string
+	if card.Description.Valid {
+		desc = card.Description.String
+	}
+
+	var attachments string
+	if card.Attachments.Valid {
+		attachments = card.Attachments.String
+	}
+
+	return types.ExportedCard{
+		ID:          card.ID,
+		ColumnID:    card.ColumnID,
+		Title:       card.Title,
+		Description: desc,
+		Attachments: attachments,
+		CreatedAt:   utils.ConvertTimestamptzToLocal(card.CreatedAt),
+		UpdatedAt:   utils.ConvertTimestamptzToLocal(card.UpdatedAt),
+	}, nil
 }
 
-func (a *App) ListCardsByColumn(columnId string) ([]query.Card, error) {
-	return a.repository.ListCardsByColumn(columnId)
+func (a *App) ListCardsByColumn(columnId string) ([]types.ExportedCard, error) {
+	cards, err := a.repository.ListCardsByColumn(columnId)
+	if err != nil {
+		return []types.ExportedCard{}, err
+	}
+
+	var cardResponse = make([]types.ExportedCard, 0)
+	for _, card := range cards {
+		var desc string
+		if card.Description.Valid {
+			desc = card.Description.String
+		}
+
+		var attachments string
+		if card.Attachments.Valid {
+			attachments = card.Attachments.String
+		}
+
+		cardResponse = append(cardResponse, types.ExportedCard{
+			ID:          card.ID,
+			ColumnID:    card.ColumnID,
+			Title:       card.Title,
+			Description: desc,
+			Attachments: attachments,
+			CreatedAt:   utils.ConvertTimestamptzToLocal(card.CreatedAt),
+			UpdatedAt:   utils.ConvertTimestamptzToLocal(card.UpdatedAt),
+		})
+	}
+
+	return cardResponse, nil
 }
 
-func (a *App) UpdateCard(cardId string, title string, description string) (query.Card, error) {
-	return a.repository.UpdateCard(cardId, title, description)
+func (a *App) UpdateCard(cardId string, title string, description string) (types.ExportedCard, error) {
+	card, err := a.repository.UpdateCard(cardId, title, description)
+	if err != nil {
+		return types.ExportedCard{}, err
+	}
+
+	var desc string
+	if card.Description.Valid {
+		desc = card.Description.String
+	}
+
+	var attachments string
+	if card.Attachments.Valid {
+		attachments = card.Attachments.String
+	}
+
+	return types.ExportedCard{
+		ID:          card.ID,
+		ColumnID:    card.ColumnID,
+		Title:       card.Title,
+		Description: desc,
+		Attachments: attachments,
+		CreatedAt:   utils.ConvertTimestamptzToLocal(card.CreatedAt),
+		UpdatedAt:   utils.ConvertTimestamptzToLocal(card.UpdatedAt),
+	}, nil
 }
 
-func (a *App) UpdateCardColumn(cardId string, columnId string) (query.Card, error) {
-	return a.repository.UpdateCardColumn(cardId, columnId)
+func (a *App) UpdateCardColumn(cardId string, columnId string) (types.ExportedCard, error) {
+	card, err := a.repository.UpdateCardColumn(cardId, columnId)
+	if err != nil {
+		return types.ExportedCard{}, err
+	}
+
+	var desc string
+	if card.Description.Valid {
+		desc = card.Description.String
+	}
+
+	var attachments string
+	if card.Attachments.Valid {
+		attachments = card.Attachments.String
+	}
+
+	return types.ExportedCard{
+		ID:          card.ID,
+		ColumnID:    card.ColumnID,
+		Title:       card.Title,
+		Description: desc,
+		Attachments: attachments,
+		CreatedAt:   utils.ConvertTimestamptzToLocal(card.CreatedAt),
+		UpdatedAt:   utils.ConvertTimestamptzToLocal(card.UpdatedAt),
+	}, nil
 }
 
-func (a *App) GetTranscriptions(boardId string, page, pageSize int64) ([]query.Transcription, error) {
-	return a.repository.GetTranscriptions(boardId, page, pageSize)
+func (a *App) GetTranscriptions(boardId string, page, pageSize int64) ([]types.ExportedTranscription, error) {
+	transcriptions, err := a.repository.GetTranscriptions(boardId, page, pageSize)
+	if err != nil {
+		return []types.ExportedTranscription{}, err
+	}
+
+	var transcriptionResponse = make([]types.ExportedTranscription, 0)
+	for _, t := range transcriptions {
+		var recordingPath string
+		if t.RecordingPath.Valid {
+			recordingPath = t.RecordingPath.String
+		}
+
+		var intent string
+		if t.Intent.Valid {
+			intent = t.Intent.String
+		}
+
+		var assistantResponse string
+		if t.AssistantResponse.Valid {
+			assistantResponse = t.AssistantResponse.String
+		}
+
+		transcriptionResponse = append(transcriptionResponse, types.ExportedTranscription{
+			ID:                t.ID,
+			BoardID:           t.BoardID,
+			Transcription:     t.Transcription,
+			RecordingPath:     recordingPath,
+			Intent:            intent,
+			AssistantResponse: assistantResponse,
+			CreatedAt:         utils.ConvertTimestamptzToLocal(t.CreatedAt),
+			UpdatedAt:         utils.ConvertTimestamptzToLocal(t.UpdatedAt),
+		})
+	}
+
+	return transcriptionResponse, nil
 }
 
-func (a *App) GetTranscriptionByID(transcriptionId string) (query.Transcription, error) {
-	return a.repository.GetTranscriptionByID(transcriptionId)
+func (a *App) GetTranscriptionByID(transcriptionId string) (types.ExportedTranscription, error) {
+	t, err := a.repository.GetTranscriptionByID(transcriptionId)
+	if err != nil {
+		return types.ExportedTranscription{}, err
+	}
+
+	var recordingPath string
+	if t.RecordingPath.Valid {
+		recordingPath = t.RecordingPath.String
+	}
+
+	var intent string
+	if t.Intent.Valid {
+		intent = t.Intent.String
+	}
+
+	var assistantResponse string
+	if t.AssistantResponse.Valid {
+		assistantResponse = t.AssistantResponse.String
+	}
+
+	return types.ExportedTranscription{
+		ID:                t.ID,
+		BoardID:           t.BoardID,
+		Transcription:     t.Transcription,
+		RecordingPath:     recordingPath,
+		Intent:            intent,
+		AssistantResponse: assistantResponse,
+		CreatedAt:         utils.ConvertTimestamptzToLocal(t.CreatedAt),
+		UpdatedAt:         utils.ConvertTimestamptzToLocal(t.UpdatedAt),
+	}, nil
 }
 
 func (a *App) GetSettings() (query.Setting, error) {
@@ -313,9 +603,15 @@ func (a *App) appVersionCheck() {
 		fmt.Println(err)
 	}
 
-	cloud, err := a.cloud.FetchAppVersion()
-	if err != nil {
-		fmt.Printf("unable to fetch cloud version: %v\n", err)
+	cloudResp := a.cloud.FetchAppVersion()
+	if cloudResp.Error != "" {
+		fmt.Printf("unable to fetch cloud version: %s\n", cloudResp.Error)
+		return
+	}
+
+	cloud, ok := cloudResp.Data.(types.AppVersion)
+	if !ok {
+		fmt.Println("invalid app version response type")
 		return
 	}
 
@@ -483,7 +779,7 @@ func (a *App) ensureCollabConnectionLocked() error {
 	}
 
 	if !a.isAuthenticated() {
-		return fmt.Errorf("user not authenticated")
+		return nil
 	}
 
 	addr := a.collabServerAddr
@@ -510,7 +806,6 @@ func (a *App) ensureCollabConnectionLocked() error {
 		runtime.EventsEmit(a.ctx, "collab:connected", map[string]string{"address": addr})
 	}
 
-	// Start listening for messages from the server
 	go a.handleCollabMessages()
 
 	return nil
@@ -1024,25 +1319,63 @@ func (a *App) trancribe() {
 
 	fmt.Println("Structured Response:", string(structuredJson))
 
-	// Emit structured response to frontend for display
 	runtime.EventsEmit(a.ctx, "structured_response", string(structuredJson))
-
 }
 
-// ExportDataForSync exports all local data for cloud sync
-func (a *App) ExportDataForSync() (map[string]interface{}, error) {
-	data, err := a.repository.ExportAllData()
-	if err != nil {
-		return nil, fmt.Errorf("failed to export data: %v", err)
+func (a *App) ReprocessTranscription(transcriptionId string, transcriptionText string, boardId string) error {
+	if strings.TrimSpace(transcriptionText) == "" {
+		return fmt.Errorf("transcription text is empty")
 	}
 
-	// Convert to map for JSON marshaling
-	return map[string]interface{}{
-		"boards":         data.Boards,
-		"columns":        data.Columns,
-		"cards":          data.Cards,
-		"transcriptions": data.Transcriptions,
-	}, nil
+	if strings.TrimSpace(boardId) == "" {
+		return fmt.Errorf("board ID is required")
+	}
+
+	runtime.EventsEmit(a.ctx, "ai:processing_start", map[string]string{
+		"transcriptionId": transcriptionId,
+	})
+
+	result, err := a.action.ProcessTranscription(transcriptionText, boardId)
+	if err != nil {
+		errMsg := fmt.Sprintf("unable to reprocess transcription: %v", err)
+		runtime.EventsEmit(a.ctx, "ai:error", map[string]string{
+			"error":           errMsg,
+			"transcriptionId": transcriptionId,
+		})
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	if result.Intent != "" {
+		err = a.repository.UpdateTranscriptionIntent(transcriptionId, result.Intent)
+		if err != nil {
+			fmt.Printf("unable to update transcription intent: %v\n", err)
+		}
+	}
+
+	if result.Result != "" {
+		err = a.repository.UpdateTranscriptionResponse(transcriptionId, result.Result)
+		if err != nil {
+			fmt.Printf("unable to update transcription response: %v\n", err)
+		}
+	}
+
+	structuredJson, err := json.MarshalIndent(result, "", " ")
+	if err != nil {
+		fmt.Printf("unable to marshal structured response: %v\n", err)
+		return fmt.Errorf("failed to serialize response")
+	}
+
+	fmt.Println("Reprocessed Structured Response:", string(structuredJson))
+
+	runtime.EventsEmit(a.ctx, "ai:processing_complete", map[string]interface{}{
+		"transcriptionId": transcriptionId,
+		"intent":          result.Intent,
+		"result":          result.Result,
+	})
+
+	runtime.EventsEmit(a.ctx, "structured_response", string(structuredJson))
+
+	return nil
 }
 
 func (a *App) transcribeLocally(filePath string) (string, error) {

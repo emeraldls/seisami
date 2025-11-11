@@ -52,6 +52,21 @@ IMPORTANT CONCEPTS:
 - Use appropriate column names like "To Do", "In Progress", "Done", "Backlog", etc.
 - Context Awareness: Use the current datetime (provided as {{%s}} RFC3339) to resolve relative times like "Saturday" or "next week." Handle multi-step commands by sequencing actions logically.
 
+CRITICAL DATA VALIDATION:
+- column_id is a UUID (e.g., "550e8400-e29b-41d4-a716-446655440000")
+- column name is the human-readable text (e.g., "To Do", "In Progress")
+- NEVER use column name as column_id
+- ALWAYS use list_columns_by_board first to get actual column IDs
+- When creating a card, you MUST provide the UUID column_id, not the column name
+- If you need to create a column, the create_column tool will return a UUID that you must use
+- board_id is also a UUID - use the one provided in the context
+
+WORKFLOW FOR CREATING CARDS:
+1. Use list_columns_by_board to get existing columns with their UUIDs
+2. If the column doesn't exist, use create_column to create it (you'll get a UUID back)
+3. Use the UUID from step 1 or 2 as the column_id when creating a card
+4. NEVER make up or guess column IDs - always fetch or create them
+
 INSTRUCTIONS:
 1. Use available tools when you need to fetch or modify data
 2. After using tools (or if no tools needed), provide a structured response that includes:
@@ -74,9 +89,10 @@ EXAMPLE RESPONSE:
  "intent": "create_task",
  "understood": "The user wants to schedule several tasks: visit their girlfriend by 5pm tomorrow, watch a play before a 10am meeting with Oluwasamwe and Smart, and complete house chores before these events.",
  "actions_taken": [
-  "Fetched current board to prepare for task creation"
+  "Listed existing columns to get their UUIDs",
+  "Created 3 cards in the appropriate column using the column UUID"
  ],
- "result": "Ready to create tasks for visiting girlfriend, watching a play, attending a meeting, and completing house chores as per the user's schedule.",
+ "result": "Created tasks for visiting girlfriend, watching a play, and completing house chores. All tasks have been added to the 'To Do' column.",
 }
 
 IMPORTANT: This is NOT a chat interface. The response will be saved as a summary with the transcription. Focus on providing a clear, actionable summary of what was accomplished.`, now, boardId, transcription, now)
