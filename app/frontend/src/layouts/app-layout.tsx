@@ -19,6 +19,7 @@ import { useBoardStore } from "~/stores/board-store";
 import { Transcription } from "~/types/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { ErrorListener } from "~/components/error-listener";
+import { NotificationsPopover } from "~/components/notifications-popover";
 
 export const AppLayout = () => {
   const { collapsed } = useSidebar();
@@ -306,6 +307,11 @@ export const AppLayout = () => {
           className="w-full transition-all duration-300 min-h-screen"
           style={{ paddingLeft: collapsed ? 72 : 256 }}
         >
+          {/* Top bar with notifications */}
+          <div className="fixed top-0 right-0 z-40 p-4">
+            <NotificationsPopover />
+          </div>
+          
           <Outlet />
         </div>
 

@@ -40,6 +40,19 @@ func (q *Queries) ConsumeDesktopLoginCode(ctx context.Context, arg ConsumeDeskto
 	return i, err
 }
 
+const countNotificationsForUser = `-- name: CountNotificationsForUser :one
+SELECT COUNT(*)
+FROM notifications
+WHERE user_id = $1
+`
+
+func (q *Queries) CountNotificationsForUser(ctx context.Context, userID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countNotificationsForUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAppVersion = `-- name: CreateAppVersion :one
 INSERT INTO app_versions (version, url, notes, sha256)
 VALUES ($1, $2, $3, $4)
@@ -210,6 +223,46 @@ func (q *Queries) CreateDesktopLoginCode(ctx context.Context, arg CreateDesktopL
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.UsedAt,
+	)
+	return i, err
+}
+
+const createNotification = `-- name: CreateNotification :one
+INSERT INTO notifications (id, user_id, title, message, type, target, read)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, user_id, title, message, type, target, read, created_at
+`
+
+type CreateNotificationParams struct {
+	ID      pgtype.UUID
+	UserID  pgtype.UUID
+	Title   string
+	Message string
+	Type    string
+	Target  pgtype.Text
+	Read    pgtype.Bool
+}
+
+func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotificationParams) (Notification, error) {
+	row := q.db.QueryRow(ctx, createNotification,
+		arg.ID,
+		arg.UserID,
+		arg.Title,
+		arg.Message,
+		arg.Type,
+		arg.Target,
+		arg.Read,
+	)
+	var i Notification
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Title,
+		&i.Message,
+		&i.Type,
+		&i.Target,
+		&i.Read,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -916,6 +969,49 @@ func (q *Queries) GetLatestAppVersion(ctx context.Context) (AppVersion, error) {
 	return i, err
 }
 
+const getNotificationsForUser = `-- name: GetNotificationsForUser :many
+SELECT id, user_id, title, message, type, target, read, created_at
+FROM notifications
+WHERE user_id = $1
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type GetNotificationsForUserParams struct {
+	UserID pgtype.UUID
+	Limit  int32
+	Offset int32
+}
+
+func (q *Queries) GetNotificationsForUser(ctx context.Context, arg GetNotificationsForUserParams) ([]Notification, error) {
+	rows, err := q.db.Query(ctx, getNotificationsForUser, arg.UserID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Notification
+	for rows.Next() {
+		var i Notification
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Title,
+			&i.Message,
+			&i.Type,
+			&i.Target,
+			&i.Read,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSyncState = `-- name: GetSyncState :one
 SELECT ss.user_id, ss.table_name, ss.last_synced_at, ss.last_synced_op_id
 FROM sync_state ss
@@ -1308,6 +1404,23 @@ func (q *Queries) ListBoardsCards(ctx context.Context, arg ListBoardsCardsParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const markNotificationAsRead = `-- name: MarkNotificationAsRead :exec
+UPDATE notifications
+SET read = TRUE
+WHERE id = $1
+  AND user_id = $2
+`
+
+type MarkNotificationAsReadParams struct {
+	ID     pgtype.UUID
+	UserID pgtype.UUID
+}
+
+func (q *Queries) MarkNotificationAsRead(ctx context.Context, arg MarkNotificationAsReadParams) error {
+	_, err := q.db.Exec(ctx, markNotificationAsRead, arg.ID, arg.UserID)
+	return err
 }
 
 const removeBoardMember = `-- name: RemoveBoardMember :exec

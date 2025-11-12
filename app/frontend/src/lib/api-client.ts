@@ -95,6 +95,28 @@ export interface BoardMetadata {
   transcriptions_count: number;
 }
 
+export type NotificationType = "info" | "in_app" | "external_url";
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  target: string | null;
+  read: boolean;
+  created_at: string;
+}
+
+export interface NotificationsPaginatedResponse {
+  message: string;
+  data: Notification[];
+  total_count: number;
+  total_pages: number;
+  current_page: number;
+  page_size: number;
+}
+
 export const ApiClient = {
   async inviteUserToBoard(email: string, boardId: string): Promise<void> {
     return apiClient.post("/board/invite", {
@@ -120,5 +142,15 @@ export const ApiClient = {
     boardId: string
   ): Promise<{ data: BoardMetadata; message: string }> {
     return apiClient.get(`/board/${boardId}/metadata`);
+  },
+
+  async getNotifications(
+    offset: number = 0
+  ): Promise<NotificationsPaginatedResponse> {
+    return apiClient.get(`/notifications/all?offset=${offset}`);
+  },
+
+  async markNotificationAsRead(notificationId: string): Promise<void> {
+    return apiClient.post(`/notifications/${notificationId}/read`);
   },
 };

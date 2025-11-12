@@ -147,9 +147,20 @@ type BoardMetadata struct {
 	CardsCount          int    `json:"cards_count"`
 	TranscriptionsCount int    `json:"transcriptions_count"`
 }
+
 type AppVersion struct {
 	Version string `json:"version"`
 	Notes   string `json:"notes"`
 	URL     string `json:"url"`
 	Sha256  string `json:"sha256"`
+}
+
+type Notification struct {
+	Title   string `json:"title"`
+	Message string `json:"message"`
+	Type    string `json:"type"` // "info", "in_app", "external"
+	Target  string `json:"target,omitempty"`
+	ID      string `json:"id"`
+	Read    bool   `json:"read"`
+	Time    string `json:"time"`
 }

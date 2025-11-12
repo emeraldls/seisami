@@ -961,19 +961,19 @@ func (s *SyncService) updateSyncState(ctx context.Context, userUUID uuid.UUID, p
 }
 
 // These functions are not to be in sync service
-func (s *SyncService) inviteUserToBoard(ctx context.Context, userID uuid.UUID, payload boardMemberActionPayload) error {
+func (s *SyncService) inviteUserToBoard(ctx context.Context, userID uuid.UUID, payload boardMemberActionPayload) (centraldb.User, error) {
 	boardID, err := uuid.Parse(payload.BoardID)
 	if err != nil {
-		return fmt.Errorf("unable to parse board id to uuid: %v", err)
+		return centraldb.User{}, fmt.Errorf("unable to parse board id to uuid: %v", err)
 	}
 	err = s.ensureBoardOwner(ctx, boardID, userID)
 	if err != nil {
-		return err
+		return centraldb.User{}, err
 	}
 
 	user, err := s.queries.GetUserByEmail(ctx, payload.Email)
 	if err != nil {
-		return fmt.Errorf("unable to get user by email %v: %v", payload.Email, err.Error())
+		return centraldb.User{}, fmt.Errorf("unable to get user by email %v: %v", payload.Email, err.Error())
 	}
 
 	id := pgtype.UUID{
@@ -983,7 +983,7 @@ func (s *SyncService) inviteUserToBoard(ctx context.Context, userID uuid.UUID, p
 
 	_, err = s.queries.GetBoardByID(ctx, id)
 	if err != nil {
-		return fmt.Errorf("unable to get board with id %s: %v", payload.BoardID, err)
+		return centraldb.User{}, fmt.Errorf("unable to get board with id %s: %v", payload.BoardID, err)
 	}
 
 	err = s.queries.InsertBoardMember(ctx, centraldb.InsertBoardMemberParams{
@@ -999,10 +999,10 @@ func (s *SyncService) inviteUserToBoard(ctx context.Context, userID uuid.UUID, p
 	})
 
 	if err != nil {
-		return fmt.Errorf("unable to invite member to board: %v", err)
+		return centraldb.User{}, fmt.Errorf("unable to invite member to board: %v", err)
 	}
 
-	return nil
+	return user, nil
 }
 
 func (s *SyncService) removeUserFromBoard(ctx context.Context, userUUID uuid.UUID, payload boardMemberActionPayload) error {

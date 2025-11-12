@@ -430,3 +430,27 @@ SELECT *
 FROM app_versions
 ORDER BY created_at DESC
 LIMIT 1;
+
+-- name: GetNotificationsForUser :many
+SELECT *
+FROM notifications
+WHERE user_id = $1
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;
+
+-- name: CountNotificationsForUser :one
+SELECT COUNT(*)
+FROM notifications
+WHERE user_id = $1;
+
+-- name: CreateNotification :one
+INSERT INTO notifications (id, user_id, title, message, type, target, read)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING *;
+
+-- name: MarkNotificationAsRead :exec
+UPDATE notifications
+SET read = TRUE
+WHERE id = $1
+  AND user_id = $2;
+

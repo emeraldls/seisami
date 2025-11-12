@@ -32,7 +32,7 @@ func SetWebSocketHandler(handler func(http.ResponseWriter, *http.Request)) {
 	wsHandler = handler
 }
 
-func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
+func NewRouter(authService *AuthService, syncService *SyncService, notifService *NotificationService) *gin.Engine {
 	router := gin.Default()
 
 	corsMiddleware := cors.New(cors.Config{
@@ -43,7 +43,7 @@ func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
 	})
 	router.Use(corsMiddleware)
 
-	h := &handler{authService: authService, syncService: syncService}
+	h := &handler{authService: authService, syncService: syncService, notifService: notifService}
 
 	router.GET("/ws", func(c *gin.Context) {
 
@@ -131,7 +131,7 @@ func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
 	boardRts.Use(authMiddleware(authService))
 	{
 		boardRts.POST("/invite", h.inviteUser)
-		boardRts.DELETE("/remove", h.removeUserFromBoard)
+		boardRts.POST("/remove", h.removeUserFromBoard)
 		boardRts.GET("/:boardId/members", h.getBoardMembers)
 		boardRts.GET("/:boardId/metadata", h.getBoardMetadata)
 	}
@@ -140,6 +140,13 @@ func NewRouter(authService *AuthService, syncService *SyncService) *gin.Engine {
 	{
 		updates.GET("/latest", h.getLatestAppVersion)
 		updates.POST("/publish", h.createNewAppVersion)
+	}
+
+	notifications := router.Group("/notifications")
+	notifications.Use(authMiddleware(authService))
+	{
+		notifications.GET("/all", h.getNotifications)
+		notifications.POST("/:id/read", h.markNotificationAsRead)
 	}
 
 	return router
@@ -195,8 +202,9 @@ func setUserContext(ctx context.Context, user *centraldb.User) context.Context {
 }
 
 type handler struct {
-	authService *AuthService
-	syncService *SyncService
+	authService  *AuthService
+	syncService  *SyncService
+	notifService *NotificationService
 }
 
 type emailPasswordRequest struct {
@@ -814,17 +822,28 @@ func (h *handler) inviteUser(c *gin.Context) {
 		return
 	}
 
-	id, err := uuid.Parse(userID)
+	userUUID, err := uuid.Parse(userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "couldnt parse user id to uuid: " + err.Error()})
 		return
 	}
 
-	err = h.syncService.inviteUserToBoard(c, id, payload)
+	invitee, err := h.syncService.inviteUserToBoard(c, userUUID, payload)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	url := fmt.Sprintf("seisami://board/import?board_id=%s", payload.BoardID)
+
+	go func() {
+		fmt.Println("creating notification...")
+
+		err = h.notifService.createNotification(context.TODO(), invitee.ID.Bytes, "You have been invited to a board", "You have been invited to join the board", "in_app", url)
+		if err != nil {
+			log.Printf("failed to create notification: %v", err)
+		}
+	}()
 
 	c.JSON(http.StatusCreated, gin.H{"message": "successful"})
 }
@@ -849,16 +868,33 @@ func (h *handler) removeUserFromBoard(c *gin.Context) {
 		return
 	}
 
-	id, err := uuid.Parse(userID)
+	userUUID, err := uuid.Parse(userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "couldnt parse user id to uuid: " + err.Error()})
 		return
 	}
 
-	err = h.syncService.removeUserFromBoard(c, id, payload)
+	err = h.syncService.removeUserFromBoard(c, userUUID, payload)
 	if err != nil {
+		fmt.Println(err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
+
+	userToRemove, err := uuid.Parse(payload.UserID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "couldnt parse user id to uuid: " + err.Error()})
+		return
+
+	}
+
+	go func() {
+		fmt.Println("removing notification..")
+		err := h.notifService.createNotification(context.TODO(), userToRemove, "You have been removed from a board", "You have been removed from the board", "info", "")
+		if err != nil {
+			log.Printf("failed to create notification: %v", err)
+		}
+	}()
 
 	c.JSON(http.StatusCreated, gin.H{"message": "successful"})
 
@@ -943,6 +979,84 @@ func (h *handler) getLatestAppVersion(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "successful", "data": version})
+}
+
+func (h *handler) getNotifications(c *gin.Context) {
+
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to parse id: " + err.Error()})
+		return
+	}
+
+	offsetStr := c.Query("offset")
+	if offsetStr == "" {
+		offsetStr = "0"
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid offset parameter"})
+		return
+	}
+
+	fmt.Println("retrieving notifications...")
+
+	notifications, err := h.notifService.getNotifications(c.Request.Context(), uid, int32(offset))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      "successful",
+		"data":         notifications.Notifications,
+		"total_count":  notifications.TotalCount,
+		"total_pages":  notifications.TotalPages,
+		"current_page": notifications.CurrentPage,
+		"page_size":    notifications.PageSize,
+	})
+}
+
+func (h *handler) markNotificationAsRead(c *gin.Context) {
+
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unable to parse id: " + err.Error()})
+		return
+	}
+
+	notificationIDStr := c.Param("id")
+	if notificationIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "notification id is required"})
+		return
+	}
+
+	notificationID, err := uuid.Parse(notificationIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid notification id: " + err.Error()})
+		return
+	}
+
+	err = h.notifService.markAsRead(c.Request.Context(), uid, notificationID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "successful"})
 }
 
 type createAppVersionPayload struct {

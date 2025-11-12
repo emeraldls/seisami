@@ -47,6 +47,8 @@ export const BoardMembersPanel = () => {
     enabled: !!currentBoard && isOpen,
   });
 
+  console.log(members);
+
   const inviteMutation = useMutation({
     mutationFn: (email: string) =>
       ApiClient.inviteUserToBoard(email, currentBoard!.id),
@@ -94,6 +96,7 @@ export const BoardMembersPanel = () => {
   const handleRemove = async () => {
     if (!memberToRemove || !currentBoard) return;
 
+    console.log(memberToRemove);
     removeMutation.mutate(memberToRemove.user_id);
   };
 
@@ -184,7 +187,6 @@ export const BoardMembersPanel = () => {
               </p>
             </div>
 
-            {/* Members List */}
             <div className="space-y-2">
               <label className="text-sm font-medium">
                 Current Members ({members?.data.length})
@@ -248,7 +250,6 @@ export const BoardMembersPanel = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Remove Confirmation Dialog */}
       <AlertDialog
         open={!!memberToRemove}
         onOpenChange={(open) => !open && setMemberToRemove(null)}

@@ -60,6 +60,17 @@ type DesktopLoginCode struct {
 	UsedAt    pgtype.Timestamptz
 }
 
+type Notification struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	Title     string
+	Message   string
+	Type      string
+	Target    pgtype.Text
+	Read      pgtype.Bool
+	CreatedAt pgtype.Timestamptz
+}
+
 type Operation struct {
 	ID            string
 	TableName     string
