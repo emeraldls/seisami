@@ -27,9 +27,14 @@ type ContextKey string
 const UserContextKey ContextKey = "user"
 
 var wsHandler func(http.ResponseWriter, *http.Request)
+var roomManagerGetter func(string) ([]string, error)
 
 func SetWebSocketHandler(handler func(http.ResponseWriter, *http.Request)) {
 	wsHandler = handler
+}
+
+func SetRoomManagerGetter(getter func(string) ([]string, error)) {
+	roomManagerGetter = getter
 }
 
 func NewRouter(authService *AuthService, syncService *SyncService, notifService *NotificationService) *gin.Engine {
@@ -134,6 +139,7 @@ func NewRouter(authService *AuthService, syncService *SyncService, notifService 
 		boardRts.POST("/remove", h.removeUserFromBoard)
 		boardRts.GET("/:boardId/members", h.getBoardMembers)
 		boardRts.GET("/:boardId/metadata", h.getBoardMetadata)
+		boardRts.GET("/:boardId/connected-users", h.getConnectedUsers)
 	}
 
 	updates := router.Group("/updates")
@@ -145,7 +151,7 @@ func NewRouter(authService *AuthService, syncService *SyncService, notifService 
 	notifications := router.Group("/notifications")
 	notifications.Use(authMiddleware(authService))
 	{
-		notifications.GET("/all", h.getNotifications)
+		notifications.GET("/", h.getNotifications)
 		notifications.POST("/:id/read", h.markNotificationAsRead)
 	}
 
@@ -968,6 +974,52 @@ func (h *handler) getBoardMetadata(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "successful", "data": metadata})
+}
+
+func (h *handler) getConnectedUsers(c *gin.Context) {
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	boardID := c.Param("boardId")
+	if boardID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "board id is required"})
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user id: " + err.Error()})
+		return
+	}
+
+	boardUUID, err := uuid.Parse(boardID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid board id: " + err.Error()})
+		return
+	}
+
+	// Ensure user has access to this board
+	if err := h.syncService.ensureBoardAccess(c, boardUUID, userUUID); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get connected users from room manager
+	if roomManagerGetter == nil {
+		c.JSON(http.StatusOK, gin.H{"data": []string{}})
+		return
+	}
+
+	connectedUserIDs, err := roomManagerGetter(boardID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"data": []string{}})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": connectedUserIDs})
 }
 
 func (h *handler) getLatestAppVersion(c *gin.Context) {

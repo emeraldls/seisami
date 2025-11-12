@@ -153,4 +153,8 @@ export const ApiClient = {
   async markNotificationAsRead(notificationId: string): Promise<void> {
     return apiClient.post(`/notifications/${notificationId}/read`);
   },
+
+  async getConnectedUsers(boardId: string): Promise<{ data: string[] }> {
+    return apiClient.get(`/board/${boardId}/connected-users`);
+  },
 };

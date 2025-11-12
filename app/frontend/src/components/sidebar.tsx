@@ -66,7 +66,7 @@ export const Sidebar = () => {
           animate={{ width: collapsed ? 72 : 256 }}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
           className={cn(
-            "bg-sidebar fixed border-r border-sidebar-border flex flex-col h-screen z-20",
+            "bg-sidebar fixed border-r border-sidebar-border flex flex-col h-screen z-50",
             collapsed ? "w-18" : "w-64"
           )}
           style={{ width: collapsed ? 72 : 256 }}

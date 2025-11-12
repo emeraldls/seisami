@@ -37,6 +37,21 @@ var wsUpgrader = websocket.Upgrader{
 func init() {
 	roomManager = room_manager.NewRoomManager()
 	central.SetWebSocketHandler(HandleWebSocket)
+	central.SetRoomManagerGetter(getConnectedUsersInRoom)
+}
+
+func getConnectedUsersInRoom(boardID string) ([]string, error) {
+	room, err := roomManager.GetRoom(boardID)
+	if err != nil {
+		return []string{}, nil
+	}
+
+	clients := room.GetClients()
+	userIDs := make([]string, len(clients))
+	for i, client := range clients {
+		userIDs[i] = client.GetId()
+	}
+	return userIDs, nil
 }
 
 func main() {
@@ -90,12 +105,32 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("Client %s joined board room: %s\n", cl.GetId(), boardId)
 
+	// Broadcast user joined event
+	broadcastUserListUpdate(boardId, "user_joined", userId)
+
 	go handleConn(cl, roomManager, boardId)
+}
+
+func broadcastUserListUpdate(boardId, eventType, userId string) {
+	userIDs, _ := getConnectedUsersInRoom(boardId)
+	
+	updateMsg := map[string]interface{}{
+		"type":      eventType,
+		"user_id":   userId,
+		"users":     userIDs,
+	}
+
+	jsonMsg, _ := json.Marshal(updateMsg)
+	roomManager.BroadcastToRoom(boardId, jsonMsg)
 }
 
 func handleConn(c *client.Client, manager *room_manager.RoomManager, boardId string) {
 	defer c.Close()
-	defer manager.LeaveRoomById(boardId, c)
+	defer func() {
+		manager.LeaveRoomById(boardId, c)
+		// Broadcast user left event
+		broadcastUserListUpdate(boardId, "user_left", c.GetId())
+	}()
 
 	for {
 		_, message, err := c.Conn().ReadMessage()
