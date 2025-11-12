@@ -1,3 +1,9 @@
+import {
+  GetCloudAPIURL,
+  GetWebURL,
+  GetCollabServerAddress,
+} from "../../wailsjs/go/main/App";
+
 const fixedCloudUrl = "https://cloud.seisami.hooklytics.com";
 const fixedWebUrl = "https://seisami.hooklytics.com";
 const fixedWebsocketUrl = "wss://cloud.seisami.hooklytics.com/ws";

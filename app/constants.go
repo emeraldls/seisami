@@ -23,3 +23,12 @@ func getWebUrl() string {
 	return fixedWebUrl
 
 }
+
+func getCollabServerAddr() string {
+	defaultCollabServerAddr := "cloud.seisami.hooklytics.com"
+	collabServerAddrEnv := os.Getenv("COLLAB_SERVER_ADDR")
+	if collabServerAddrEnv != "" {
+		return collabServerAddrEnv
+	}
+	return defaultCollabServerAddr
+}

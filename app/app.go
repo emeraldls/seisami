@@ -52,8 +52,6 @@ TODO: When a user switch a board, kill any active connections
 	TODO: updating of a card name/title isnt implemented.
 */
 
-const defaultCollabServerAddr = "127.0.0.1:8080"
-
 // App struct
 type App struct {
 	ctx              context.Context
@@ -97,11 +95,7 @@ func NewApp() *App {
 		log.Fatalf("unable to create tables: %v\n", err)
 	}
 	repo := repo.NewRepo(db, ctx)
-
-	addr := os.Getenv("COLLAB_SERVER_ADDR")
-	if addr == "" {
-		addr = defaultCollabServerAddr
-	}
+	addr := getCollabServerAddr()
 
 	return &App{
 		stopChan:         make(chan bool),
@@ -782,12 +776,15 @@ func (a *App) ensureCollabConnectionLocked() error {
 		return nil
 	}
 
-	addr := a.collabServerAddr
-	if addr == "" {
-		addr = defaultCollabServerAddr
+	addr := getCollabServerAddr()
+
+	dev := os.Getenv("DEV")
+	scheme := "wss"
+	if dev == "true" {
+		scheme = "ws"
 	}
 
-	wsURL := url.URL{Scheme: "ws", Host: addr, Path: "/ws"}
+	wsURL := url.URL{Scheme: scheme, Host: addr, Path: "/ws"}
 	q := wsURL.Query()
 	q.Set("token", a.GetLoginToken())
 	q.Set("board_id", a.currentBoardId)
@@ -1464,6 +1461,18 @@ func (a *App) transcribeWithCloud(filePath string) (string, error) {
 	// TODO: implement cloud transcription
 	// for now, fall back to local transcription using env API key or current method
 	return a.transcribeLocally(filePath)
+}
+
+func (a *App) GetCollabServerAddress() string {
+	return getCollabServerAddr()
+}
+
+func (a *App) GetCloudAPIURL() string {
+	return getCloudApiUrl()
+}
+
+func (a *App) GetWebURL() string {
+	return getWebUrl()
 }
 
 // func (a *App) fetchAppVersion() (types.AppVersion, error) {

@@ -30,6 +30,10 @@ export function GetBoards(arg1:number,arg2:number):Promise<Array<types.ExportedB
 
 export function GetCard(arg1:string):Promise<types.ExportedCard>;
 
+export function GetCloudAPIURL():Promise<string>;
+
+export function GetCollabServerAddress():Promise<string>;
+
 export function GetCollaborationRoomId():Promise<string>;
 
 export function GetColumn(arg1:string):Promise<types.ExportedColumn>;
@@ -45,6 +49,8 @@ export function GetSettings():Promise<query.Setting>;
 export function GetTranscriptionByID(arg1:string):Promise<types.ExportedTranscription>;
 
 export function GetTranscriptions(arg1:string,arg2:number,arg3:number):Promise<Array<types.ExportedTranscription>>;
+
+export function GetWebURL():Promise<string>;
 
 export function Greet(arg1:string):Promise<string>;
 

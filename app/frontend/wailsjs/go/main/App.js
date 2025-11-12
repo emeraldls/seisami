@@ -54,6 +54,14 @@ export function GetCard(arg1) {
   return window['go']['main']['App']['GetCard'](arg1);
 }
 
+export function GetCloudAPIURL() {
+  return window['go']['main']['App']['GetCloudAPIURL']();
+}
+
+export function GetCollabServerAddress() {
+  return window['go']['main']['App']['GetCollabServerAddress']();
+}
+
 export function GetCollaborationRoomId() {
   return window['go']['main']['App']['GetCollaborationRoomId']();
 }
@@ -84,6 +92,10 @@ export function GetTranscriptionByID(arg1) {
 
 export function GetTranscriptions(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetTranscriptions'](arg1, arg2, arg3);
+}
+
+export function GetWebURL() {
+  return window['go']['main']['App']['GetWebURL']();
 }
 
 export function Greet(arg1) {
