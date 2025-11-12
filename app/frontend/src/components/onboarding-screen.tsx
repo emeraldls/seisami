@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import {
@@ -21,103 +21,71 @@ import {
   OpenAccessibilitySettings,
 } from "../../wailsjs/go/main/App";
 
-type PermissionStatus = -2 | -1 | 0 | 1;
-
-const INITIAL_STATUS: PermissionStatus = -2;
-
-const statusMeta = (status: PermissionStatus) => {
-  switch (status) {
-    case 1:
-      return {
-        text: "Allowed",
-        badgeClass: "bg-black text-white",
-      };
-    case 0:
-      return {
-        text: "Denied",
-        badgeClass: "bg-neutral-200 text-neutral-900",
-      };
-    case -1:
-      return {
-        text: "Not Determined",
-        badgeClass: "bg-neutral-200 text-neutral-900",
-      };
-    default:
-      return {
-        text: "Checking...",
-        badgeClass: "bg-neutral-200 text-neutral-900",
-      };
-  }
-};
-
 type Step = "permissions" | "board";
 
 export function OnboardingScreen() {
   const [boardName, setBoardName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const { createBoard, isLoading, setHasCompletedOnboarding } = useBoardStore();
-  const [micStatus, setMicStatus] = useState<PermissionStatus>(INITIAL_STATUS);
-  const [accessibilityStatus, setAccessibilityStatus] =
-    useState<PermissionStatus>(INITIAL_STATUS);
-  const [requestingMic, setRequestingMic] = useState(false);
-  const [requestingAccessibility, setRequestingAccessibility] = useState(false);
+  const [micGranted, setMicGranted] = useState(false);
+  const [accessibilityGranted, setAccessibilityGranted] = useState(false);
+  const [requestingPermissions, setRequestingPermissions] = useState(false);
   const [step, setStep] = useState<Step>("permissions");
   const { isAuthenticated, setLoading, setError } = useDesktopAuthStore();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  const allPermissionsGranted = useMemo(
-    () => micStatus === 1 && accessibilityStatus === 1,
-    [micStatus, accessibilityStatus]
-  );
+  const allPermissionsGranted = micGranted && accessibilityGranted;
 
   useEffect(() => {
-    const fetchStatuses = async () => {
+    const checkStatuses = async () => {
       try {
         const [mic, accessibility] = await Promise.all([
           CheckMicrophonePermission(),
           CheckAccessibilityPermission(),
         ]);
-        setMicStatus(mic as PermissionStatus);
-        setAccessibilityStatus(accessibility as PermissionStatus);
+        setMicGranted(mic === 1);
+        setAccessibilityGranted(accessibility === 1);
       } catch (error) {
-        console.error("Failed to fetch permission statuses", error);
+        console.error("Failed to check permissions", error);
       }
     };
 
-    fetchStatuses();
+    checkStatuses();
   }, []);
 
-  const handleRequestMicrophone = async () => {
-    setRequestingMic(true);
+  const handleRequestPermissions = async () => {
+    setRequestingPermissions(true);
     try {
-      await RequestMicrophonePermission();
-    } catch (error) {
-      console.error("Failed to request microphone permission", error);
-    } finally {
-      try {
-        const status = await CheckMicrophonePermission();
-        setMicStatus(status as PermissionStatus);
-      } catch (error) {
-        console.error("Failed to re-check microphone status", error);
+      // Request microphone first
+      if (!micGranted) {
+        await RequestMicrophonePermission();
+        const micStatus = await CheckMicrophonePermission();
+        setMicGranted(micStatus === 1);
       }
-      setRequestingMic(false);
-    }
-  };
 
-  const handleRequestAccessibility = async () => {
-    setRequestingAccessibility(true);
-    try {
-      await RequestAccessibilityPermission();
-    } catch (error) {
-      console.error("Failed to request accessibility permission", error);
-    } finally {
-      try {
-        const status = await CheckAccessibilityPermission();
-        setAccessibilityStatus(status as PermissionStatus);
-      } catch (error) {
-        console.error("Failed to re-check accessibility status", error);
+      if (!accessibilityGranted) {
+        await RequestAccessibilityPermission();
+
+        let attempts = 0;
+        const maxAttempts = 30;
+
+        while (attempts < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
+          const accessStatus = await CheckAccessibilityPermission();
+          if (accessStatus === 1) {
+            setAccessibilityGranted(true);
+            break;
+          }
+          attempts++;
+        }
+
+        const finalStatus = await CheckAccessibilityPermission();
+        setAccessibilityGranted(finalStatus === 1);
       }
-      setRequestingAccessibility(false);
+    } catch (error) {
+      console.error("Failed to request permissions", error);
+    } finally {
+      setRequestingPermissions(false);
     }
   };
 
@@ -156,105 +124,157 @@ export function OnboardingScreen() {
   const renderPermissionsStep = () => (
     <div className="space-y-6">
       <div className="space-y-4">
-        <div className="border border-neutral-200 rounded-sm p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wider">
-                Microphone Access
-              </h3>
-              <p className="text-sm text-neutral-500 mt-1">
-                Required to capture your voice commands during recording.
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <span
-                className={`px-2.5 py-0.5 text-xs font-medium rounded-full ${
-                  statusMeta(micStatus).badgeClass
-                }`}
-              >
-                {statusMeta(micStatus).text}
-              </span>
-              {micStatus !== 1 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRequestMicrophone}
-                  disabled={requestingMic}
+        <p className="text-sm text-neutral-600 text-center">
+          Seisami needs access to your microphone and keyboard to work properly.
+        </p>
+
+        <div className="space-y-3">
+          <div className="border border-neutral-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    micGranted ? "bg-green-100" : "bg-neutral-100"
+                  }`}
                 >
-                  {requestingMic ? "Requesting..." : "Allow"}
+                  {micGranted ? (
+                    <svg
+                      className="w-5 h-5 text-green-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-5 h-5 text-neutral-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                      />
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <h4 className="font-medium text-sm">Microphone Access</h4>
+                  <p className="text-xs text-neutral-500">
+                    {micGranted ? "Granted" : "Required for voice recording"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="border border-neutral-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                    accessibilityGranted ? "bg-green-100" : "bg-neutral-100"
+                  }`}
+                >
+                  {accessibilityGranted ? (
+                    <svg
+                      className="w-5 h-5 text-green-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="w-5 h-5 text-neutral-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                      />
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <h4 className="font-medium text-sm">Accessibility Access</h4>
+                  <p className="text-xs text-neutral-500">
+                    {accessibilityGranted
+                      ? "Granted"
+                      : "Required for Fn key detection"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        {!allPermissionsGranted && (
+          <Button
+            className="w-full"
+            onClick={handleRequestPermissions}
+            disabled={requestingPermissions}
+            size="lg"
+          >
+            {requestingPermissions
+              ? "Requesting Access..."
+              : "Grant Permissions"}
+          </Button>
+        )}
+
+        {allPermissionsGranted && (
+          <Button className="w-full" onClick={() => setStep("board")} size="lg">
+            Continue
+          </Button>
+        )}
+
+        {!allPermissionsGranted && !requestingPermissions && (
+          <div className="text-center space-y-2 pt-2">
+            <p className="text-xs text-neutral-500">Need help?</p>
+            <div className="flex justify-center gap-3">
+              {!micGranted && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => OpenMicrophoneSettings()}
+                  className="text-xs"
+                >
+                  Microphone Settings
+                </Button>
+              )}
+              {!accessibilityGranted && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => OpenAccessibilitySettings()}
+                  className="text-xs"
+                >
+                  Accessibility Settings
                 </Button>
               )}
             </div>
           </div>
-          {micStatus === 0 && (
-            <div className="mt-3 text-xs text-neutral-600">
-              Permission denied. Update it in System Settings.
-              <Button
-                variant="link"
-                size="sm"
-                className="px-1"
-                onClick={() => OpenMicrophoneSettings()}
-              >
-                Open settings
-              </Button>
-            </div>
-          )}
-        </div>
-
-        <div className="border border-neutral-200 rounded-sm p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wider">
-                Accessibility Access
-              </h3>
-              <p className="text-sm text-neutral-500 mt-1">
-                Needed so Seisami can listen for the Fn hotkey while you work.
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <span
-                className={`px-2.5 py-0.5 text-xs font-medium rounded-full ${
-                  statusMeta(accessibilityStatus).badgeClass
-                }`}
-              >
-                {statusMeta(accessibilityStatus).text}
-              </span>
-              {accessibilityStatus !== 1 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRequestAccessibility}
-                  disabled={requestingAccessibility}
-                >
-                  {requestingAccessibility ? "Requesting..." : "Allow"}
-                </Button>
-              )}
-            </div>
-          </div>
-          {accessibilityStatus === 0 && (
-            <div className="mt-3 text-xs text-neutral-600">
-              Permission denied. Allow Seisami under Accessibility settings.
-              <Button
-                variant="link"
-                size="sm"
-                className="px-1"
-                onClick={() => OpenAccessibilitySettings()}
-              >
-                Open settings
-              </Button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Button
-          className="w-full"
-          onClick={() => setStep("board")}
-          disabled={!allPermissionsGranted}
-        >
-          Continue
-        </Button>
+        )}
       </div>
     </div>
   );
@@ -333,12 +353,12 @@ export function OnboardingScreen() {
           <CardHeader className="space-y-1 text-center">
             <CardTitle className="text-2xl">
               {step === "permissions"
-                ? "Confirm Device Access"
+                ? "Welcome to Seisami"
                 : "Create Your First Board"}
             </CardTitle>
             <CardDescription>
               {step === "permissions"
-                ? "Allow Seisami to use your microphone and listen for the Fn key."
+                ? "Let's get you set up in just a few clicks."
                 : "Start organizing your ideas with a personalized board."}
             </CardDescription>
           </CardHeader>
