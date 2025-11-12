@@ -143,7 +143,16 @@ function ForgotPasswordPage() {
           </form>
 
           <div className="mt-4 text-center text-sm">
-            <Link to="/auth/signin" className="text-primary hover:underline">
+            <Link
+              to="/auth/signin"
+              search={{
+                desktop: undefined,
+                redirect: undefined,
+                state: undefined,
+                type: undefined,
+              }}
+              className="text-primary hover:underline"
+            >
               Back to Sign In
             </Link>
           </div>
