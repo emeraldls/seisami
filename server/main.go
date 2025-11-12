@@ -55,10 +55,7 @@ func getConnectedUsersInRoom(boardID string) ([]string, error) {
 }
 
 func main() {
-
-	if err := godotenv.Load(".env"); err != nil {
-		log.Fatalf("unable to load environment variables: %v\n", err)
-	}
+	godotenv.Load()
 
 	shutdownAuth, err := startCentralHTTPServer()
 	if err != nil {
@@ -113,11 +110,11 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 func broadcastUserListUpdate(boardId, eventType, userId string) {
 	userIDs, _ := getConnectedUsersInRoom(boardId)
-	
+
 	updateMsg := map[string]interface{}{
-		"type":      eventType,
-		"user_id":   userId,
-		"users":     userIDs,
+		"type":    eventType,
+		"user_id": userId,
+		"users":   userIDs,
 	}
 
 	jsonMsg, _ := json.Marshal(updateMsg)
