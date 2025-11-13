@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Card } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -10,11 +10,11 @@ import {
   CheckMicrophonePermission,
   RequestMicrophonePermission,
   OpenMicrophoneSettings,
-  // CheckAccessibilityPermission,
-  // RequestAccessibilityPermission,
-  // OpenAccessibilitySettings,
+  CheckAccessibilityPermission,
+  RequestAccessibilityPermission,
+  OpenAccessibilitySettings,
 } from "../../wailsjs/go/main/App";
-import { query, frontend } from "../../wailsjs/go/models";
+import { frontend } from "../../wailsjs/go/models";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -25,15 +25,10 @@ const Settings = () => {
   const [whisperBinaryPath, setWhisperBinaryPath] = useState<string>("");
   const [whisperModelPath, setWhisperModelPath] = useState<string>("");
   const [openaiApiKey, setOpenaiApiKey] = useState<string>("");
-  const [checkingPermission, setCheckingPermission] = useState(false);
-  const [checkingAccessibility, setCheckingAccessibility] = useState(false);
+  const [micGranted, setMicGranted] = useState(false);
+  const [accessibilityGranted, setAccessibilityGranted] = useState(false);
 
-  const {
-    data: settings,
-    isLoading: loading,
-    isError,
-    error,
-  } = useQuery({
+  const { isLoading: loading } = useQuery({
     queryKey: ["settings"],
     queryFn: async () => {
       const currentSettings = await GetSettings();
@@ -45,27 +40,36 @@ const Settings = () => {
     },
   });
 
-  // Fetch microphone permission
-  const { data: microphonePermission = -2, refetch: refetchMicPermission } =
-    useQuery({
-      queryKey: ["microphonePermission"],
-      queryFn: CheckMicrophonePermission,
-      retry: false,
-    });
+  useEffect(() => {
+    let isMounted = true;
 
-  // Fetch accessibility permission (mocked for now)
-  const {
-    data: accessibilityPermission = -2,
-    refetch: refetchAccessibilityPermission,
-  } = useQuery({
-    queryKey: ["accessibilityPermission"],
-    queryFn: async () => {
-      // Temporarily mock this since the function isn't available yet
-      console.log("Accessibility permission check not yet available");
-      return -2;
-    },
-    retry: false,
-  });
+    const fetchPermissions = async () => {
+      try {
+        const [mic, accessibility] = await Promise.all([
+          CheckMicrophonePermission(),
+          CheckAccessibilityPermission(),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setMicGranted(mic === 1);
+        setAccessibilityGranted(accessibility === 1);
+      } catch (error) {
+        console.error("Failed to load permission statuses", error);
+      }
+    };
+
+    fetchPermissions();
+
+    const intervalId = setInterval(fetchPermissions, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, []);
 
   // Save settings mutation
   const saveSettingsMutation = useMutation({
@@ -91,15 +95,22 @@ const Settings = () => {
   // Request microphone permission mutation
   const requestMicPermissionMutation = useMutation({
     mutationFn: RequestMicrophonePermission,
-    onSuccess: (granted) => {
-      refetchMicPermission();
-      if (!granted) {
-        const openSettings = confirm(
-          "Microphone permission was denied. Would you like to open System Settings to grant permission manually?"
-        );
-        if (openSettings) {
-          OpenMicrophoneSettings();
+    onSuccess: async (granted) => {
+      try {
+        const status = await CheckMicrophonePermission();
+        const isGranted = status === 1 || granted;
+        setMicGranted(isGranted);
+
+        if (!isGranted) {
+          const openSettings = confirm(
+            "Microphone permission was denied. Would you like to open System Settings to grant permission manually?"
+          );
+          if (openSettings) {
+            OpenMicrophoneSettings();
+          }
         }
+      } catch (error) {
+        console.error("Failed to refresh microphone permission", error);
       }
     },
     onError: (error) => {
@@ -112,61 +123,43 @@ const Settings = () => {
     requestMicPermissionMutation.mutate();
   };
 
-  const handleRequestAccessibilityPermission = async () => {
-    setCheckingAccessibility(true);
-    try {
-      // Temporarily mock this since the function isn't available yet
-      console.log("Accessibility permission request not yet available");
-      // For now, just open the settings
-    } catch (error) {
+  // Request accessibility permission mutation
+  const requestAccessibilityPermissionMutation = useMutation({
+    mutationFn: RequestAccessibilityPermission,
+    onSuccess: () => {
+      const pollAccessibility = async () => {
+        try {
+          const status = await CheckAccessibilityPermission();
+          if (status === 1) {
+            setAccessibilityGranted(true);
+            return true;
+          }
+          setAccessibilityGranted(false);
+        } catch (error) {
+          console.error("Failed to refresh accessibility permission", error);
+        }
+        return false;
+      };
+
+      pollAccessibility();
+
+      const intervalId = setInterval(async () => {
+        const granted = await pollAccessibility();
+        if (granted) {
+          clearInterval(intervalId);
+        }
+      }, 2000);
+
+      setTimeout(() => clearInterval(intervalId), 60000);
+    },
+    onError: (error) => {
       console.error("Failed to request accessibility permission:", error);
-    } finally {
-      setCheckingAccessibility(false);
-    }
-  };
+      toast.error("Failed to request accessibility permission");
+    },
+  });
 
-  const getMicrophonePermissionStatus = () => {
-    switch (microphonePermission) {
-      case 1:
-        return {
-          text: "Authorized",
-          color: "text-green-600",
-          bg: "bg-green-50",
-        };
-      case 0:
-        return { text: "Denied", color: "text-red-600", bg: "bg-red-50" };
-      case -1:
-        return {
-          text: "Not Determined",
-          color: "text-yellow-600",
-          bg: "bg-yellow-50",
-        };
-      default:
-        return {
-          text: "Unknown",
-          color: "text-neutral-600",
-          bg: "bg-neutral-50",
-        };
-    }
-  };
-
-  const getAccessibilityPermissionStatus = () => {
-    switch (accessibilityPermission) {
-      case 1:
-        return {
-          text: "Authorized",
-          color: "text-green-600",
-          bg: "bg-green-50",
-        };
-      case 0:
-        return { text: "Denied", color: "text-red-600", bg: "bg-red-50" };
-      default:
-        return {
-          text: "Not Checked",
-          color: "text-neutral-600",
-          bg: "bg-neutral-50",
-        };
-    }
+  const handleRequestAccessibilityPermission = async () => {
+    requestAccessibilityPermissionMutation.mutate();
   };
 
   const handleSaveSettings = async () => {
@@ -220,119 +213,167 @@ const Settings = () => {
       <Card className="p-6 rounded-sm shadow-none">
         <div className="space-y-6">
           <div>
-            <h2 className="text-xl font-semibold mb-4">
-              Microphone Permissions
-            </h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-lg border">
-                <div>
-                  <h3 className="font-medium">Microphone Access</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Required for audio recording functionality
-                  </p>
+            <h2 className="text-xl font-semibold mb-4">Device Permissions</h2>
+            <div className="space-y-3">
+              <div className="border border-neutral-200 rounded-lg p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        micGranted ? "bg-green-100" : "bg-neutral-100"
+                      }`}
+                    >
+                      {micGranted ? (
+                        <svg
+                          className="w-5 h-5 text-green-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="w-5 h-5 text-neutral-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold">Microphone</h3>
+                      <p className="text-xs text-neutral-500">
+                        Enable voice capture for quick recordings.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`text-sm font-medium ${
+                        micGranted ? "text-green-600" : "text-neutral-500"
+                      }`}
+                    >
+                      {micGranted ? "Allowed" : "Not allowed"}
+                    </span>
+                    {!micGranted && (
+                      <Button
+                        onClick={handleRequestMicrophonePermission}
+                        disabled={requestMicPermissionMutation.isPending}
+                        size="sm"
+                      >
+                        {requestMicPermissionMutation.isPending
+                          ? "Requesting..."
+                          : "Allow"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      getMicrophonePermissionStatus().color
-                    } ${getMicrophonePermissionStatus().bg}`}
+                {!micGranted && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="px-0 mt-3"
+                    onClick={() => OpenMicrophoneSettings()}
                   >
-                    {getMicrophonePermissionStatus().text}
-                  </span>
-                  {microphonePermission !== 1 && (
-                    <Button
-                      onClick={handleRequestMicrophonePermission}
-                      disabled={requestMicPermissionMutation.isPending}
-                      variant="outline"
-                      size="sm"
-                    >
-                      {requestMicPermissionMutation.isPending
-                        ? "Checking..."
-                        : "Request Permission"}
-                    </Button>
-                  )}
-                  {microphonePermission === 0 && (
-                    <Button
-                      onClick={() => OpenMicrophoneSettings()}
-                      variant="outline"
-                      size="sm"
-                    >
-                      Open Settings
-                    </Button>
-                  )}
-                </div>
+                    Open settings
+                  </Button>
+                )}
               </div>
-              {microphonePermission === 0 && (
-                <div className="p-4 bg-white border border-neutral-200 rounded-lg">
-                  <p className="text-sm text-neutral-800">
-                    <strong>Microphone access is required</strong> for recording
-                    functionality. Please grant permission in System Settings →
-                    Privacy & Security → Microphone, then restart the
-                    application.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
 
-          <div>
-            <h2 className="text-xl font-semibold mb-4">
-              Accessibility Permissions
-            </h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-lg border">
-                <div>
-                  <h3 className="font-medium">Accessibility Access</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Required for FN key monitoring and keyboard shortcuts
-                  </p>
+              <div className="border border-neutral-200 rounded-lg p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        accessibilityGranted ? "bg-green-100" : "bg-neutral-100"
+                      }`}
+                    >
+                      {accessibilityGranted ? (
+                        <svg
+                          className="w-5 h-5 text-green-600"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="w-5 h-5 text-neutral-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold">Accessibility</h3>
+                      <p className="text-xs text-neutral-500">
+                        Needed to listen for the Fn hotkey.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`text-sm font-medium ${
+                        accessibilityGranted
+                          ? "text-green-600"
+                          : "text-neutral-500"
+                      }`}
+                    >
+                      {accessibilityGranted ? "Allowed" : "Not allowed"}
+                    </span>
+                    {!accessibilityGranted && (
+                      <Button
+                        onClick={handleRequestAccessibilityPermission}
+                        disabled={
+                          requestAccessibilityPermissionMutation.isPending
+                        }
+                        size="sm"
+                      >
+                        {requestAccessibilityPermissionMutation.isPending
+                          ? "Requesting..."
+                          : "Allow"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      getAccessibilityPermissionStatus().color
-                    } ${getAccessibilityPermissionStatus().bg}`}
+                {!accessibilityGranted && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="px-0 mt-3"
+                    onClick={() => OpenAccessibilitySettings()}
                   >
-                    {getAccessibilityPermissionStatus().text}
-                  </span>
-                  {accessibilityPermission !== 1 && (
-                    <Button
-                      onClick={handleRequestAccessibilityPermission}
-                      disabled={checkingAccessibility}
-                      variant="outline"
-                      size="sm"
-                    >
-                      {checkingAccessibility
-                        ? "Checking..."
-                        : "Request Permission"}
-                    </Button>
-                  )}
-                  {accessibilityPermission === 0 && (
-                    <Button
-                      onClick={() => {
-                        console.log("Opening accessibility settings...");
-                        alert(
-                          "Please go to System Settings → Privacy & Security → Accessibility and add Seisami to the list of allowed applications."
-                        );
-                      }}
-                      variant="outline"
-                      size="sm"
-                    >
-                      Open Settings
-                    </Button>
-                  )}
-                </div>
+                    Open settings
+                  </Button>
+                )}
               </div>
-              {accessibilityPermission === 0 && (
-                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm text-yellow-800">
-                    <strong>Accessibility access is required</strong> for FN key
-                    monitoring. Please grant permission in System Settings →
-                    Privacy & Security → Accessibility, add Seisami to the list,
-                    then restart the application.
-                  </p>
-                </div>
-              )}
             </div>
           </div>
 

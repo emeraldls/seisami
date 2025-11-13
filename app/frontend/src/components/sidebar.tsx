@@ -22,6 +22,7 @@ import { BoardMembersPanel } from "./board-members-panel";
 import { CloudLoginDialog } from "./cloud-login-dialog";
 import { VersionUpdate } from "./version-update";
 import { useCommandPalette } from "~/contexts/command-palette-context";
+import { LogoutConfirmationDialog } from "./logout-confirmation-dialog";
 
 interface NavItem {
   id: string;
@@ -47,16 +48,21 @@ export const Sidebar = () => {
   const { isAuthenticated, logout, setError } = useDesktopAuthStore();
   const { open: openCommandPalette } = useCommandPalette();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
+  const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
 
   const handleCloudLogin = () => {
     setError(null);
     setIsLoginDialogOpen(true);
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogoutClick = () => {
+    setIsLogoutDialogOpen(true);
+  };
+
+  const handleLogoutConfirm = (clearLocalData: boolean) => {
+    logout(clearLocalData);
+    setIsLogoutDialogOpen(false);
   };
 
   return (
@@ -211,7 +217,7 @@ export const Sidebar = () => {
             {isAuthenticated && (
               <div className="space-y-2">
                 <Button
-                  onClick={handleLogout}
+                  onClick={handleLogoutClick}
                   variant="ghost"
                   size="sm"
                   className="w-full justify-start text-red-600"
@@ -238,6 +244,11 @@ export const Sidebar = () => {
         onAuthEnd={() => {
           setIsAuthenticating(false);
         }}
+      />
+      <LogoutConfirmationDialog
+        open={isLogoutDialogOpen}
+        onOpenChange={setIsLogoutDialogOpen}
+        onConfirm={handleLogoutConfirm}
       />
     </>
   );

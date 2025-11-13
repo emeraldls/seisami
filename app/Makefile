@@ -1,5 +1,8 @@
 build:
 	@wails build
+	@echo "Applying ad-hoc code signature..."
+	@codesign --force --deep --sign - build/bin/Seisami.app
+	@echo "Build signed successfully!"
 
 run: 	
 	@wails dev
@@ -18,12 +21,21 @@ sqlc-gen:
 
 build-darwin_amd64:
 	@GOARCH=amd64 GOOS=darwin wails build
+	@echo "Applying ad-hoc code signature..."
+	@codesign --force --deep --sign - build/bin/Seisami.app
+	@echo "Build signed successfully!"
 
 build-darwin_arm64:
 	@GOARCH=arm64 GOOS=darwin wails build
+	@echo "Applying ad-hoc code signature..."
+	@codesign --force --deep --sign - build/bin/Seisami.app
+	@echo "Build signed successfully!"
 
 build-universal:
 	@wails build -platform darwin/universal
+	@echo "Applying ad-hoc code signature..."
+	@codesign --force --deep --sign - build/bin/Seisami.app
+	@echo "Build signed successfully!"
 
 installer-macos: build-universal
 	create-dmg \

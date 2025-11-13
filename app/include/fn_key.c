@@ -9,42 +9,59 @@ Everything happening here is by the Grace of God.
 
 int fn_pressed = 0;
 
-// Function to check accessibility permissions
 int check_accessibility_permission() {
     Boolean trusted = AXIsProcessTrusted();
     if (trusted) {
         printf("Accessibility permission: Authorized\n");
-        return 1; // Authorized
+        return 1; 
     } else {
         printf("Accessibility permission: Not authorized\n");
-        return 0; // Not authorized
+        return 0; 
     }
 }
 
-// Function to request accessibility permissions by opening System Preferences
 void request_accessibility_permission() {
     printf("Opening accessibility settings...\n");
     
-    // This will prompt the user to grant accessibility permissions
-    // by checking the permission and then opening System Preferences if needed
-    if (!AXIsProcessTrusted()) {
+    // Always check first to see current status
+    Boolean currentlyTrusted = AXIsProcessTrusted();
+    printf("Current trust status: %s\n", currentlyTrusted ? "trusted" : "not trusted");
+    
+    if (!currentlyTrusted) {
         // Create options dictionary to show prompt
-        CFMutableDictionaryRef options = CFDictionaryCreateMutable(
-            kCFAllocatorDefault, 0, 
-            &kCFTypeDictionaryKeyCallBacks, 
+        const void* keys[] = { kAXTrustedCheckOptionPrompt };
+        const void* values[] = { kCFBooleanTrue };
+        
+        CFDictionaryRef options = CFDictionaryCreate(
+            kCFAllocatorDefault,
+            keys,
+            values,
+            1,
+            &kCFTypeDictionaryKeyCallBacks,
             &kCFTypeDictionaryValueCallBacks
         );
         
-        // Set the key to show the prompt
-        CFDictionarySetValue(options, kAXTrustedCheckOptionPrompt, kCFBooleanTrue);
-        
         // This will show the system dialog to grant accessibility permissions
-        Boolean trusted = AXIsProcessTrustedWithOptions(options);
+        Boolean trustedAfterPrompt = AXIsProcessTrustedWithOptions(options);
         CFRelease(options);
         
-        if (!trusted) {
+        printf("Trust status after prompt: %s\n", trustedAfterPrompt ? "trusted" : "not trusted");
+        
+        if (!trustedAfterPrompt) {
             printf("User needs to grant accessibility permissions in System Settings\n");
+            printf("Opening System Settings directly...\n");
+            
+            // Also open System Settings to help the user
+            CFStringRef urlString = CFSTR("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+            CFURLRef url = CFURLCreateWithString(kCFAllocatorDefault, urlString, NULL);
+            
+            if (url) {
+                LSOpenCFURLRef(url, NULL);
+                CFRelease(url);
+            }
         }
+    } else {
+        printf("App is already trusted for accessibility\n");
     }
 }
 

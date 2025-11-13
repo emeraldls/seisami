@@ -151,7 +151,7 @@ func NewRouter(authService *AuthService, syncService *SyncService, notifService 
 	notifications := router.Group("/notifications")
 	notifications.Use(authMiddleware(authService))
 	{
-		notifications.GET("/", h.getNotifications)
+		notifications.GET("/all", h.getNotifications)
 		notifications.POST("/:id/read", h.markNotificationAsRead)
 	}
 

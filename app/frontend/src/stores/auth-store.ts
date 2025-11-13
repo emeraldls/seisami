@@ -11,7 +11,7 @@ export interface DesktopAuthState {
   error: string | null;
 
   setToken: (token: string, userId: string, email: string) => void;
-  logout: () => void;
+  logout: (clearLocalData?: boolean) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   clearError: () => void;
@@ -41,7 +41,7 @@ export const useDesktopAuthStore = create<DesktopAuthState>()(
         });
       },
 
-      logout: () => {
+      logout: (clearLocalData = false) => {
         set({
           isAuthenticated: false,
           token: null,
@@ -52,6 +52,16 @@ export const useDesktopAuthStore = create<DesktopAuthState>()(
         ClearLoginToken().catch((err) => {
           console.error("Failed to clear token from backend:", err);
         });
+
+        if (clearLocalData) {
+          try {
+            localStorage.removeItem("desktop-auth-storage");
+            localStorage.removeItem("board-storage");
+            console.log("All local data has been cleared");
+          } catch (err) {
+            console.error("Failed to clear local storage:", err);
+          }
+        }
       },
 
       setLoading: (loading: boolean) => {

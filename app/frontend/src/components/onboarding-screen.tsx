@@ -51,6 +51,23 @@ export function OnboardingScreen() {
     };
 
     checkStatuses();
+
+    // Poll for accessibility permission changes every 2 seconds
+    // This handles the case where user grants permission in System Settings
+    const intervalId = setInterval(async () => {
+      try {
+        const [mic, accessibility] = await Promise.all([
+          CheckMicrophonePermission(),
+          CheckAccessibilityPermission(),
+        ]);
+        setMicGranted(mic === 1);
+        setAccessibilityGranted(accessibility === 1);
+      } catch (error) {
+        console.error("Failed to check permissions", error);
+      }
+    }, 2000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
   const handleRequestPermissions = async () => {
@@ -59,6 +76,7 @@ export function OnboardingScreen() {
       // Request microphone first
       if (!micGranted) {
         await RequestMicrophonePermission();
+        await new Promise((resolve) => setTimeout(resolve, 500)); // Small delay
         const micStatus = await CheckMicrophonePermission();
         setMicGranted(micStatus === 1);
       }
@@ -66,26 +84,38 @@ export function OnboardingScreen() {
       if (!accessibilityGranted) {
         await RequestAccessibilityPermission();
 
-        let attempts = 0;
-        const maxAttempts = 30;
+        // Give user 3 seconds to see the dialog before we start checking
+        await new Promise((resolve) => setTimeout(resolve, 3000));
 
-        while (attempts < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
-          const accessStatus = await CheckAccessibilityPermission();
-          if (accessStatus === 1) {
-            setAccessibilityGranted(true);
-            break;
-          }
-          attempts++;
+        // Check immediately after the dialog
+        const immediateCheck = await CheckAccessibilityPermission();
+        if (immediateCheck === 1) {
+          setAccessibilityGranted(true);
+          setRequestingPermissions(false);
+          return;
         }
 
-        const finalStatus = await CheckAccessibilityPermission();
-        setAccessibilityGranted(finalStatus === 1);
+        // If not granted immediately, the dialog was shown
+        // User needs to go to Settings manually
+        // The interval polling will detect when they grant it
       }
     } catch (error) {
       console.error("Failed to request permissions", error);
     } finally {
       setRequestingPermissions(false);
+    }
+  };
+
+  const handleRefreshPermissions = async () => {
+    try {
+      const [mic, accessibility] = await Promise.all([
+        CheckMicrophonePermission(),
+        CheckAccessibilityPermission(),
+      ]);
+      setMicGranted(mic === 1);
+      setAccessibilityGranted(accessibility === 1);
+    } catch (error) {
+      console.error("Failed to refresh permissions", error);
     }
   };
 
@@ -249,9 +279,23 @@ export function OnboardingScreen() {
         )}
 
         {!allPermissionsGranted && !requestingPermissions && (
-          <div className="text-center space-y-2 pt-2">
-            <p className="text-xs text-neutral-500">Need help?</p>
-            <div className="flex justify-center gap-3">
+          <div className="text-center space-y-3 pt-2">
+            <p className="text-xs text-neutral-600 px-4">
+              💡 <strong>Important:</strong> Grant permission to Seisami in{" "}
+              <strong>System Settings → Privacy & Security</strong>. The
+              checkmarks will update automatically.
+            </p>
+
+            <div className="flex justify-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefreshPermissions}
+                className="text-xs"
+              >
+                🔄 Check Again
+              </Button>
+
               {!micGranted && (
                 <Button
                   variant="link"
@@ -259,7 +303,7 @@ export function OnboardingScreen() {
                   onClick={() => OpenMicrophoneSettings()}
                   className="text-xs"
                 >
-                  Microphone Settings
+                  Open Mic Settings
                 </Button>
               )}
               {!accessibilityGranted && (
@@ -269,7 +313,7 @@ export function OnboardingScreen() {
                   onClick={() => OpenAccessibilitySettings()}
                   className="text-xs"
                 >
-                  Accessibility Settings
+                  Open Accessibility Settings
                 </Button>
               )}
             </div>
