@@ -4,10 +4,11 @@ import { TanStackDevtools } from "@tanstack/react-devtools";
 
 import appCss from "../styles.css?url";
 
-const baseUrl = "https://seisami.com";
+const baseUrl = "https://seisami.hooklytics.com";
 
 export const Route = createRootRoute({
   head: () => ({
+    title: "Seisami - Voice-Driven Task Management",
     meta: [
       {
         charSet: "utf-8",
@@ -97,7 +98,7 @@ export const Route = createRootRoute({
       {
         rel: "sitemap",
         type: "application/xml",
-        href: `${baseUrl}/api/sitemap.xml`,
+        href: "/sitemap.xml",
       },
       {
         rel: "icon",
