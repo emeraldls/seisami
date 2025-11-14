@@ -6,7 +6,6 @@ import {
   FolderKanban,
   ClosedCaption,
   Cloud,
-  Download,
   LogOut,
   Search,
 } from "lucide-react";
@@ -23,6 +22,7 @@ import { CloudLoginDialog } from "./cloud-login-dialog";
 import { VersionUpdate } from "./version-update";
 import { useCommandPalette } from "~/contexts/command-palette-context";
 import { LogoutConfirmationDialog } from "./logout-confirmation-dialog";
+import { Logo } from "./logo";
 
 interface NavItem {
   id: string;
@@ -77,29 +77,49 @@ export const Sidebar = () => {
           )}
           style={{ width: collapsed ? 72 : 256 }}
         >
-          <div className="p-3 flex items-center justify-between">
-            {/* <img
-            src={Logo}
-            alt="logo"
-            className={cn(
-              "transition-all duration-300",
-              collapsed ? "w-8 -left-0" : "w-fit relative -left-7"
-            )}
-            style={{ maxWidth: collapsed ? 32 : undefined }}
-          /> */}
-            Logo
+          <div className="p-3 flex items-center justify-between gap-2">
+            <Link
+              to="/"
+              className={cn(
+                "flex items-center gap-3 rounded-xl px-1 py-1 transition-all",
+                collapsed ? "justify-center" : "hover:bg-sidebar-accent/30"
+              )}
+            >
+              <Logo
+                className={cn(
+                  "h-10 w-10 transition-transform",
+                  collapsed ? "scale-90" : "scale-100"
+                )}
+              />
+              {!collapsed && (
+                <div className="flex flex-col leading-tight">
+                  <span className="text-base font-semibold text-sidebar-foreground">
+                    Seisami
+                  </span>
+                  <span className="text-[10px] text-sidebar-foreground/60">
+                    Capture • Sync • Share
+                  </span>
+                </div>
+              )}
+            </Link>
             <Button
               aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
               onClick={toggleCollapsed}
-              variant={"ghost"}
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-9 w-9 rounded-full border border-sidebar-border/60 bg-sidebar/40",
+                "text-sidebar-foreground shadow-sm transition-colors",
+                "hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+              )}
             >
               <motion.span
                 initial={false}
                 animate={{ rotate: collapsed ? 180 : 0 }}
                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                className="inline-block"
+                className="inline-flex items-center justify-center"
               >
-                <ChevronLeft />
+                <ChevronLeft className="h-4 w-4" />
               </motion.span>
             </Button>
           </div>

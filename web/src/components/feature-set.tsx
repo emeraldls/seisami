@@ -1,41 +1,76 @@
-import { Mic, Brain, Zap, Lock, Share2, Code2 } from "lucide-react";
+import {
+  Mic,
+  Cpu,
+  Workflow,
+  Command,
+  Users,
+  Brain,
+  Shield,
+  GitBranch,
+  Rocket,
+  Zap,
+} from "lucide-react";
 
-const features = [
+export const features = [
   {
     icon: Mic,
-    title: "Voice-First Interface",
+    title: "Natural-Language Task Engine",
     description:
-      "Record tasks with a hotkey. Seisami handles transcription and task creation automatically.",
+      "Speak normally. Seisami extracts intent, structure, priorities, and dependencies, not just text.",
+  },
+  {
+    icon: Cpu,
+    title: "Local-First Command Core",
+    description:
+      "All processing happens on-device for speed and privacy. No cloud lag. No data leaks.",
+  },
+  {
+    icon: Workflow,
+    title: "Autonomous Workflow Builder",
+    description:
+      "Give Seisami a goal. It generates boards, stages, and task groups automatically.",
+  },
+  {
+    icon: Command,
+    title: "Voice Driven Orchestration",
+    description:
+      "Trigger a hotkey and manage your entire board hands-free create, move, update, or reorganize tasks by voice.",
+  },
+  {
+    icon: Users,
+    title: "Zero-Setup Collaboration",
+    description:
+      "Invite teammates instantly. Local-first sync keeps everything fast, conflict-free, and reliable.",
   },
   {
     icon: Brain,
-    title: "AI-Powered Processing",
+    title: "Contextual AI Memory",
     description:
-      "GPT-4 understands context and extracts intents. Creates, updates, and organizes tasks intelligently.",
+      "Seisami remembers what you've said before references, priorities, and goals and uses them to guide new actions.",
   },
   {
-    icon: Lock,
-    title: "Privacy First",
+    icon: Shield,
+    title: "Explainable AI Actions",
     description:
-      "Local-first architecture. Your data stays on your machine. Optional cloud features.",
+      "Every AI-driven change includes a clear explanation. No hidden logic. Full transparency.",
+  },
+  {
+    icon: GitBranch,
+    title: "Extensible Developer Core",
+    description:
+      "Customize everything. Add actions, integrate models, or extend Seisami with modular APIs.",
+  },
+  {
+    icon: Rocket,
+    title: "Offline-Resilient Sync",
+    description:
+      "Work offline for days. Sync later. Seisami handles conflict resolution locally with minimal deltas.",
   },
   {
     icon: Zap,
-    title: "Lightning Fast",
+    title: "Ultra-Fast Native Performance",
     description:
-      "Optimized for speed. Instant feedback on every action, minimal latency.",
-  },
-  {
-    icon: Share2,
-    title: "Real-Time Collaboration",
-    description:
-      "Work with your team in real-time. Optional central server for sync across devices.",
-  },
-  {
-    icon: Code2,
-    title: "100% Open Source",
-    description:
-      "Built with love. Full source code available on GitHub. Contribute and customize.",
+      "Built with Go and local indexing. Every command resolves in milliseconds no Electron bloat.",
   },
 ];
 

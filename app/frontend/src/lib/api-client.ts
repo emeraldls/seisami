@@ -13,7 +13,6 @@ class ApiClientClass {
       },
     });
 
-    // Add request interceptor to attach token
     this.client.interceptors.request.use(
       (config) => {
         const token = useDesktopAuthStore.getState().token;
@@ -25,7 +24,6 @@ class ApiClientClass {
       (error) => Promise.reject(error)
     );
 
-    // Add response interceptor for error handling
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {

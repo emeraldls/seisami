@@ -36,6 +36,7 @@ Aside from the items below, there are several inline TODOs scattered throughout 
 * During board import, ensure that both board data and its associated sync state are imported together.
 * Fix timestamp issue between local & cloud:
 * Wrote a couple test cases for `/app`, need to write more covering all the components and edge cases. Then write test cases for `/server` as well.
+* Fix, recording & syncing works when no board is selected.
 
 Error: Maximum update depth exceeded. This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. React limits the number of nested updates to prevent infinite loops.
 

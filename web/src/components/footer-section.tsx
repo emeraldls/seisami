@@ -6,7 +6,6 @@ export const FooterSection = () => {
   return (
     <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-black">
       <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Top Section */}
         <div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-8">
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -21,7 +20,7 @@ export const FooterSection = () => {
 
           <div className="flex gap-3">
             <a
-              href="https://github.com/emeraldls/seisami"
+              href="https://git.new/seisami"
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 rounded-lg bg-gray-100 dark:bg-gray-900 hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
@@ -30,7 +29,7 @@ export const FooterSection = () => {
               <Github size={18} />
             </a>
             <a
-              href="https://twitter.com"
+              href="https://x.com/tryseisami"
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 rounded-lg bg-gray-100 dark:bg-gray-900 hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
@@ -49,10 +48,8 @@ export const FooterSection = () => {
           </div>
         </div>
 
-        {/* Divider */}
         <div className="border-t border-gray-200 dark:border-gray-800 mb-6"></div>
 
-        {/* Bottom */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 text-xs text-gray-600 dark:text-gray-400">
           <p>&copy; {currentYear} Seisami, All Rights Reserved.</p>
         </div>

@@ -1,5 +1,6 @@
 import { Github, Moon, Sun } from "lucide-react";
 import { useState, useEffect } from "react";
+import logo from "../assets/logo.png";
 
 export const NavbarSection = () => {
   const [isDark, setIsDark] = useState(false);
@@ -33,6 +34,7 @@ export const NavbarSection = () => {
     <header className="fixed top-5 w-full  z-50">
       <div className="max-w-2xl mx-auto px-4 py-4 bg-white dark:bg-black flex items-center justify-between border rounded-lg">
         <a href="/" className="flex items-center gap-2 group">
+          <img src={logo} alt="Seisami Logo" className="h-6 w-6" />
           <span className="font-bold text-lg text-black dark:text-white">
             Seisami
           </span>
@@ -40,7 +42,7 @@ export const NavbarSection = () => {
 
         <div className="flex items-center gap-4">
           <a
-            href="https://github.com/emeraldls/seisami"
+            href="https://git.new/seisami"
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white"
@@ -49,7 +51,7 @@ export const NavbarSection = () => {
             <Github size={18} />
           </a>
           <a
-            href="https://twitter.com"
+            href="https://x.com/tryseisami"
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white"
