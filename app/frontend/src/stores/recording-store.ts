@@ -3,12 +3,21 @@ import { Transcription } from "~/types/types";
 
 const MAX_WAVEFORM_POINTS = 1024;
 
+export type ProcessingState =
+  | "idle"
+  | "recording"
+  | "transcribing"
+  | "processing"
+  | "complete";
+
 interface RecordingState {
   isRecording: boolean;
   audioBars: number[] | null;
   waveformData: number[];
   currentPosition: number;
   pendingTranscriptions: Map<string, Transcription>;
+  processingState: ProcessingState;
+  currentAction: string | null;
 
   setIsRecording: (recording: boolean) => void;
   setAudioBars: (bars: number[] | null) => void;
@@ -21,6 +30,8 @@ interface RecordingState {
   ) => void;
   removePendingTranscription: (id: string) => void;
   clearPendingTranscriptions: () => void;
+  setProcessingState: (state: ProcessingState) => void;
+  setCurrentAction: (action: string | null) => void;
 }
 
 export const useRecordingStore = create<RecordingState>((set) => ({
@@ -29,6 +40,8 @@ export const useRecordingStore = create<RecordingState>((set) => ({
   waveformData: [],
   currentPosition: 0,
   pendingTranscriptions: new Map(),
+  processingState: "idle",
+  currentAction: null,
 
   setIsRecording: (recording) => set({ isRecording: recording }),
 
@@ -81,4 +94,8 @@ export const useRecordingStore = create<RecordingState>((set) => ({
     }),
 
   clearPendingTranscriptions: () => set({ pendingTranscriptions: new Map() }),
+
+  setProcessingState: (state) => set({ processingState: state }),
+
+  setCurrentAction: (action) => set({ currentAction: action }),
 }));

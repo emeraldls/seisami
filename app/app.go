@@ -121,31 +121,7 @@ func (a *App) startup(ctx context.Context) {
 	syncEngine := sync_engine.NewSyncEngine(a.repository, cloud, a.ctx)
 	a.syncEngine = syncEngine
 
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		for range ticker.C {
-			if !a.isAuthenticated() {
-				continue
-			}
-			err := syncEngine.SyncData(types.BoardTable)
-			if err != nil {
-				fmt.Printf("unable to sync boardss table: %v\n", err)
-			}
-			err = syncEngine.SyncData(types.ColumnTable)
-			if err != nil {
-				fmt.Printf("unable to sync columns table: %v\n", err)
-			}
-			err = syncEngine.SyncData(types.CardTable)
-			if err != nil {
-				fmt.Printf("unable to sync cards table: %v\n", err)
-			}
-
-			// if a.loginToken != "" {
-
-			// }
-		}
-
-	}()
+	// Sync will now happen in real-time after mutations instead of polling
 
 	go a.handleMutations()
 	go a.appVersionCheck()
@@ -554,7 +530,8 @@ func (a *App) StartDataSyncing(table string) error {
 		return fmt.Errorf("sync engine not initialized")
 	}
 
-	return a.syncEngine.SyncData(tableName)
+	// User-initiated sync - show toasts (silent=false)
+	return a.syncEngine.SyncData(tableName, false)
 }
 
 func (a *App) SetLoginToken(token string) {
@@ -587,6 +564,19 @@ func (a *App) SetCurrentBoardId(boardId string) {
 
 func (a *App) GetCurrentBoardId() string {
 	return a.currentBoardId
+}
+
+// triggerSilentSync triggers a background sync for the given table without showing toasts
+func (a *App) triggerSilentSync(tableName types.TableName) {
+	if !a.isAuthenticated() || a.syncEngine == nil {
+		return
+	}
+
+	go func() {
+		if err := a.syncEngine.SyncData(tableName, true); err != nil {
+			fmt.Printf("silent sync error for %s: %v\n", tableName.String(), err)
+		}
+	}()
 }
 
 func (a *App) appVersionCheck() {
@@ -1245,6 +1235,30 @@ func (a *App) trancribe() {
 		settings.TranscriptionMethod = "cloud"
 	}
 
+	if settings.TranscriptionMethod == "cloud" && !a.isAuthenticated() {
+		errData := map[string]string{
+			"id":      a.recordingPath,
+			"error":   "authentication_required",
+			"message": "Please log in to use cloud transcription, or configure your own OpenAI API key in Settings.",
+		}
+		errBytes, _ := json.Marshal(errData)
+		runtime.EventsEmit(a.ctx, "transcription:error", string(errBytes))
+		fmt.Println("Cloud transcription requires authentication")
+		return
+	}
+
+	if settings.TranscriptionMethod == "custom" && (!settings.OpenaiApiKey.Valid || settings.OpenaiApiKey.String == "") {
+		errData := map[string]string{
+			"id":      a.recordingPath,
+			"error":   "api_key_required",
+			"message": "Please configure your OpenAI API key in Settings to use custom transcription.",
+		}
+		errBytes, _ := json.Marshal(errData)
+		runtime.EventsEmit(a.ctx, "transcription:error", string(errBytes))
+		fmt.Println("Custom transcription requires OpenAI API key")
+		return
+	}
+
 	var transcription string
 	switch settings.TranscriptionMethod {
 	case "local":
@@ -1260,7 +1274,13 @@ func (a *App) trancribe() {
 
 	if err != nil {
 		fmt.Printf("Transcription error: %v\n", err)
-		// TODO: emit error to frontend
+		errData := map[string]string{
+			"id":      a.recordingPath,
+			"error":   "transcription_failed",
+			"message": fmt.Sprintf("Transcription failed: %v", err),
+		}
+		errBytes, _ := json.Marshal(errData)
+		runtime.EventsEmit(a.ctx, "transcription:error", string(errBytes))
 		return
 	}
 

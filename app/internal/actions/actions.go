@@ -36,66 +36,53 @@ func NewAction(ctx context.Context, repo repo.Repository) *Action {
 	}
 }
 
+/*
+	im forcing the UUID as the column_id, because i notice an error, might be because of
+
+small model that's executing the actions
+
+perhaps when a better model is used, it'll know a column_id
+
+TODO: bug fix
+I mentioned bug in my input & no bug column was created, rather it just transcribed & did nothing, i should look into this also
+*/
 func buildPromptTemplate(transcription string, boardId string) string {
 	now := time.Now().Format(time.RFC3339)
-	prompt := fmt.Sprintf(`You are Seisami AI — a minimalist, high-precision desktop-first productivity assistant. You help users manage their boards and tasks through voice commands.
+	prompt := fmt.Sprintf(`You are Seisami AI — a voice-driven assistant that interprets the user's transcription and produces a structured JSON summary of what happened. You rely entirely on available tools to interact with boards, columns, and cards.
 
 CONTEXT:
-- Current date time: %s (RFC3339)
-- Current Board ID: %s
-- User said: "%s"
+- timestamp (RFC3339): {{%v}}
+- board_id (UUID): {{%s}}
+- transcription: "{{%s}}"
 
-IMPORTANT CONCEPTS:
-- Tasks = Cards in this system. When users mention "tasks", they mean cards.
-- If a column for a task doesn't exist, create it first, then add the card to that column.
-- Extract multiple tasks from a single transcription when mentioned.
-- Use appropriate column names like "To Do", "In Progress", "Done", "Backlog", etc.
-- Context Awareness: Use the current datetime (provided as {{%s}} RFC3339) to resolve relative times like "Saturday" or "next week." Handle multi-step commands by sequencing actions logically.
+CORE PRINCIPLES (MUST NEVER BE BROKEN):
+- “Task” means “card”.
+- You do not invent IDs. 'column_id' and 'board_id' must be valid UUIDs.
+- You never substitute a column name where a column_id is required.
+- If a card requires a column: the column must exist. If it doesn't, create it.
+- You may extract multiple tasks from a single transcription.
+- If dates or times are mentioned, interpret them using the provided timestamp.
 
-CRITICAL DATA VALIDATION:
-- column_id is a UUID (e.g., "550e8400-e29b-41d4-a716-446655440000")
-- column name is the human-readable text (e.g., "To Do", "In Progress")
-- NEVER use column name as column_id
-- ALWAYS use list_columns_by_board first to get actual column IDs
-- When creating a card, you MUST provide the UUID column_id, not the column name
-- If you need to create a column, the create_column tool will return a UUID that you must use
-- board_id is also a UUID - use the one provided in the context
+TOOL RULES:
+- When you need column IDs, use 'list_columns_by_board'.
+- When you need a new column, call 'create_column' and use its returned UUID.
+- When creating or modifying cards, you must supply a real column_id.
 
-WORKFLOW FOR CREATING CARDS:
-1. Use list_columns_by_board to get existing columns with their UUIDs
-2. If the column doesn't exist, use create_column to create it (you'll get a UUID back)
-3. Use the UUID from step 1 or 2 as the column_id when creating a card
-4. NEVER make up or guess column IDs - always fetch or create them
+RESPONSE CONTRACT:
+You must return valid JSON:
 
-INSTRUCTIONS:
-1. Use available tools when you need to fetch or modify data
-2. After using tools (or if no tools needed), provide a structured response that includes:
-   - What you understood from the user's request
-   - What actions were taken (if any)
-   - The results or next steps
-
-RESPONSE FORMAT:
-Always respond with a JSON object containing:
 {
-  "intent": "string - what the user wanted (e.g., 'create_task', 'read_board', 'move_task')",
-  "understood": "string - natural language summary of what you understood",
-  "actions_taken": ["array of actions performed"],
-  "result": "string - the main result or answer",
-  "data": {} // optional - any structured data returned from tools
+  "intent": "string",
+  "understood": "natural language interpretation of the transcription",
+  "actions_taken": ["list of actions performed"],
+  "result": "summary of what the system accomplished",
+  "data": {} 
 }
 
-EXAMPLE RESPONSE:
-{
- "intent": "create_task",
- "understood": "The user wants to schedule several tasks: visit their girlfriend by 5pm tomorrow, watch a play before a 10am meeting with Oluwasamwe and Smart, and complete house chores before these events.",
- "actions_taken": [
-  "Listed existing columns to get their UUIDs",
-  "Created 3 cards in the appropriate column using the column UUID"
- ],
- "result": "Created tasks for visiting girlfriend, watching a play, and completing house chores. All tasks have been added to the 'To Do' column.",
-}
-
-IMPORTANT: This is NOT a chat interface. The response will be saved as a summary with the transcription. Focus on providing a clear, actionable summary of what was accomplished.`, now, boardId, transcription, now)
+NOTES:
+- You are not chatting; you are generating state change summaries.
+- No invented data, no missing UUIDs, no invalid JSON.
+`, now, boardId, transcription)
 
 	return prompt
 }

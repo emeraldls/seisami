@@ -16,6 +16,13 @@ If something breaks, please [open an issue](https://github.com/emeraldls/seisami
 
 ## **Try It Locally**
 
+Ensure you've 
+
+2. Go installed. See the [Go installation guide](https://golang.org/doc/install) for instructions.
+1. wails installed. See the [Wails installation guide](https://wails.io/docs/gettingstarted/installation/) for instructions.
+3. Node.js and pnpm installed. See the [Node.js installation guide](https://nodejs.org/en/download/) and [pnpm installation guide](https://pnpm.io/installation) for instructions.
+
+
 Clone the repository, install Wails locally on your machine, then to start the app in development mode, run:
 
 ```bash

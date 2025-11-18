@@ -277,48 +277,6 @@ export function OnboardingScreen() {
             Continue
           </Button>
         )}
-
-        {!allPermissionsGranted && !requestingPermissions && (
-          <div className="text-center space-y-3 pt-2">
-            <p className="text-xs text-neutral-600 px-4">
-              💡 <strong>Important:</strong> Grant permission to Seisami in{" "}
-              <strong>System Settings → Privacy & Security</strong>. The
-              checkmarks will update automatically.
-            </p>
-
-            <div className="flex justify-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRefreshPermissions}
-                className="text-xs"
-              >
-                🔄 Check Again
-              </Button>
-
-              {!micGranted && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={() => OpenMicrophoneSettings()}
-                  className="text-xs"
-                >
-                  Open Mic Settings
-                </Button>
-              )}
-              {!accessibilityGranted && (
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={() => OpenAccessibilitySettings()}
-                  className="text-xs"
-                >
-                  Open Accessibility Settings
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 import { Sidebar } from "~/components/sidebar";
 import { useEffect, useRef, useState } from "react";
 import { useSidebar } from "~/contexts/sidebar-context";
@@ -20,6 +20,7 @@ import { Transcription } from "~/types/types";
 import { useQueryClient } from "@tanstack/react-query";
 import { ErrorListener } from "~/components/error-listener";
 import { TopNavbar } from "~/components/top-navbar";
+import { useCollaborationStore } from "~/stores/collab-store";
 
 export const AppLayout = () => {
   const { collapsed } = useSidebar();
@@ -39,6 +40,8 @@ export const AppLayout = () => {
     addPendingTranscription,
     updatePendingTranscription,
     removePendingTranscription,
+    setProcessingState,
+    setCurrentAction,
   } = useRecordingStore();
 
   useEffect(() => {
@@ -66,32 +69,29 @@ export const AppLayout = () => {
     );
   };
 
+  const navigate = useNavigate();
+
   useEffect(() => {
     const unsubscribeProcessingStart = EventsOn(
       "ai:processing_start",
       (data: any) => {
-        toast.info("🤖 AI is analyzing your request...", {
-          description: "Processing your voice command",
-          duration: 2000,
-        });
+        setProcessingState("processing");
+        setCurrentAction("Analyzing request...");
       }
     );
 
     const unsubscribeToolComplete = EventsOn(
       "ai:tool_complete",
       (data: any) => {
-        toast.success(`✅ Completed: ${data.toolName}`, {
-          description:
-            data.result?.length > 100
-              ? `${data.result.substring(0, 100)}...`
-              : data.result,
-          duration: 2000,
-        });
+        setCurrentAction(`${data.toolName}`);
+        // Emit event to trigger board refetch
+        EventsEmit("board:refetch");
       }
     );
 
     const unsubscribeToolError = EventsOn("ai:tool_error", (data: any) => {
-      toast.error(`❌ Failed: ${data.toolName}`, {
+      setCurrentAction(`Error: ${data.toolName}`);
+      toast.error(`❌ ${data.toolName} failed`, {
         description: data.error,
         duration: 3000,
       });
@@ -100,12 +100,12 @@ export const AppLayout = () => {
     const unsubscribeProcessingComplete = EventsOn(
       "ai:processing_complete",
       (data: any) => {
-        toast.success("🎉 AI finished processing!", {
-          description: data.intent
-            ? `Intent: ${data.intent}`
-            : "Task completed successfully",
-          duration: 3000,
-        });
+        setProcessingState("complete");
+        setCurrentAction(null);
+        // Hide the waveform after a brief delay
+        setTimeout(() => {
+          setProcessingState("idle");
+        }, 1000);
       }
     );
 
@@ -232,6 +232,7 @@ export const AppLayout = () => {
 
     const unsubscribeRecordingStart = EventsOn("recording:start", () => {
       setIsRecording(true);
+      setProcessingState("recording");
       resetWaveform();
       if (currentBoard) {
         console.log("emitting event: ", currentBoard.id);
@@ -244,7 +245,8 @@ export const AppLayout = () => {
       (data: string) => {
         setIsRecording(false);
         setAudioBars(null);
-        resetWaveform();
+        setProcessingState("transcribing");
+        setCurrentAction("Transcribing audio...");
         if (data) {
           try {
             const parsed = JSON.parse(data) as { id: string };
@@ -266,6 +268,8 @@ export const AppLayout = () => {
     const unsubscribeTranscriptionShort = EventsOn(
       "transcription:short",
       (data: string) => {
+        setProcessingState("idle");
+        setCurrentAction(null);
         if (data) {
           try {
             const parsed = JSON.parse(data) as { id: string };
@@ -275,6 +279,72 @@ export const AppLayout = () => {
             removePendingTranscription(parsed.id);
           } catch (e) {
             console.error("Failed to parse transcription:short event data", e);
+          }
+        }
+      }
+    );
+
+    const unsubscribeTranscriptionError = EventsOn(
+      "transcription:error",
+      (data: string) => {
+        setIsRecording(false);
+        setAudioBars(null);
+        setProcessingState("idle");
+        setCurrentAction(null);
+
+        if (data) {
+          try {
+            const parsed = JSON.parse(data) as {
+              id: string;
+              error: string;
+              message: string;
+            };
+
+            updateTranscriptionInCache((prev) =>
+              prev.filter((t) => t.id !== parsed.id)
+            );
+
+            removePendingTranscription(parsed.id);
+            if (parsed.error === "authentication_required") {
+              toast.error("Login Required for Cloud Transcription", {
+                description: (
+                  <span className="text-black">
+                    Please sign in to use cloud transcription, or add your own
+                    OpenAI API key in settings.
+                  </span>
+                ),
+                duration: 6000,
+                action: {
+                  label: "Open Settings",
+                  onClick: () => navigate("/settings"),
+                },
+              });
+            } else if (parsed.error === "api_key_required") {
+              toast.error("API Key Required", {
+                description: (
+                  <span className="text-black">
+                    Please configure your OpenAI API key in Settings to use
+                    custom transcription.
+                  </span>
+                ),
+                duration: 6000,
+                action: {
+                  label: "Add API Key",
+                  onClick: () => navigate("/settings"),
+                },
+              });
+            } else {
+              toast.error("Transcription Failed", {
+                description: parsed.message,
+                duration: 5000,
+              });
+            }
+          } catch (e) {
+            console.error("Failed to parse transcription:error event data", e);
+            toast.error("Transcription Failed", {
+              description: "An error occurred during transcription.",
+              duration: 5000,
+            });
           }
         }
       }
@@ -296,8 +366,21 @@ export const AppLayout = () => {
       unsubscribeRecordingStart();
       unsubscribeRecordingStop();
       unsubscribeTranscriptionShort();
+      unsubscribeTranscriptionError();
     };
   }, [currentBoard, queryClient]);
+
+  const { initialize, teardown } = useCollaborationStore();
+
+  useEffect(() => {
+    if (currentBoard?.id) {
+      initialize(currentBoard.id);
+    }
+
+    return () => {
+      teardown();
+    };
+  }, [currentBoard?.id, initialize, teardown]);
 
   return (
     <>

@@ -23,6 +23,7 @@ import { VersionUpdate } from "./version-update";
 import { useCommandPalette } from "~/contexts/command-palette-context";
 import { LogoutConfirmationDialog } from "./logout-confirmation-dialog";
 import { Logo } from "./logo";
+import { useCollaborationStore } from "~/stores/collab-store";
 
 interface NavItem {
   id: string;
@@ -56,13 +57,18 @@ export const Sidebar = () => {
     setIsLoginDialogOpen(true);
   };
 
+  const { teardown } = useCollaborationStore();
+
   const handleLogoutClick = () => {
     setIsLogoutDialogOpen(true);
   };
 
   const handleLogoutConfirm = (clearLocalData: boolean) => {
     logout(clearLocalData);
+    teardown();
     setIsLogoutDialogOpen(false);
+
+    window.location.reload();
   };
 
   return (

@@ -27,12 +27,12 @@ export const LogoutConfirmationDialog = ({
 
   const handleConfirm = () => {
     onConfirm(clearLocalData);
-    setClearLocalData(false); // Reset for next time
+    setClearLocalData(false);
     onOpenChange(false);
   };
 
   const handleCancel = () => {
-    setClearLocalData(false); // Reset when cancelled
+    setClearLocalData(false);
     onOpenChange(false);
   };
 
@@ -42,7 +42,7 @@ export const LogoutConfirmationDialog = ({
         <AlertDialogHeader>
           <AlertDialogTitle>Confirm Logout</AlertDialogTitle>
           <AlertDialogDescription className="space-y-4">
-            <p>Are you sure you want to log out?</p>
+            <span>Are you sure you want to log out?</span>
             <div className="flex items-start space-x-2 pt-2">
               <Checkbox
                 id="clear-data"

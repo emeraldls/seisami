@@ -7,50 +7,37 @@ import { useBoardStore } from "~/stores/board-store";
 export const ErrorListener = () => {
   const { currentBoard } = useBoardStore();
   useEffect(() => {
+    // Sync events are now silent for real-time syncing
+    // Only errors are logged to console, no toasts
     const unsubscribeSyncError = EventsOn("sync:error", (message: string) => {
-      toast.error("Sync Error", {
-        description: message,
-        duration: 5000,
-      });
+      console.error("Sync error:", message);
     });
 
     const unsubscribeSyncPullError = EventsOn(
       "sync:pull_error",
       (message: string) => {
-        toast.error("Failed to Pull Data", {
-          description: message,
-          duration: 5000,
-        });
+        console.error("Sync pull error:", message);
       }
     );
 
     const unsubscribeSyncPushError = EventsOn(
       "sync:push_error",
       (message: string) => {
-        toast.error("Failed to Push Data", {
-          description: message,
-          duration: 5000,
-        });
+        console.error("Sync push error:", message);
       }
     );
 
     const unsubscribeSyncLocalUpdateError = EventsOn(
       "sync:local_update_error",
       (message: string) => {
-        toast.error("Local Update Failed", {
-          description: message,
-          duration: 5000,
-        });
+        console.error("Sync local update error:", message);
       }
     );
 
     const unsubscribeSyncStateError = EventsOn(
       "sync:state_error",
       (message: string) => {
-        toast.error("Sync State Error", {
-          description: message,
-          duration: 5000,
-        });
+        console.error("Sync state error:", message);
       }
     );
 
@@ -164,33 +151,8 @@ export const ErrorListener = () => {
       }
     );
 
-    // Success listeners for positive feedback
-    const unsubscribeSyncStarted = EventsOn(
-      "sync:started",
-      (data: { table: string }) => {
-        toast.info(`Syncing ${data.table}...`, {
-          description: "Synchronizing data with cloud",
-          duration: 2000,
-        });
-      }
-    );
-
-    const unsubscribeSyncCompleted = EventsOn(
-      "sync:completed",
-      (data: { table: string; pushed: boolean; pulled: boolean }) => {
-        const actions = [];
-        if (data.pushed) actions.push("pushed");
-        if (data.pulled) actions.push("pulled");
-
-        if (actions.length > 0) {
-          toast.success(`${data.table} synced`, {
-            description: `Successfully ${actions.join(" and ")} changes`,
-            duration: 3000,
-          });
-        }
-      }
-    );
-
+    // Success listeners for positive feedback (Bootstrap and Import only)
+    // Sync events are now silent for real-time background syncing
     const unsubscribeBootstrapStarted = EventsOn(
       "bootstrap:started",
       (message: string) => {
@@ -257,9 +219,7 @@ export const ErrorListener = () => {
       unsubscribeImportColumnError();
       unsubscribeImportCardError();
       unsubscribeImportTranscriptionError();
-      // Success events
-      unsubscribeSyncStarted();
-      unsubscribeSyncCompleted();
+      // Success events (Bootstrap and Import only, sync is now silent)
       unsubscribeBootstrapStarted();
       unsubscribeBootstrapCompleted();
       unsubscribeImportStarted();

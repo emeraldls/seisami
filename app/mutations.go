@@ -79,6 +79,9 @@ func (a *App) handleMutations() {
 					_, err := a.repository.CreateOperation(types.BoardTable, boardID, payload, types.InsertOperation)
 					if err != nil {
 						fmt.Printf("unable to create board operation: %v\n", err)
+					} else {
+						// Trigger silent sync after successful operation
+						a.triggerSilentSync(types.BoardTable)
 					}
 				}
 			}(a.ctx, data)
@@ -115,6 +118,9 @@ func (a *App) handleMutations() {
 						fmt.Printf("unable to update board operation: %v\n", err)
 						return
 					}
+
+					// Trigger silent sync
+					a.triggerSilentSync(types.BoardTable)
 
 					roomID, _ := boardData["room_id"].(string)
 					if roomID != "" {
@@ -168,6 +174,9 @@ func (a *App) handleMutations() {
 						return
 					}
 
+					// Trigger silent sync
+					a.triggerSilentSync(types.ColumnTable)
+
 				}
 			}(a.ctx, columnData)
 
@@ -204,6 +213,9 @@ func (a *App) handleMutations() {
 					_, err := a.repository.CreateOperation(types.ColumnTable, column.ID, payload, types.InsertOperation)
 					if err != nil {
 						fmt.Println(err)
+					} else {
+						// Trigger silent sync
+						a.triggerSilentSync(types.ColumnTable)
 					}
 				}
 			}(a.ctx, data, columnData)
@@ -238,6 +250,9 @@ func (a *App) handleMutations() {
 					_, err := a.repository.CreateOperation(types.ColumnTable, column.ID, payload, types.DeleteOperation)
 					if err != nil {
 						fmt.Println(err)
+					} else {
+						// Trigger silent sync
+						a.triggerSilentSync(types.ColumnTable)
 					}
 				}
 			}(a.ctx, data, columnData)
@@ -284,6 +299,9 @@ func (a *App) handleMutations() {
 						return
 					}
 
+					// Trigger silent sync
+					a.triggerSilentSync(types.CardTable)
+
 				}
 			}(a.ctx, cardData)
 
@@ -321,6 +339,9 @@ func (a *App) handleMutations() {
 					_, err := a.repository.CreateOperation(types.CardTable, card.Card.ID, payload, types.InsertOperation)
 					if err != nil {
 						fmt.Println(err)
+					} else {
+						// Trigger silent sync
+						a.triggerSilentSync(types.CardTable)
 					}
 				}
 			}(a.ctx, data, cardData)
@@ -356,6 +377,9 @@ func (a *App) handleMutations() {
 					_, err := a.repository.CreateOperation(types.CardTable, card.Card.ID, payload, types.DeleteOperation)
 					if err != nil {
 						fmt.Println(err)
+					} else {
+						// Trigger silent sync
+						a.triggerSilentSync(types.CardTable)
 					}
 				}
 			}(a.ctx, data, cardData)
@@ -401,6 +425,9 @@ func (a *App) handleMutations() {
 						fmt.Println(err)
 						return
 					}
+
+					// Trigger silent sync
+					a.triggerSilentSync(types.CardTable)
 
 				}
 			}(a.ctx, cardColumnData)

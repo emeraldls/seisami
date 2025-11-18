@@ -183,6 +183,15 @@ export const useBoardStore = create<BoardState>()(
               currentBoard: rawBoard,
               isLoading: false,
             });
+
+            // Reinitialize collaboration if authenticated
+            const { isAuthenticated } = await import("./auth-store").then(
+              (m) => m.useDesktopAuthStore.getState()
+            );
+            if (isAuthenticated) {
+              const { reinitialize } = useCollaborationStore.getState();
+              reinitialize(boardId);
+            }
           } catch (error) {
             console.error("Failed to select board:", error);
             set({

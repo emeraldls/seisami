@@ -59,8 +59,15 @@ const drawWaveform = (
 };
 
 export const GlobalWaveform = () => {
-  const { isRecording, waveformData, currentPosition, setIsRecording } =
-    useRecordingStore();
+  const {
+    isRecording,
+    waveformData,
+    currentPosition,
+    setIsRecording,
+    processingState,
+    currentAction,
+    setProcessingState,
+  } = useRecordingStore();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | undefined>(undefined);
   const waveformRef = useRef<number[]>(waveformData);
@@ -79,6 +86,18 @@ export const GlobalWaveform = () => {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    let animationInterval: number | undefined;
+
+    if (
+      processingState === "transcribing" ||
+      processingState === "processing"
+    ) {
+      animationInterval = setInterval(() => {
+        const randomAmplitude = 0.1 + Math.random() * 0.15;
+        useRecordingStore.getState().addWaveformData([randomAmplitude]);
+      }, 100);
+    }
 
     const render = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -103,12 +122,21 @@ export const GlobalWaveform = () => {
         rect.height
       );
 
-      if (useRecordingStore.getState().isRecording) {
+      const state = useRecordingStore.getState().processingState;
+      if (
+        state === "recording" ||
+        state === "transcribing" ||
+        state === "processing"
+      ) {
         animationRef.current = requestAnimationFrame(render);
       }
     };
 
-    if (isRecording) {
+    if (
+      processingState === "recording" ||
+      processingState === "transcribing" ||
+      processingState === "processing"
+    ) {
       render();
     } else {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -119,23 +147,50 @@ export const GlobalWaveform = () => {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = undefined;
       }
+      if (animationInterval) {
+        clearInterval(animationInterval);
+      }
     };
-  }, [isRecording]);
+  }, [processingState]);
 
-  if (!isRecording) return null;
+  if (processingState === "idle" || processingState === "complete") return null;
+
+  const getStatusText = () => {
+    switch (processingState) {
+      case "recording":
+        return "REC";
+      case "transcribing":
+        return "TRANSCRIBING";
+      case "processing":
+        return currentAction || "PROCESSING";
+      default:
+        return "REC";
+    }
+  };
+
+  const handleClose = () => {
+    if (processingState === "recording") {
+      setIsRecording(false);
+    }
+    setProcessingState("idle");
+  };
 
   return (
     <div className="fixed top-16 right-6 z-50 w-80 border border-black bg-white shadow-sm">
       <div className="flex items-center justify-between px-3 py-2 border-b border-black bg-black text-white">
-        <span className="text-xs font-semibold tracking-widest">REC</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 text-white hover:bg-white/10"
-          onClick={() => setIsRecording(false)}
-        >
-          <X className="h-3 w-3" />
-        </Button>
+        <span className="text-xs font-semibold tracking-widest">
+          {getStatusText()}
+        </span>
+        {processingState === "recording" && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-white hover:bg-white/10"
+            onClick={handleClose}
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        )}
       </div>
       <canvas
         ref={canvasRef}

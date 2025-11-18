@@ -397,10 +397,15 @@ const Settings = () => {
                   Cloud Transcription (Default)
                 </Label>
               </div>
-              <p className="text-sm text-muted-foreground ml-6">
-                Uses Seisami's cloud service for fast and accurate
-                transcriptions.
-              </p>
+              <div className="ml-6">
+                <p className="text-sm text-muted-foreground">
+                  Uses Seisami's cloud service for fast and accurate
+                  transcriptions.
+                </p>
+                <p className="text-xs text-amber-600 mt-1">
+                  ⚠️ Requires login to use cloud features
+                </p>
+              </div>
 
               <div className="flex items-center space-x-2">
                 <input
@@ -499,9 +504,23 @@ const Settings = () => {
                   placeholder="sk-..."
                   className="w-full"
                 />
-                <p className="text-sm text-muted-foreground">
-                  Your API key is stored locally and never shared.
-                </p>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">
+                    Your API key is stored locally and never shared.
+                  </p>
+                  <div className="border rounded-sm p-3 mt-2">
+                    <p className="text-sm font-medium">
+                      Note: This API key will be used for:
+                    </p>
+                    <ul className="text-sm mt-1 ml-4 list-disc space-y-0.5">
+                      <li>Transcribing your audio recordings</li>
+                      <li>
+                        Processing transcriptions with AI (intent detection,
+                        task creation, etc.)
+                      </li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
           )}

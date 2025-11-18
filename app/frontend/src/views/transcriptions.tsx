@@ -65,37 +65,8 @@ export default function Transcriptions() {
     setSelectedTranscription(null);
   };
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  console.log(transcriptions);
-
   return (
     <div className="flex-1 flex flex-col">
-      <header className="bg-white border-b px-8 py-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl">
-              Hold{" "}
-              <kbd className="px-2 bg-black/70 text-white rounded text-sm font-mono">
-                Fn
-              </kbd>{" "}
-              to dictate anywhere!
-            </h2>
-            {currentBoard && (
-              <p className="text-sm text-neutral-500 mt-1">
-                Working on:{" "}
-                <span className="font-medium">{currentBoard.name}</span>
-              </p>
-            )}
-          </div>
-        </div>
-      </header>
-      {/* Waveform is now global and appears in top-right */}
-
       <div className="flex-1 p-8 overflow-auto">
         <div className="space-y-6">
           <div className="flex items-center justify-between">

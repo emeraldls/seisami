@@ -65,14 +65,18 @@ Something is wrong
 	This reason why we have pull record is for when you're team,
 */
 
-func (s *SyncEngine) SyncData(tableName types.TableName) error {
+func (s *SyncEngine) SyncData(tableName types.TableName, silent bool) error {
 	fmt.Println("syncing data for table: ", tableName.String())
-	s.emitSuccess("sync:started", map[string]string{"table": tableName.String()})
+	if !silent {
+		s.emitSuccess("sync:started", map[string]string{"table": tableName.String()})
+	}
 
 	localOps, err := s.local.GetAllOperations(tableName)
 	if err != nil {
 		errMsg := fmt.Sprintf("[LOCAL] failed to get operations: %v", err)
-		s.emitError("sync:error", errMsg)
+		if !silent {
+			s.emitError("sync:error", errMsg)
+		}
 		return errors.New(errMsg)
 	}
 
@@ -93,14 +97,18 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 	cloudResp := s.cloud.GetAllOperations(tableName, since)
 	if cloudResp.Error != "" {
 		errMsg := fmt.Sprintf("[CLOUD] failed to get operations: %s", cloudResp.Error)
-		s.emitError("sync:error", errMsg)
+		if !silent {
+			s.emitError("sync:error", errMsg)
+		}
 		return errors.New(errMsg)
 	}
 
 	cloudOps, ok := cloudResp.Data.([]types.OperationSync)
 	if !ok {
 		errMsg := "[CLOUD] invalid response data type"
-		s.emitError("sync:error", errMsg)
+		if !silent {
+			s.emitError("sync:error", errMsg)
+		}
 		return errors.New(errMsg)
 	}
 
@@ -121,7 +129,9 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 			if pullResp.Error != "" {
 				errMsg := fmt.Sprintf("error pulling record from cloud: %s", pullResp.Error)
 				fmt.Println(errMsg)
-				s.emitError("sync:pull_error", errMsg)
+				if !silent {
+					s.emitError("sync:pull_error", errMsg)
+				}
 				continue
 			}
 
@@ -129,7 +139,9 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 			if !ok {
 				errMsg := "invalid pull response data type"
 				fmt.Println(errMsg)
-				s.emitError("sync:pull_error", errMsg)
+				if !silent {
+					s.emitError("sync:pull_error", errMsg)
+				}
 				continue
 			}
 
@@ -138,7 +150,9 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 			if err := s.local.UpdateLocalDB(operation); err != nil {
 				errMsg := fmt.Sprintf("error updating local db: %v", err)
 				fmt.Println(errMsg)
-				s.emitError("sync:local_update_error", errMsg)
+				if !silent {
+					s.emitError("sync:local_update_error", errMsg)
+				}
 				continue
 			}
 			pulled = true
@@ -150,7 +164,9 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 			if pushResp.Error != "" {
 				errMsg := fmt.Sprintf("push error: %s", pushResp.Error)
 				fmt.Println(errMsg)
-				s.emitError("sync:push_error", errMsg)
+				if !silent {
+					s.emitError("sync:push_error", errMsg)
+				}
 				continue
 			}
 			pushed = true
@@ -181,7 +197,9 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 				if pushResp.Error != "" {
 					errMsg := fmt.Sprintf("[Push error]: %s", pushResp.Error)
 					fmt.Println(errMsg)
-					s.emitError("sync:push_error", errMsg)
+					if !silent {
+						s.emitError("sync:push_error", errMsg)
+					}
 					continue
 				}
 				pushed = true
@@ -193,7 +211,9 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 				if pullResp.Error != "" {
 					errMsg := fmt.Sprintf("error pulling from cloud: %s", pullResp.Error)
 					fmt.Println(errMsg)
-					s.emitError("sync:pull_error", errMsg)
+					if !silent {
+						s.emitError("sync:pull_error", errMsg)
+					}
 					continue
 				}
 
@@ -201,14 +221,18 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 				if !ok {
 					errMsg := "invalid pull response data type"
 					fmt.Println(errMsg)
-					s.emitError("sync:pull_error", errMsg)
+					if !silent {
+						s.emitError("sync:pull_error", errMsg)
+					}
 					continue
 				}
 
 				if err := s.local.UpdateLocalDB(operation); err != nil {
 					errMsg := fmt.Sprintf("error updating local db: %v", err)
 					fmt.Println(errMsg)
-					s.emitError("sync:local_update_error", errMsg)
+					if !silent {
+						s.emitError("sync:local_update_error", errMsg)
+					}
 					continue
 				}
 				pulled = true
@@ -253,14 +277,18 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 		if err := s.local.UpsertSyncState(syncState); err != nil {
 			errMsg := fmt.Sprintf("error upserting local sync state: %v", err)
 			fmt.Println(errMsg)
-			s.emitError("sync:state_error", errMsg)
+			if !silent {
+				s.emitError("sync:state_error", errMsg)
+			}
 		}
 
 		updateResp := s.cloud.UpdateSyncState(syncState)
 		if updateResp.Error != "" {
 			errMsg := fmt.Sprintf("error updating cloud sync state: %s", updateResp.Error)
 			fmt.Println(errMsg)
-			s.emitError("sync:state_error", errMsg)
+			if !silent {
+				s.emitError("sync:state_error", errMsg)
+			}
 		}
 	}
 
@@ -270,28 +298,36 @@ func (s *SyncEngine) SyncData(tableName types.TableName) error {
 		if stateResp.Error != "" {
 			errMsg := fmt.Sprintf("error fetching cloud sync state: %s", stateResp.Error)
 			fmt.Println(errMsg)
-			s.emitError("sync:state_error", errMsg)
+			if !silent {
+				s.emitError("sync:state_error", errMsg)
+			}
 		} else {
 			newState, ok := stateResp.Data.(query.SyncState)
 			if !ok {
 				errMsg := "invalid sync state response data type"
 				fmt.Println(errMsg)
-				s.emitError("sync:state_error", errMsg)
+				if !silent {
+					s.emitError("sync:state_error", errMsg)
+				}
 			} else {
 				if err := s.local.UpdateSyncState(newState); err != nil {
 					errMsg := fmt.Sprintf("error updating local sync state: %v", err)
 					fmt.Println(errMsg)
-					s.emitError("sync:state_error", errMsg)
+					if !silent {
+						s.emitError("sync:state_error", errMsg)
+					}
 				}
 			}
 		}
 	}
 
-	s.emitSuccess("sync:completed", map[string]interface{}{
-		"table":  tableName.String(),
-		"pushed": pushed,
-		"pulled": pulled,
-	})
+	if !silent {
+		s.emitSuccess("sync:completed", map[string]interface{}{
+			"table":  tableName.String(),
+			"pushed": pushed,
+			"pulled": pulled,
+		})
+	}
 
 	return nil
 }

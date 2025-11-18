@@ -52,7 +52,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "~/components/ui/dialog";
-import { EventsEmit } from "../../wailsjs/runtime/runtime";
+import { EventsEmit, EventsOn } from "../../wailsjs/runtime/runtime";
 import { useCollaborationStore } from "~/stores/collab-store";
 import { wsService, type CollabResponse } from "~/lib/websocket-service";
 import type {
@@ -122,23 +122,13 @@ export default function KanbanView() {
   >(null);
 
   const { currentBoard, setCurrentBoard } = useBoardStore();
-  const { roomId, initialize, teardown } = useCollaborationStore();
+  const { roomId } = useCollaborationStore();
   const {
     isOpen: isCommandPaletteOpen,
     open: openCommandPalette,
     close: closeCommandPalette,
   } = useCommandPalette();
   const draggedCardSnapshotRef = useRef<Feature | null>(null);
-
-  useEffect(() => {
-    if (currentBoard?.id) {
-      initialize(currentBoard.id);
-    }
-
-    return () => {
-      teardown();
-    };
-  }, [currentBoard?.id, initialize, teardown]);
 
   const fetchBoard = useCallback(async () => {
     if (!currentBoard) return;
@@ -180,6 +170,16 @@ export default function KanbanView() {
 
   useEffect(() => {
     fetchBoard();
+  }, [fetchBoard]);
+
+  // Listen for AI tool execution to refetch board
+  useEffect(() => {
+    const unsubscribe = EventsOn("board:refetch", () => {
+      console.log("Refetching board due to AI tool execution");
+      fetchBoard();
+    });
+
+    return () => unsubscribe();
   }, [fetchBoard]);
 
   useEffect(() => {

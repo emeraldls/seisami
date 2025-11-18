@@ -21,6 +21,7 @@ interface CollabState {
   isInitialized: boolean;
   eventUnsubscribers: Unsubscribe[];
   initialize: (boardId: string) => void;
+  reinitialize: (boardId: string) => void;
   teardown: () => void;
   setRoomId: (roomId: string) => void;
 }
@@ -34,6 +35,14 @@ export const useCollaborationStore = create<CollabState>((set, get) => ({
   lastError: null,
   isInitialized: false,
   eventUnsubscribers: [],
+
+  reinitialize: (boardId: string) => {
+    const state = get();
+    if (state.isInitialized) {
+      state.teardown();
+    }
+    state.initialize(boardId);
+  },
 
   initialize: (boardId: string) => {
     if (get().isInitialized) {
@@ -54,14 +63,6 @@ export const useCollaborationStore = create<CollabState>((set, get) => ({
 
     const authStore = useDesktopAuthStore.getState();
     if (!authStore.isAuthenticated || !authStore.token) {
-      set({
-        status: "unauthenticated",
-        lastError: "Please log in to use collaboration features",
-        isInitialized: true,
-      });
-      toast.error("Authentication required", {
-        description: "Please log in to use collaboration features",
-      });
       return;
     }
 
@@ -73,11 +74,13 @@ export const useCollaborationStore = create<CollabState>((set, get) => ({
     const connectPromise = wsService.connect();
 
     const unsubConnect = wsService.onConnect(() => {
+      // TODO: look into this
       set({
         status: "in-room",
         roomId: boardId,
         address: "127.0.0.1:8080",
       });
+
       toast.success("Connected to collaboration", {
         description: "Real-time collaboration is active for this board",
       });
@@ -108,7 +111,7 @@ export const useCollaborationStore = create<CollabState>((set, get) => ({
         });
       } else {
         set({ status: "error", lastError: message });
-        toast.error("Collaboration error", { description: message });
+        // toast.error("Collaboration error", { description: message });
       }
     });
     unsubscribers.push(unsubError);

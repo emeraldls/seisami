@@ -2,6 +2,7 @@ import { EventsOn, BrowserOpenURL } from "../../wailsjs/runtime";
 import { useDesktopAuthStore } from "~/stores/auth-store";
 import { SetLoginToken } from "../../wailsjs/go/main/App";
 import { CLOUD_API_URL, WEB_URL } from "./constants";
+import { useCollaborationStore } from "~/stores/collab-store";
 
 export const DesktopAuthService = {
   startAuthFlow: async (): Promise<void> => {
@@ -30,9 +31,18 @@ export const DesktopAuthService = {
             );
 
             const authStore = useDesktopAuthStore.getState();
+            // TODO: update this to be user details
             authStore.setToken(finalToken, "local-user", "local@seisami.app");
 
             await SetLoginToken(finalToken);
+
+            const { currentBoard } = await import("~/stores/board-store").then(
+              (m) => m.useBoardStore.getState()
+            );
+
+            if (currentBoard?.id) {
+              useCollaborationStore.getState().initialize(currentBoard.id);
+            }
           } catch (err) {
             console.error("Failed to exchange code:", err);
           }
