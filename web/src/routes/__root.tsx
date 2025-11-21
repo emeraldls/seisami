@@ -3,6 +3,7 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 
 import appCss from "../styles.css?url";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const baseUrl = "https://seisami.hooklytics.com";
 
@@ -133,13 +134,16 @@ export const Route = createRootRoute({
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  const queryClient = new QueryClient(); 
   return (
     <html lang="en">
       <head>
         <HeadContent />
       </head>
       <body className="">
-        {children}
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
         <TanStackDevtools
           config={{
             position: "bottom-right",

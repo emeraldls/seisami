@@ -1,50 +1,68 @@
-import { ArrowRight } from "lucide-react";
-import AppUI from "@/assets/seisami-app.png";
+import { ArrowRight, Apple, Download } from "lucide-react";
+import { DitherBackground } from "./ui/dither-background";
+import { ApiClient } from "@/lib/api-client";
+import { useQuery } from "@tanstack/react-query";
 
 export const HeroSection = () => {
+
+  const {data} = useQuery({
+    queryKey: ["latest-app-version"],
+    queryFn: () => ApiClient.getLatestAppVersion(),
+  });
+
   return (
-    <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-2xl mx-auto text-center mb-16">
-        <h1 className="text-5xl sm:text-6xl font-bold tracking-tight mb-6 leading-tight text-black dark:text-white">
-          Speak your tasks into existence
+    <section className="relative min-h-[90vh] flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 overflow-hidden border-b border-border">
+      <DitherBackground opacity={0.15} />
+      
+      <div className="relative z-10 max-w-4xl mx-auto text-center">
+        {data?.data && (
+          <div className="inline-flex items-center gap-2 px-3 py-1 mb-8 border border-black dark:border-white bg-white dark:bg-black text-xs font-mono tracking-wider">
+            <span className="w-2 h-2 bg-black dark:bg-white animate-pulse" />
+            {data.data.version} Public Beta
+          </div>
+        )}
+
+        <h1 className="text-6xl sm:text-7xl md:text-8xl font-bold tracking-tighter mb-8 leading-[0.9] text-black dark:text-white uppercase">
+          Control Your<br />
+          <span className="text-transparent bg-clip-text bg-gradient-to-b from-black to-gray-500 dark:from-white dark:to-gray-500">
+            Workflow
+          </span>
         </h1>
 
-        <p className="text-lg text-gray-600 dark:text-gray-400 mb-10 leading-relaxed">
-          Record audio with a hotkey. Seisami transcribes and intelligently
-          creates tasks using AI. Privacy-first, works offline, optional cloud
-          sync.
+        <p className="text-lg sm:text-xl text-gray-600 dark:text-gray-400 mb-12 max-w-2xl mx-auto leading-relaxed font-light">
+          Voice-first task management for the modern era.
+          <br />
+          Local-first, privacy-focused, optional cloud sync.
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <a
-            href="#features"
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-black dark:bg-white hover:bg-gray-900 dark:hover:bg-gray-100 text-white dark:text-black font-semibold transition-colors text-sm"
-          >
-            Get Started
-            <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-              Beta
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <a href={data?.data?.url ?? "#"} className="group relative px-8 py-4 bg-black dark:bg-white text-white dark:text-black font-mono text-sm uppercase tracking-widest hover:bg-gray-900 dark:hover:bg-gray-100 transition-all active:translate-y-0.5">
+            <span className="relative z-10 flex items-center gap-2">
+              <Apple size={18} className="mb-0.5" /> Download for macOS
             </span>
+            <div className="absolute inset-0 border-2 border-transparent group-hover:border-black dark:group-hover:border-white translate-x-1 translate-y-1 transition-transform group-hover:translate-x-1.5 group-hover:translate-y-1.5" />
           </a>
+          
           <a
             href="https://git.new/seisami"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-gray-100 dark:bg-gray-900 hover:bg-gray-200 dark:hover:bg-gray-800 text-black dark:text-white font-semibold transition-colors text-sm"
+            className="group px-8 py-4 bg-transparent border border-black dark:border-white text-black dark:text-white font-mono text-sm uppercase tracking-widest hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black transition-all"
           >
-            GitHub
-            <ArrowRight size={18} />
+            <span className="flex items-center gap-2">
+              View Source <ArrowRight size={16} />
+            </span>
           </a>
+        </div>
+        
+        <div className="mt-6 flex items-center justify-center gap-2 text-xs text-gray-500 font-mono">
+          <Download size={12} />
+          <span>Universal Binary (Intel & Apple Silicon)</span>
         </div>
       </div>
 
-      <div className="relative w-full">
-        <div className="max-w-6xl mx-auto">
-          <img
-            src={AppUI}
-            alt="Seisami Application UI"
-            className="w-full h-auto rounded-lg object-cover aspect-video"
-          />
-        </div>
+      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-5xl h-64 opacity-50 pointer-events-none">
+        <div className="w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-gray-200 via-transparent to-transparent dark:from-gray-800" />
       </div>
     </section>
   );

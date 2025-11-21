@@ -3,14 +3,8 @@ import { useState } from "react";
 import { ApiClient } from "../../lib/api-client";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../../components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, ArrowRight, Lock, CheckCircle2 } from "lucide-react";
+import { DitherBackground } from "@/components/ui/dither-background";
 
 export const Route = createFileRoute("/auth/reset-password")({
   component: ResetPasswordPage,
@@ -57,7 +51,15 @@ function ResetPasswordPage() {
       await ApiClient.resetPassword(token, password);
       setSuccess(true);
       setTimeout(() => {
-        navigate({ to: "/auth/signin" });
+        navigate({ 
+          to: "/auth/signin",
+          search: {
+            desktop: undefined,
+            redirect: undefined,
+            state: undefined,
+            type: undefined,
+          }
+        });
       }, 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reset password");
@@ -68,47 +70,54 @@ function ResetPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-white dark:bg-black flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle className="text-2xl">Success!</CardTitle>
-            <CardDescription>Your password has been reset</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="bg-green-50 border border-green-200 rounded-md p-4">
-              <p className="text-sm text-green-800">
-                Your password has been successfully updated. Redirecting to sign
-                in...
+      <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white font-sans flex items-center justify-center p-4 relative overflow-hidden">
+        <DitherBackground opacity={0.15} />
+        
+        <div className="w-full max-w-md relative z-10">
+          <div className="mb-8 text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 mb-6 bg-black dark:bg-white text-white dark:text-black">
+              <CheckCircle2 size={24} />
+            </div>
+            <h1 className="text-3xl font-bold tracking-tighter uppercase mb-2">Success!</h1>
+            <p className="text-gray-500 dark:text-gray-400 font-mono text-sm">Your password has been reset</p>
+          </div>
+
+          <div className="bg-white dark:bg-black border border-black dark:border-white p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)]">
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-4 mb-6">
+              <p className="text-sm text-green-800 dark:text-green-400 font-mono">
+                Your password has been successfully updated. Redirecting to sign in...
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-black flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle className="text-2xl">Reset Password</CardTitle>
-          <CardDescription>
-            Enter your reset token and new password
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white font-sans flex items-center justify-center p-4 relative overflow-hidden">
+      <DitherBackground opacity={0.15} />
+      
+      <div className="w-full max-w-md relative z-10">
+        <div className="mb-8 text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 mb-6 bg-black dark:bg-white text-white dark:text-black">
+            <Lock size={24} />
+          </div>
+          <h1 className="text-3xl font-bold tracking-tighter uppercase mb-2">Reset Password</h1>
+          <p className="text-gray-500 dark:text-gray-400 font-mono text-sm">Enter your reset token and new password</p>
+        </div>
+
+        <div className="bg-white dark:bg-black border border-black dark:border-white p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(255,255,255,1)]">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
-              <div className="flex gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-md">
-                <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-red-800">{error}</p>
-                </div>
+              <div className="flex gap-3 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-mono">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <p>{error}</p>
               </div>
             )}
 
             <div className="space-y-2">
-              <label htmlFor="token" className="text-sm font-medium">
+              <label htmlFor="token" className="text-xs font-mono uppercase tracking-wider font-bold">
                 Reset Token
               </label>
               <Input
@@ -120,11 +129,12 @@ function ResetPasswordPage() {
                   setToken(e.target.value)
                 }
                 disabled={loading}
+                className="rounded-none border-black dark:border-white focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-black focus-visible:border-2 dark:focus-visible:border-white h-12"
               />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium">
+              <label htmlFor="password" className="text-xs font-mono uppercase tracking-wider font-bold">
                 New Password
               </label>
               <Input
@@ -136,11 +146,12 @@ function ResetPasswordPage() {
                   setPassword(e.target.value)
                 }
                 disabled={loading}
+                className="rounded-none border-black dark:border-white focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-black focus-visible:border-2 dark:focus-visible:border-white h-12"
               />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="confirmPassword" className="text-sm font-medium">
+              <label htmlFor="confirmPassword" className="text-xs font-mono uppercase tracking-wider font-bold">
                 Confirm Password
               </label>
               <Input
@@ -152,21 +163,35 @@ function ResetPasswordPage() {
                   setConfirmPassword(e.target.value)
                 }
                 disabled={loading}
+                className="rounded-none border-black dark:border-white focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-black focus-visible:border-2 dark:focus-visible:border-white h-12"
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Resetting..." : "Reset Password"}
+            <Button 
+              type="submit" 
+              className="w-full h-12 rounded-none bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 text-sm font-mono uppercase tracking-widest" 
+              disabled={loading}
+            >
+              {loading ? "Resetting..." : "Reset Password"} <ArrowRight className="ml-2 w-4 h-4" />
             </Button>
           </form>
 
-          <div className="mt-4 text-center text-sm">
-            <Link to="/auth/signin" className="text-primary hover:underline">
+          <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800 text-center">
+            <Link 
+              to="/auth/signin" 
+              search={{
+                desktop: undefined,
+                redirect: undefined,
+                state: undefined,
+                type: undefined,
+              }}
+              className="text-sm font-bold text-black dark:text-white hover:underline underline-offset-4"
+            >
               Back to Sign In
             </Link>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

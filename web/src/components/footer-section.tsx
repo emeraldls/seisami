@@ -1,57 +1,51 @@
-import { Github } from "lucide-react";
+import { ApiClient } from "@/lib/api-client";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowUpRight } from "lucide-react";
 
 export const FooterSection = () => {
   const currentYear = new Date().getFullYear();
 
+    const {data} = useQuery({
+    queryKey: ["latest-app-version"],
+    queryFn: () => ApiClient.getLatestAppVersion(),
+  });
+
   return (
-    <footer className="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-black">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-8">
+    <footer className="bg-black text-white dark:bg-white dark:text-black pt-24 pb-12 px-4 sm:px-6 lg:px-8 overflow-hidden">
+      <div className="max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-16 mb-24">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="font-bold text-base text-black dark:text-white">
-                Seisami
-              </span>
-            </div>
-            <p className="text-gray-600 dark:text-gray-400 text-sm">
-              Voice-driven task management
+            <h2 className="text-6xl sm:text-8xl font-bold tracking-tighter mb-8 leading-[0.85] uppercase">
+              Seisami
+            </h2>
+            <p className="text-xl text-gray-400 dark:text-gray-600 max-w-md leading-relaxed">
+              The voice-first task manager for the modern era. <br/>
+              Stop typing. Start doing.
             </p>
           </div>
 
-          <div className="flex gap-3">
-            <a
-              href="https://git.new/seisami"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-900 hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
-              title="GitHub"
+          <div className="flex flex-col justify-end items-start md:items-end">
+            <a 
+              href={data?.data.url ?? "#"}
+              className="group flex items-center gap-4 text-2xl sm:text-3xl font-bold font-mono uppercase hover:opacity-70 transition-opacity mb-8"
             >
-              <Github size={18} />
+              Download Beta <ArrowUpRight className="w-8 h-8 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
             </a>
-            <a
-              href="https://x.com/tryseisami"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-900 hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"
-              title="Twitter/X"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                fill="currentColor"
-                viewBox="0 0 16 16"
-              >
-                <path d="M12.6.75h2.454l-5.36 6.142L16 15.25h-4.937l-3.867-5.07-4.425 5.07H.316l5.733-6.57L0 .75h5.063l3.495 4.633L12.601.75Zm-.86 13.028h1.36L4.323 2.145H2.865z" />
-              </svg>
-            </a>
+            
+            <div className="flex gap-8 text-sm font-mono uppercase tracking-wider text-gray-400 dark:text-gray-600">
+              <a href="https://git.new/seisami" className="hover:text-white dark:hover:text-black transition-colors">GitHub</a>
+              <a href="https://x.com/tryseisami" className="hover:text-white dark:hover:text-black transition-colors">Twitter / X</a>
+              <a href="mailto:hello@seisami.com" className="hover:text-white dark:hover:text-black transition-colors">Contact</a>
+            </div>
           </div>
         </div>
 
-        <div className="border-t border-gray-200 dark:border-gray-800 mb-6"></div>
-
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 text-xs text-gray-600 dark:text-gray-400">
-          <p>&copy; {currentYear} Seisami, All Rights Reserved.</p>
+        <div className="border-t border-white/20 dark:border-black/20 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4 text-xs font-mono text-gray-500">
+          <p>&copy; {currentYear} Seisami Inc. Open Source Software.</p>
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full" />
+            <span>All Systems Operational</span>
+          </div>
         </div>
       </div>
     </footer>

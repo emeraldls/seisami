@@ -11,6 +11,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VoiceControlRouteImport } from './routes/voice-control'
+import { Route as LightningFastRouteImport } from './routes/lightning-fast'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardLayoutRouteImport } from './routes/dashboard/_layout'
 import { Route as AuthSignupRouteImport } from './routes/auth/signup'
@@ -25,6 +27,16 @@ const DashboardRouteImport = createFileRoute('/dashboard')()
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VoiceControlRoute = VoiceControlRouteImport.update({
+  id: '/voice-control',
+  path: '/voice-control',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LightningFastRoute = LightningFastRouteImport.update({
+  id: '/lightning-fast',
+  path: '/lightning-fast',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -70,6 +82,8 @@ const DashboardLayoutBoardBoardIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/lightning-fast': typeof LightningFastRoute
+  '/voice-control': typeof VoiceControlRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/signin': typeof AuthSigninRoute
@@ -80,6 +94,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/lightning-fast': typeof LightningFastRoute
+  '/voice-control': typeof VoiceControlRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/signin': typeof AuthSigninRoute
@@ -91,6 +107,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/lightning-fast': typeof LightningFastRoute
+  '/voice-control': typeof VoiceControlRoute
   '/auth/forgot-password': typeof AuthForgotPasswordRoute
   '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/signin': typeof AuthSigninRoute
@@ -104,6 +122,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/lightning-fast'
+    | '/voice-control'
     | '/auth/forgot-password'
     | '/auth/reset-password'
     | '/auth/signin'
@@ -114,6 +134,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/lightning-fast'
+    | '/voice-control'
     | '/auth/forgot-password'
     | '/auth/reset-password'
     | '/auth/signin'
@@ -124,6 +146,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/lightning-fast'
+    | '/voice-control'
     | '/auth/forgot-password'
     | '/auth/reset-password'
     | '/auth/signin'
@@ -136,6 +160,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LightningFastRoute: typeof LightningFastRoute
+  VoiceControlRoute: typeof VoiceControlRoute
   AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
   AuthResetPasswordRoute: typeof AuthResetPasswordRoute
   AuthSigninRoute: typeof AuthSigninRoute
@@ -150,6 +176,20 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/voice-control': {
+      id: '/voice-control'
+      path: '/voice-control'
+      fullPath: '/voice-control'
+      preLoaderRoute: typeof VoiceControlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lightning-fast': {
+      id: '/lightning-fast'
+      path: '/lightning-fast'
+      fullPath: '/lightning-fast'
+      preLoaderRoute: typeof LightningFastRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -239,6 +279,8 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LightningFastRoute: LightningFastRoute,
+  VoiceControlRoute: VoiceControlRoute,
   AuthForgotPasswordRoute: AuthForgotPasswordRoute,
   AuthResetPasswordRoute: AuthResetPasswordRoute,
   AuthSigninRoute: AuthSigninRoute,
