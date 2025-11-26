@@ -9,8 +9,6 @@ export const TopNavbar = () => {
   const { collapsed } = useSidebar();
   const { isAuthenticated } = useDesktopAuthStore();
 
-  console.log("Current Board", currentBoard);
-
   return (
     <div
       className="fixed top-0 right-0 z-40 h-14 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 transition-all duration-300"

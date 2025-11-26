@@ -9,7 +9,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-var TranscriptionModel = openai.GPT4Dot1
+var TranscriptionModel = openai.GPT4o
 
 type ToolHandler func(args json.RawMessage, repo repo.Repository) (string, error)
 
@@ -39,7 +39,6 @@ func (t *Tools) AvailableTools() []openai.Tool {
 
 func (t *Tools) registerTools() {
 	t.HandleReadBoard()
-	t.HandleListBoards()
 	t.HandleSearchColumns()
 	t.HandleListCards()
 	t.HandleMoveCard()
@@ -128,57 +127,6 @@ func (t *Tools) HandleReadBoard() {
 	}
 
 	t.openAiTools = append(t.openAiTools, readboardTool)
-}
-
-func (t *Tools) HandleListBoards() {
-	handler := func(args json.RawMessage, repo repo.Repository) (string, error) {
-		var params listBoardsParameter
-		if err := json.Unmarshal(args, &params); err != nil {
-			return "", err
-		}
-
-		if params.Page == 0 {
-			params.Page = 1
-		}
-		if params.PageSize == 0 {
-			params.PageSize = 10
-		}
-
-		boards, err := repo.GetAllBoards(params.Page, params.PageSize)
-		if err != nil {
-			return "", err
-		}
-
-		res, _ := json.Marshal(boards)
-		return string(res), nil
-	}
-
-	t.toolsRegistry["list_boards"] = handler
-
-	listBoardsTool := openai.Tool{
-		Type: "function",
-		Function: &openai.FunctionDefinition{
-			Name:        "list_boards",
-			Description: "List all available boards with optional pagination",
-			Strict:      false,
-			Parameters: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"page": map[string]any{
-						"type":        "integer",
-						"description": "Page number (default: 1)",
-					},
-					"page_size": map[string]any{
-						"type":        "integer",
-						"description": "Number of boards per page (default: 10)",
-					},
-				},
-				"required": []string{},
-			},
-		},
-	}
-
-	t.openAiTools = append(t.openAiTools, listBoardsTool)
 }
 
 func (t *Tools) HandleSearchColumns() {

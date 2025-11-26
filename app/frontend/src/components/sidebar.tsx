@@ -24,6 +24,8 @@ import { useCommandPalette } from "~/contexts/command-palette-context";
 import { LogoutConfirmationDialog } from "./logout-confirmation-dialog";
 import { Logo } from "./logo";
 import { useCollaborationStore } from "~/stores/collab-store";
+import { DesktopAuthService } from "~/lib/desktop-auth-service";
+import { toast } from "sonner";
 
 interface NavItem {
   id: string;
@@ -46,16 +48,18 @@ export const Sidebar = () => {
 
   const { pathname } = useLocation();
   const { collapsed, toggleCollapsed } = useSidebar();
-  const { isAuthenticated, logout, setError } = useDesktopAuthStore();
+  const {
+    isAuthenticated,
+    logout,
+    setError,
+    clearError,
+    setLoading,
+    error: storeError,
+  } = useDesktopAuthStore();
   const { open: openCommandPalette } = useCommandPalette();
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
-  const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
 
-  const handleCloudLogin = () => {
-    setError(null);
-    setIsLoginDialogOpen(true);
-  };
+  const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false);
 
   const { teardown } = useCollaborationStore();
 
@@ -69,6 +73,27 @@ export const Sidebar = () => {
     setIsLogoutDialogOpen(false);
 
     window.location.reload();
+  };
+
+  const handleDesktopFlow = async () => {
+    clearError();
+    setLoading(true);
+    setIsAuthenticating(true);
+
+    try {
+      await DesktopAuthService.startAuthFlow();
+    } catch (error) {
+      let message = "Failed to start desktop login flow";
+      if (error instanceof Error) {
+        message = error.message;
+      }
+
+      setError(message);
+      toast.error(message);
+    } finally {
+      setLoading(false);
+      setIsAuthenticating(false);
+    }
   };
 
   return (
@@ -204,7 +229,7 @@ export const Sidebar = () => {
               </div>
             ) : (
               <Button
-                onClick={handleCloudLogin}
+                onClick={handleDesktopFlow}
                 disabled={isAuthenticating}
                 className="w-full"
                 size="sm"
@@ -256,21 +281,6 @@ export const Sidebar = () => {
           </div>
         </motion.aside>
       </AnimatePresence>
-      <CloudLoginDialog
-        open={isLoginDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setIsAuthenticating(false);
-          }
-          setIsLoginDialogOpen(open);
-        }}
-        onAuthStart={() => {
-          setIsAuthenticating(true);
-        }}
-        onAuthEnd={() => {
-          setIsAuthenticating(false);
-        }}
-      />
       <LogoutConfirmationDialog
         open={isLogoutDialogOpen}
         onOpenChange={setIsLogoutDialogOpen}

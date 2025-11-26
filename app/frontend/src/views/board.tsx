@@ -5,6 +5,7 @@ import {
   KanbanHeader,
   KanbanCards,
   KanbanCard,
+  type DragEndEvent,
 } from "~/components/ui/shadcn-io/kanban";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -102,7 +103,7 @@ export default function KanbanView() {
   const [features, setFeatures] = useState<Feature[]>([]);
   const [newCardName, setNewCardName] = useState("");
   const [addingCardInStatus, setAddingCardInStatus] = useState<string | null>(
-    null
+    null,
   );
   const [newColumnName, setNewColumnName] = useState("");
   const [isAddingColumn, setIsAddingColumn] = useState(false);
@@ -158,7 +159,6 @@ export default function KanbanView() {
             column: col.id,
           }));
           allFeatures.push(...featuresForColumn);
-          console.log(tickets);
         }
       }
 
@@ -261,8 +261,8 @@ export default function KanbanView() {
       prev.map((col) =>
         col.id === data.id
           ? { ...col, name: data.name, position: data.position }
-          : col
-      )
+          : col,
+      ),
     );
   };
 
@@ -279,7 +279,9 @@ export default function KanbanView() {
       attachments: "",
       startAt: new Date(data.card.created_at || new Date().toISOString()),
       endAt: new Date(
-        data.card.updated_at || data.card.created_at || new Date().toISOString()
+        data.card.updated_at ||
+          data.card.created_at ||
+          new Date().toISOString(),
       ),
       column: data.card.column_id,
     };
@@ -300,8 +302,8 @@ export default function KanbanView() {
               name: data.card.name,
               description: data.card.description || "",
             }
-          : feature
-      )
+          : feature,
+      ),
     );
 
     setSelectedCard((prev) =>
@@ -311,13 +313,13 @@ export default function KanbanView() {
             name: data.card.name,
             description: data.card.description || "",
           }
-        : prev
+        : prev,
     );
   };
 
   const handleRemoteCardDelete = (data: CardDeleteEventData) => {
     setFeatures((prev) =>
-      prev.filter((feature) => feature.id !== data.card.id)
+      prev.filter((feature) => feature.id !== data.card.id),
     );
 
     if (selectedCard?.id === data.card.id) {
@@ -331,79 +333,16 @@ export default function KanbanView() {
       prev.map((feature) =>
         feature.id === data.card_id
           ? { ...feature, column: data.new_column.id }
-          : feature
-      )
+          : feature,
+      ),
     );
   };
 
   const handleDataChange = useCallback(
     async (newFeatures: Feature[]) => {
-      const draggedSnapshot = draggedCardSnapshotRef.current;
-
-      if (draggedSnapshot) {
-        const updatedFeature = newFeatures.find(
-          (feature) => feature.id === draggedSnapshot.id
-        );
-
-        if (updatedFeature) {
-          const columnChanged =
-            draggedSnapshot.column !== updatedFeature.column;
-
-          try {
-            if (columnChanged) {
-              await UpdateCardColumn(updatedFeature.id, updatedFeature.column);
-
-              const oldColumn = columns.find(
-                (col) => col.id === draggedSnapshot.column
-              );
-              const newColumn = columns.find(
-                (col) => col.id === updatedFeature.column
-              );
-
-              if (newColumn) {
-                const cardsInNewColumn = newFeatures.filter(
-                  (f) => f.column === updatedFeature.column
-                );
-                const cardIndex = cardsInNewColumn.findIndex(
-                  (card) => card.id === updatedFeature.id
-                );
-
-                const payload = {
-                  room_id: roomId,
-                  card_id: updatedFeature.id,
-                  old_column: oldColumn
-                    ? {
-                        id: oldColumn.id,
-                        name: oldColumn.name,
-                        position: oldColumn.position,
-                      }
-                    : null,
-                  new_column: {
-                    id: newColumn.id,
-                    board_id: currentBoard?.id,
-                    name: newColumn.name,
-                    position: newColumn.position,
-                  },
-                  index: cardIndex,
-                };
-
-                console.log("Card column changed:", payload);
-
-                const data = JSON.stringify(payload);
-                EventsEmit("card:column", data);
-              }
-            }
-          } catch (err) {
-            console.error("Failed to update card column", err);
-            return;
-          }
-        }
-      }
-
       setFeatures(newFeatures);
-      draggedCardSnapshotRef.current = null;
     },
-    [columns, roomId, currentBoard]
+    [],
   );
 
   const handleDragStart = (event: any) => {
@@ -418,7 +357,7 @@ export default function KanbanView() {
       : null;
   };
 
-  const handleDragEnd = () => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     console.log("stopped dragging");
     const dragDuration = dragStartTime ? Date.now() - dragStartTime : 0;
 
@@ -430,7 +369,69 @@ export default function KanbanView() {
       }
     }
 
+    // Handle column change
+    const draggedSnapshot = draggedCardSnapshotRef.current;
+    if (draggedSnapshot) {
+      // Find the card in the current state (which has been updated by handleDataChange during drag)
+      const updatedFeature = features.find(
+        (feature) => feature.id === draggedSnapshot.id,
+      );
+
+      if (updatedFeature) {
+        const columnChanged = draggedSnapshot.column !== updatedFeature.column;
+
+        if (columnChanged) {
+          try {
+            await UpdateCardColumn(updatedFeature.id, updatedFeature.column);
+
+            const oldColumn = columns.find(
+              (col) => col.id === draggedSnapshot.column,
+            );
+            const newColumn = columns.find(
+              (col) => col.id === updatedFeature.column,
+            );
+
+            if (newColumn) {
+              const cardsInNewColumn = features.filter(
+                (f) => f.column === updatedFeature.column,
+              );
+              const cardIndex = cardsInNewColumn.findIndex(
+                (card) => card.id === updatedFeature.id,
+              );
+
+              const payload = {
+                room_id: roomId,
+                card_id: updatedFeature.id,
+                old_column: oldColumn
+                  ? {
+                      id: oldColumn.id,
+                      name: oldColumn.name,
+                      position: oldColumn.position,
+                    }
+                  : null,
+                new_column: {
+                  id: newColumn.id,
+                  board_id: currentBoard?.id,
+                  name: newColumn.name,
+                  position: newColumn.position,
+                },
+                index: cardIndex,
+              };
+
+              const data = JSON.stringify(payload);
+              EventsEmit("card:column", data);
+            }
+          } catch (err) {
+            console.error("Failed to update card column", err);
+            // Revert changes if update failed?
+            
+          }
+        }
+      }
+    }
+
     setDragStartTime(null);
+    draggedCardSnapshotRef.current = null;
 
     setTimeout(() => {
       setDraggedCardId(null);
@@ -535,8 +536,6 @@ export default function KanbanView() {
         // TODO: handle editing column created_at & updated_at
       };
 
-      console.log(payload);
-
       const data = JSON.stringify(payload);
 
       EventsEmit("column:data", data);
@@ -626,7 +625,7 @@ export default function KanbanView() {
       await UpdateCard(
         selectedCard.id,
         editingTitle,
-        selectedCard.description!
+        selectedCard.description!,
       );
       setIsEditingTitle(false);
       fetchBoard();
@@ -635,10 +634,10 @@ export default function KanbanView() {
 
       if (cardColumn) {
         const cardsInColumn = features.filter(
-          (f) => f.column === selectedCard.column
+          (f) => f.column === selectedCard.column,
         );
         const cardIndex = cardsInColumn.findIndex(
-          (c) => c.id === selectedCard.id
+          (c) => c.id === selectedCard.id,
         );
 
         const payload = {
@@ -658,7 +657,6 @@ export default function KanbanView() {
           },
         };
 
-        console.log(payload);
 
         const data = JSON.stringify(payload);
 
@@ -688,10 +686,10 @@ export default function KanbanView() {
 
       if (cardColumn) {
         const cardsInColumn = features.filter(
-          (f) => f.column === selectedCard.column
+          (f) => f.column === selectedCard.column,
         );
         const cardIndex = cardsInColumn.findIndex(
-          (c) => c.id === selectedCard.id
+          (c) => c.id === selectedCard.id,
         );
 
         const payload = {
@@ -710,8 +708,6 @@ export default function KanbanView() {
             index: cardIndex,
           },
         };
-
-        console.log(payload);
 
         const data = JSON.stringify(payload);
 
@@ -974,7 +970,7 @@ export default function KanbanView() {
                                     <span>
                                       {/*  TODO: imported board time is not in the expected format */}
                                       {shortDateFormatter.format(
-                                        feature.startAt
+                                        feature.startAt,
                                       )}
                                     </span>
                                   </div>
