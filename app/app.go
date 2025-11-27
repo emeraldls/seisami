@@ -71,6 +71,7 @@ type App struct {
 	collabCloseChan  chan bool
 	cloud            cloud.Cloud
 	syncEngine       *sync_engine.SyncEngine
+	syncWS           *cloud.SyncWebSocket
 }
 
 func dbPath() string {
@@ -115,19 +116,52 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.action = actions.NewAction(ctx, a.repository)
 
-	cloud := cloud.NewCloudFuncs(a.repository, a.loginToken, a.ctx, a.cloudApiUrl)
-	a.cloud = cloud
+	cloudFuncs := cloud.NewCloudFuncs(a.repository, a.loginToken, a.ctx, a.cloudApiUrl)
+	a.cloud = cloudFuncs
 
-	syncEngine := sync_engine.NewSyncEngine(a.repository, cloud, a.ctx)
+	syncEngine := sync_engine.NewSyncEngine(a.repository, cloudFuncs, a.ctx)
 	a.syncEngine = syncEngine
 
-	// Sync will now happen in real-time after mutations instead of polling
+	a.syncWS = cloud.NewSyncWebSocket(ctx, a.cloudApiUrl, a.loginToken, func(tableName string) {
+		fmt.Printf("Sync update received for table: %s\n", tableName)
+
+		var tableType types.TableName
+		switch tableName {
+		case "boards":
+			tableType = types.BoardTable
+		case "columns":
+			tableType = types.ColumnTable
+		case "cards":
+			tableType = types.CardTable
+		case "transcriptions":
+			tableType = types.TranscriptionTable
+		default:
+			return
+		}
+
+		// Trigger sync for the specific table
+		go func() {
+			if err := syncEngine.SyncData(tableType, true); err != nil {
+				fmt.Printf("Error syncing %s: %v\n", tableName, err)
+			} else {
+				// Emit event to frontend that data was updated
+				runtime.EventsEmit(ctx, "sync:table_updated", map[string]string{
+					"table": tableName,
+				})
+			}
+		}()
+	})
 
 	go a.handleMutations()
 	go a.appVersionCheck()
 
-	// Platform-specific initialization (handles hotkey listener setup)
 	a.initPlatformSpecific()
+	fmt.Println("is user authenticated: ", a.isAuthenticated())
+	if a.isAuthenticated() {
+		if err := a.syncWS.Connect(); err != nil {
+			fmt.Printf("Failed to connect sync WebSocket: %v\n", err)
+		}
+	}
 }
 
 // Greet returns a greeting for the given name
@@ -520,28 +554,22 @@ func (a *App) bootstrapCloud() error {
 	return a.syncEngine.BootstrapCloud()
 }
 
-func (a *App) StartDataSyncing(table string) error {
-	tableName, err := types.TableNameFromString(table)
-	if err != nil {
-		return fmt.Errorf("invalid table name")
-	}
-
-	if a.syncEngine == nil {
-		return fmt.Errorf("sync engine not initialized")
-	}
-
-	// User-initiated sync - show toasts (silent=false)
-	return a.syncEngine.SyncData(tableName, false)
-}
-
 func (a *App) SetLoginToken(token string) {
 	a.loginToken = token
 	a.cloud.UpdateSessionToken(token)
+
+	if a.syncWS != nil {
+		a.syncWS.UpdateToken(token)
+	}
 }
 
 func (a *App) ClearLoginToken() {
 	a.loginToken = ""
 	a.cloud.UpdateSessionToken("")
+
+	if a.syncWS != nil {
+		a.syncWS.Disconnect()
+	}
 
 	a.collabMu.Lock()
 	a.resetCollabConnectionLocked()
@@ -566,7 +594,6 @@ func (a *App) GetCurrentBoardId() string {
 	return a.currentBoardId
 }
 
-// triggerSilentSync triggers a background sync for the given table without showing toasts
 func (a *App) triggerSilentSync(tableName types.TableName) {
 	if !a.isAuthenticated() || a.syncEngine == nil {
 		return
@@ -1266,8 +1293,13 @@ func (a *App) trancribe() {
 	case "custom":
 		transcription, err = a.transcribeWithOpenAI(a.recordingPath, settings)
 	case "cloud":
-		// TODO: update this when cloud transcription implemented
-		fallthrough
+		cloudData := map[string]string{
+			"recording_path": a.recordingPath,
+			"board_id":       a.currentBoardId,
+		}
+		cloudBytes, _ := json.Marshal(cloudData)
+		runtime.EventsEmit(a.ctx, "transcription:use_cloud", string(cloudBytes))
+		return
 	default:
 		transcription, err = a.transcribeWithCloud(a.recordingPath)
 	}
@@ -1478,9 +1510,9 @@ func (a *App) transcribeWithOpenAI(filePath string, settings query.Setting) (str
 }
 
 func (a *App) transcribeWithCloud(filePath string) (string, error) {
-	// TODO: implement cloud transcription
-	// for now, fall back to local transcription using env API key or current method
-	return a.transcribeLocally(filePath)
+	// Cloud transcription is handled directly by the frontend
+	// The frontend will send audio directly to the cloud API with SSE
+	return "", fmt.Errorf("cloud transcription is handled by the frontend - this should not be called")
 }
 
 func (a *App) GetCollabServerAddress() string {
@@ -1495,7 +1527,18 @@ func (a *App) GetWebURL() string {
 	return getWebUrl()
 }
 
-// func (a *App) fetchAppVersion() (types.AppVersion, error) {
-// 	client := http.Client{Timeout: 60 * time.Second}
+type AudioResponse struct {
+	Data []byte `json:"data"`
+}
 
-// }
+func (a *App) ReadAudioFile(filePath string) (*AudioResponse, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read audio file: %w", err)
+	}
+
+	fmt.Println("Length of audio data: ", len(data))
+
+	return &AudioResponse{Data: data}, nil
+
+}

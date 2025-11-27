@@ -28,13 +28,14 @@ import (
 )
 
 type SyncService struct {
-	pool    *pgxpool.Pool
-	queries *centraldb.Queries
+	pool         *pgxpool.Pool
+	queries      *centraldb.Queries
+	openAIAPIKey string
 }
 
-func NewSyncService(pool *pgxpool.Pool, queries *centraldb.Queries) *SyncService {
+func NewSyncService(pool *pgxpool.Pool, queries *centraldb.Queries, openAIAPIKey string) *SyncService {
 
-	return &SyncService{pool, queries}
+	return &SyncService{pool, queries, openAIAPIKey}
 }
 
 type SyncOperation struct {
@@ -168,7 +169,7 @@ func (s *SyncService) handleBoardOperation(ctx context.Context, userUUID uuid.UU
 		return fmt.Errorf("%w: %s on boards", errUnsupportedOperation, op.OperationType)
 	}
 
-	return s.queries.CreateOperation(ctx, centraldb.CreateOperationParams{
+	err := s.queries.CreateOperation(ctx, centraldb.CreateOperationParams{
 		ID:            op.ID,
 		TableName:     op.TableName,
 		RecordID:      op.RecordID,
@@ -187,6 +188,8 @@ func (s *SyncService) handleBoardOperation(ctx context.Context, userUUID uuid.UU
 			Valid:  true,
 		},
 	})
+
+	return err
 
 }
 
@@ -260,7 +263,7 @@ func (s *SyncService) handleColumnOperation(ctx context.Context, userUUID uuid.U
 		return fmt.Errorf("%w: %s on columns", errUnsupportedOperation, op.OperationType)
 	}
 
-	return s.queries.CreateOperation(ctx, centraldb.CreateOperationParams{
+	err := s.queries.CreateOperation(ctx, centraldb.CreateOperationParams{
 		ID:            op.ID,
 		TableName:     op.TableName,
 		RecordID:      op.RecordID,
@@ -279,6 +282,7 @@ func (s *SyncService) handleColumnOperation(ctx context.Context, userUUID uuid.U
 			Valid:  true,
 		},
 	})
+	return err
 }
 
 func (s *SyncService) handleCardOperation(ctx context.Context, userUUID uuid.UUID, op SyncOperation) error {
@@ -420,7 +424,7 @@ func (s *SyncService) handleCardOperation(ctx context.Context, userUUID uuid.UUI
 		return fmt.Errorf("%w: %s on cards", errUnsupportedOperation, op.OperationType)
 	}
 
-	return s.queries.CreateOperation(ctx, centraldb.CreateOperationParams{
+	err := s.queries.CreateOperation(ctx, centraldb.CreateOperationParams{
 		ID:            op.ID,
 		TableName:     op.TableName,
 		RecordID:      op.RecordID,
@@ -439,6 +443,7 @@ func (s *SyncService) handleCardOperation(ctx context.Context, userUUID uuid.UUI
 			Valid:  true,
 		},
 	})
+	return err
 }
 
 func (s *SyncService) handleTranscriptionOperation(ctx context.Context, userUUID uuid.UUID, op SyncOperation) error {
@@ -516,7 +521,7 @@ func (s *SyncService) handleTranscriptionOperation(ctx context.Context, userUUID
 		return fmt.Errorf("%w: %s on transcriptions", errUnsupportedOperation, op.OperationType)
 	}
 
-	return s.queries.CreateOperation(ctx, centraldb.CreateOperationParams{
+	err := s.queries.CreateOperation(ctx, centraldb.CreateOperationParams{
 		ID:            op.ID,
 		TableName:     op.TableName,
 		RecordID:      op.RecordID,
@@ -535,6 +540,8 @@ func (s *SyncService) handleTranscriptionOperation(ctx context.Context, userUUID
 			Valid:  true,
 		},
 	})
+
+	return err
 }
 
 func (s *SyncService) PullOperations(ctx context.Context, userID, tableName string, since int64) ([]SyncOperation, error) {
@@ -569,7 +576,6 @@ func (s *SyncService) PullOperations(ctx context.Context, userID, tableName stri
 func (s *SyncService) pullBoardOperations(ctx context.Context, userUUID uuid.UUID, since int64) ([]SyncOperation, error) {
 	userOperations, err := s.queries.GetAllOperationsSinceClient(ctx, centraldb.GetAllOperationsSinceClientParams{
 		TableName:   "boards",
-		TableName_2: "boards",
 		UserID:      pgtype.UUID{Bytes: userUUID, Valid: true},
 		ToTimestamp: float64(since),
 	})
@@ -606,7 +612,6 @@ func (s *SyncService) pullColumnOperations(ctx context.Context, userUUID uuid.UU
 
 	userOperations, err := s.queries.GetAllOperationsSinceClient(ctx, centraldb.GetAllOperationsSinceClientParams{
 		TableName:   "columns",
-		TableName_2: "columns",
 		UserID:      pgtype.UUID{Bytes: userUUID, Valid: true},
 		ToTimestamp: float64(since),
 	})
@@ -638,7 +643,6 @@ func (s *SyncService) pullColumnOperations(ctx context.Context, userUUID uuid.UU
 func (s *SyncService) pullCardOperations(ctx context.Context, userUUID uuid.UUID, since int64) ([]SyncOperation, error) {
 	userOperations, err := s.queries.GetAllOperationsSinceClient(ctx, centraldb.GetAllOperationsSinceClientParams{
 		TableName:   "cards",
-		TableName_2: "cards",
 		UserID:      pgtype.UUID{Bytes: userUUID, Valid: true},
 		ToTimestamp: float64(since),
 	})

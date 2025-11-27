@@ -553,35 +553,30 @@ const getAllOperationsSinceClient = `-- name: GetAllOperationsSinceClient :many
 SELECT o.id, o.table_name, o.record_id, o.operation_type, o.device_id, o.payload, o.created_at, o.updated_at
 FROM operations AS o
 JOIN (
-    SELECT inner_op.record_id, MAX(inner_op.created_at) AS max_created_at
-    FROM operations AS inner_op
-    WHERE inner_op.created_at > to_char(to_timestamp($1), 'YYYY-MM-DD"T"HH24:MI:SS')
-    AND inner_op."table_name" = $2
-    GROUP BY inner_op.record_id
+    SELECT record_id, MAX(created_at) AS max_created_at
+    FROM operations inner_op
+    WHERE inner_op.created_at > to_char(to_timestamp($1), 'YYYY-MM-DD HH24:MI:SS')
+      AND inner_op."table_name" = $2
+    GROUP BY record_id
 ) AS latest
   ON o.record_id = latest.record_id
-  AND o.created_at = latest.max_created_at
-  AND o."table_name" = $3
-JOIN columns AS c ON c.id = o.record_id
+ AND o.created_at = latest.max_created_at
+ AND o."table_name" = $2
+JOIN cards AS ca ON ca.id = o.record_id
+JOIN columns AS c ON c.id = ca.column_id
 JOIN boards AS b ON b.id = c.board_id
-WHERE b.user_id = $4
+WHERE b.user_id = $3
 ORDER BY o.created_at ASC
 `
 
 type GetAllOperationsSinceClientParams struct {
 	ToTimestamp float64
 	TableName   string
-	TableName_2 string
 	UserID      pgtype.UUID
 }
 
 func (q *Queries) GetAllOperationsSinceClient(ctx context.Context, arg GetAllOperationsSinceClientParams) ([]Operation, error) {
-	rows, err := q.db.Query(ctx, getAllOperationsSinceClient,
-		arg.ToTimestamp,
-		arg.TableName,
-		arg.TableName_2,
-		arg.UserID,
-	)
+	rows, err := q.db.Query(ctx, getAllOperationsSinceClient, arg.ToTimestamp, arg.TableName, arg.UserID)
 	if err != nil {
 		return nil, err
 	}

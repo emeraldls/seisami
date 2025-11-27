@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -16,8 +17,11 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 
+	"seisami/server/central/actions"
 	"seisami/server/centraldb"
+	"seisami/server/synchub"
 	"seisami/server/types"
 	"seisami/server/utils"
 )
@@ -37,7 +41,7 @@ func SetRoomManagerGetter(getter func(string) ([]string, error)) {
 	roomManagerGetter = getter
 }
 
-func NewRouter(authService *AuthService, syncService *SyncService, notifService *NotificationService) *gin.Engine {
+func NewRouter(authService *AuthService, syncService *SyncService, notifService *NotificationService, action *actions.Action) *gin.Engine {
 	router := gin.Default()
 
 	corsMiddleware := cors.New(cors.Config{
@@ -48,7 +52,7 @@ func NewRouter(authService *AuthService, syncService *SyncService, notifService 
 	})
 	router.Use(corsMiddleware)
 
-	h := &handler{authService: authService, syncService: syncService, notifService: notifService}
+	h := &handler{authService: authService, syncService: syncService, notifService: notifService, action: action}
 
 	router.GET("/ws", func(c *gin.Context) {
 
@@ -111,6 +115,22 @@ func NewRouter(authService *AuthService, syncService *SyncService, notifService 
 		}
 	}
 
+	router.GET("/sync/ws", func(c *gin.Context) {
+		token := c.Query("token")
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "missing authentication token"})
+			return
+		}
+
+		userID, err := validateToken(token, authService.jwtSecret)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+			return
+		}
+
+		h.handleSyncWebSocket(c.Writer, c.Request, userID)
+	})
+
 	// Sync endpoints
 	sync := router.Group("/sync")
 	sync.Use(authMiddleware(authService))
@@ -153,6 +173,12 @@ func NewRouter(authService *AuthService, syncService *SyncService, notifService 
 	{
 		notifications.GET("/all", h.getNotifications)
 		notifications.POST("/:id/read", h.markNotificationAsRead)
+	}
+
+	ai := router.Group("/ai")
+	ai.Use(authMiddleware(authService))
+	{
+		ai.POST("/transcribe-and-process", h.transcribeAndProcess)
 	}
 
 	return router
@@ -211,6 +237,7 @@ type handler struct {
 	authService  *AuthService
 	syncService  *SyncService
 	notifService *NotificationService
+	action       *actions.Action
 }
 
 type emailPasswordRequest struct {
@@ -1145,4 +1172,150 @@ func (h *handler) createNewAppVersion(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"message": "successful"})
+}
+
+type ginSSEWriter struct {
+	ctx     *gin.Context
+	flusher http.Flusher
+}
+
+func newGinSSEWriter(c *gin.Context) (*ginSSEWriter, error) {
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		return nil, fmt.Errorf("streaming not supported")
+	}
+	return &ginSSEWriter{ctx: c, flusher: flusher}, nil
+}
+
+func (w *ginSSEWriter) WriteSSE(event string, data interface{}) error {
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w.ctx.Writer, "event: %s\ndata: %s\n\n", event, string(dataBytes))
+	return err
+}
+
+func (w *ginSSEWriter) Flush() error {
+	w.flusher.Flush()
+	return nil
+}
+
+func (h *handler) transcribeAndProcess(c *gin.Context) {
+	userID, err := h.authService.GetUserIDFromContext(c.Request.Context())
+	if err != nil || userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user ID"})
+		return
+	}
+
+	err = c.Request.ParseMultipartForm(32 << 20)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to parse multipart form"})
+		return
+	}
+
+	boardID := c.Request.FormValue("board_id")
+	if boardID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "board_id is required"})
+		return
+	}
+
+	file, _, err := c.Request.FormFile("audio")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "audio file is required"})
+		return
+	}
+	defer file.Close()
+
+	audioData, err := io.ReadAll(file)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read audio file"})
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+
+	// Create SSE writer
+	writer, err := newGinSSEWriter(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "streaming not supported"})
+		return
+	}
+
+	// Step 1: Transcribe audio
+	_ = writer.WriteSSE("ai:transcription_start", map[string]interface{}{
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+	_ = writer.Flush()
+
+	transcription, err := h.action.TranscribeAudio(c.Request.Context(), audioData)
+	if err != nil {
+		_ = writer.WriteSSE("ai:error", map[string]interface{}{
+			"error":     fmt.Sprintf("Transcription failed: %v", err),
+			"timestamp": time.Now().Format(time.RFC3339),
+		})
+		_ = writer.Flush()
+		return
+	}
+
+	_ = writer.WriteSSE("ai:transcription_complete", map[string]interface{}{
+		"transcription": transcription,
+		"timestamp":     time.Now().Format(time.RFC3339),
+	})
+	_ = writer.Flush()
+
+	// Step 2: Process transcription with SSE updates
+	result, err := h.action.ProcessTranscriptionWithSSE(c.Request.Context(), userUUID, transcription, boardID, writer)
+	if err != nil {
+		// Error already sent via SSE in the service method
+		return
+	}
+
+	// Final result (optional - already sent via ai:processing_complete)
+	_ = writer.WriteSSE("ai:done", map[string]interface{}{
+		"result":    result,
+		"timestamp": time.Now().Format(time.RFC3339),
+	})
+	_ = writer.Flush()
+}
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+func (h *handler) handleSyncWebSocket(w http.ResponseWriter, r *http.Request, userID string) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Failed to upgrade sync websocket: %v", err)
+		return
+	}
+
+	hub := synchub.Get()
+	if hub == nil {
+		log.Println("Sync hub not initialized")
+		conn.Close()
+		return
+	}
+
+	client := &synchub.SyncClient{
+		UserID: userID,
+		Conn:   conn,
+		Send:   make(chan []byte, 256),
+	}
+
+	hub.Register(client)
+
+	go client.WritePump()
+	go client.ReadPump(hub)
 }

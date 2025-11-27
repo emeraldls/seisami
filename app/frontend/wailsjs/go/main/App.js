@@ -138,6 +138,10 @@ export function OpenMicrophoneSettings() {
   return window['go']['main']['App']['OpenMicrophoneSettings']();
 }
 
+export function ReadAudioFile(arg1) {
+  return window['go']['main']['App']['ReadAudioFile'](arg1);
+}
+
 export function ReprocessTranscription(arg1, arg2, arg3) {
   return window['go']['main']['App']['ReprocessTranscription'](arg1, arg2, arg3);
 }
@@ -160,10 +164,6 @@ export function SetCurrentBoardId(arg1) {
 
 export function SetLoginToken(arg1) {
   return window['go']['main']['App']['SetLoginToken'](arg1);
-}
-
-export function StartDataSyncing(arg1) {
-  return window['go']['main']['App']['StartDataSyncing'](arg1);
 }
 
 export function UpdateBoard(arg1, arg2) {

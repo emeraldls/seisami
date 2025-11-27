@@ -3,6 +3,7 @@
 import {types} from '../models';
 import {query} from '../models';
 import {frontend} from '../models';
+import {main} from '../models';
 
 export function CheckAccessibilityPermission():Promise<number>;
 
@@ -72,6 +73,8 @@ export function OpenFileDialog(arg1:string,arg2:Array<frontend.FileFilter>):Prom
 
 export function OpenMicrophoneSettings():Promise<void>;
 
+export function ReadAudioFile(arg1:string):Promise<main.AudioResponse>;
+
 export function ReprocessTranscription(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function RequestAccessibilityPermission():Promise<void>;
@@ -83,8 +86,6 @@ export function SaveSettings(arg1:string,arg2:any,arg3:any,arg4:any):Promise<que
 export function SetCurrentBoardId(arg1:string):Promise<void>;
 
 export function SetLoginToken(arg1:string):Promise<void>;
-
-export function StartDataSyncing(arg1:string):Promise<void>;
 
 export function UpdateBoard(arg1:string,arg2:string):Promise<types.ExportedBoard>;
 

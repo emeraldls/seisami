@@ -266,12 +266,12 @@ export const Sidebar = () => {
               );
             })}
             {isAuthenticated && (
-              <div className="space-y-2">
+              <div className="space-y-2 flex">
                 <Button
                   onClick={handleLogoutClick}
                   variant="ghost"
                   size="sm"
-                  className="w-full justify-start text-red-600"
+                  className="w-full justify-center text-red-600"
                 >
                   <LogOut className="h-4 w-4" />
                   {!collapsed && <span className="">Logout</span>}

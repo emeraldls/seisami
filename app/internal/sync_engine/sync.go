@@ -292,6 +292,11 @@ func (s *SyncEngine) SyncData(tableName types.TableName, silent bool) error {
 		}
 	}
 
+	/* IM thinking the sync_state should be created locally & pushed to the cloud,
+	bcz idk when cloud sync_state will be highger than local
+
+	*/
+
 	if pulled {
 		fmt.Printf("\n\n<-------Pulling New Data From Cloud ----------->\n\n")
 		stateResp := s.cloud.GetSyncState(tableName)
@@ -302,7 +307,32 @@ func (s *SyncEngine) SyncData(tableName types.TableName, silent bool) error {
 				s.emitError("sync:state_error", errMsg)
 			}
 		} else {
-			newState, ok := stateResp.Data.(query.SyncState)
+			lastOpID := ""
+			if len(cloudOps) > 0 {
+
+				var latestOp types.OperationSync
+				var latestTime int64
+
+				for _, op := range cloudOps {
+					t, err := time.Parse(layout, op.CreatedAt)
+					if err != nil {
+						continue
+					}
+					ts := t.Unix()
+					if ts > latestTime {
+						latestTime = ts
+						latestOp = op
+					}
+				}
+				lastOpID = latestOp.ID
+			}
+
+			syncState := query.SyncState{
+				TableName:      tableName.String(),
+				LastSyncedAt:   time.Now().Unix(),
+				LastSyncedOpID: lastOpID,
+			}
+
 			if !ok {
 				errMsg := "invalid sync state response data type"
 				fmt.Println(errMsg)
@@ -310,8 +340,17 @@ func (s *SyncEngine) SyncData(tableName types.TableName, silent bool) error {
 					s.emitError("sync:state_error", errMsg)
 				}
 			} else {
-				if err := s.local.UpdateSyncState(newState); err != nil {
+				if err := s.local.UpdateSyncState(syncState); err != nil {
 					errMsg := fmt.Sprintf("error updating local sync state: %v", err)
+					fmt.Println(errMsg)
+					if !silent {
+						s.emitError("sync:state_error", errMsg)
+					}
+				}
+
+				updateResp := s.cloud.UpdateSyncState(syncState)
+				if updateResp.Error != "" {
+					errMsg := fmt.Sprintf("error updating cloud sync state: %s", updateResp.Error)
 					fmt.Println(errMsg)
 					if !silent {
 						s.emitError("sync:state_error", errMsg)

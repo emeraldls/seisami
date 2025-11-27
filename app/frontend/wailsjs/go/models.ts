@@ -17,6 +17,23 @@ export namespace frontend {
 
 }
 
+export namespace main {
+	
+	export class AudioResponse {
+	    data: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new AudioResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.data = source["data"];
+	    }
+	}
+
+}
+
 export namespace query {
 	
 	export class Setting {

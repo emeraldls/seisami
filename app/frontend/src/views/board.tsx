@@ -103,7 +103,7 @@ export default function KanbanView() {
   const [features, setFeatures] = useState<Feature[]>([]);
   const [newCardName, setNewCardName] = useState("");
   const [addingCardInStatus, setAddingCardInStatus] = useState<string | null>(
-    null,
+    null
   );
   const [newColumnName, setNewColumnName] = useState("");
   const [isAddingColumn, setIsAddingColumn] = useState(false);
@@ -172,7 +172,6 @@ export default function KanbanView() {
     fetchBoard();
   }, [fetchBoard]);
 
-  // Listen for AI tool execution to refetch board
   useEffect(() => {
     const unsubscribe = EventsOn("board:refetch", () => {
       console.log("Refetching board due to AI tool execution");
@@ -186,7 +185,6 @@ export default function KanbanView() {
     if (!roomId) return;
 
     const unsubscribe = wsService.onMessage((message: CollabResponse) => {
-      console.log(message);
       if ("data" in message && message.data) {
         try {
           const eventType = message.type;
@@ -261,8 +259,8 @@ export default function KanbanView() {
       prev.map((col) =>
         col.id === data.id
           ? { ...col, name: data.name, position: data.position }
-          : col,
-      ),
+          : col
+      )
     );
   };
 
@@ -279,9 +277,7 @@ export default function KanbanView() {
       attachments: "",
       startAt: new Date(data.card.created_at || new Date().toISOString()),
       endAt: new Date(
-        data.card.updated_at ||
-          data.card.created_at ||
-          new Date().toISOString(),
+        data.card.updated_at || data.card.created_at || new Date().toISOString()
       ),
       column: data.card.column_id,
     };
@@ -302,8 +298,8 @@ export default function KanbanView() {
               name: data.card.name,
               description: data.card.description || "",
             }
-          : feature,
-      ),
+          : feature
+      )
     );
 
     setSelectedCard((prev) =>
@@ -313,13 +309,13 @@ export default function KanbanView() {
             name: data.card.name,
             description: data.card.description || "",
           }
-        : prev,
+        : prev
     );
   };
 
   const handleRemoteCardDelete = (data: CardDeleteEventData) => {
     setFeatures((prev) =>
-      prev.filter((feature) => feature.id !== data.card.id),
+      prev.filter((feature) => feature.id !== data.card.id)
     );
 
     if (selectedCard?.id === data.card.id) {
@@ -333,17 +329,14 @@ export default function KanbanView() {
       prev.map((feature) =>
         feature.id === data.card_id
           ? { ...feature, column: data.new_column.id }
-          : feature,
-      ),
+          : feature
+      )
     );
   };
 
-  const handleDataChange = useCallback(
-    async (newFeatures: Feature[]) => {
-      setFeatures(newFeatures);
-    },
-    [],
-  );
+  const handleDataChange = useCallback(async (newFeatures: Feature[]) => {
+    setFeatures(newFeatures);
+  }, []);
 
   const handleDragStart = (event: any) => {
     console.log("start dragging...");
@@ -374,7 +367,7 @@ export default function KanbanView() {
     if (draggedSnapshot) {
       // Find the card in the current state (which has been updated by handleDataChange during drag)
       const updatedFeature = features.find(
-        (feature) => feature.id === draggedSnapshot.id,
+        (feature) => feature.id === draggedSnapshot.id
       );
 
       if (updatedFeature) {
@@ -385,18 +378,18 @@ export default function KanbanView() {
             await UpdateCardColumn(updatedFeature.id, updatedFeature.column);
 
             const oldColumn = columns.find(
-              (col) => col.id === draggedSnapshot.column,
+              (col) => col.id === draggedSnapshot.column
             );
             const newColumn = columns.find(
-              (col) => col.id === updatedFeature.column,
+              (col) => col.id === updatedFeature.column
             );
 
             if (newColumn) {
               const cardsInNewColumn = features.filter(
-                (f) => f.column === updatedFeature.column,
+                (f) => f.column === updatedFeature.column
               );
               const cardIndex = cardsInNewColumn.findIndex(
-                (card) => card.id === updatedFeature.id,
+                (card) => card.id === updatedFeature.id
               );
 
               const payload = {
@@ -424,7 +417,6 @@ export default function KanbanView() {
           } catch (err) {
             console.error("Failed to update card column", err);
             // Revert changes if update failed?
-            
           }
         }
       }
@@ -625,7 +617,7 @@ export default function KanbanView() {
       await UpdateCard(
         selectedCard.id,
         editingTitle,
-        selectedCard.description!,
+        selectedCard.description!
       );
       setIsEditingTitle(false);
       fetchBoard();
@@ -634,10 +626,10 @@ export default function KanbanView() {
 
       if (cardColumn) {
         const cardsInColumn = features.filter(
-          (f) => f.column === selectedCard.column,
+          (f) => f.column === selectedCard.column
         );
         const cardIndex = cardsInColumn.findIndex(
-          (c) => c.id === selectedCard.id,
+          (c) => c.id === selectedCard.id
         );
 
         const payload = {
@@ -656,7 +648,6 @@ export default function KanbanView() {
             index: cardIndex,
           },
         };
-
 
         const data = JSON.stringify(payload);
 
@@ -686,10 +677,10 @@ export default function KanbanView() {
 
       if (cardColumn) {
         const cardsInColumn = features.filter(
-          (f) => f.column === selectedCard.column,
+          (f) => f.column === selectedCard.column
         );
         const cardIndex = cardsInColumn.findIndex(
-          (c) => c.id === selectedCard.id,
+          (c) => c.id === selectedCard.id
         );
 
         const payload = {
@@ -970,7 +961,7 @@ export default function KanbanView() {
                                     <span>
                                       {/*  TODO: imported board time is not in the expected format */}
                                       {shortDateFormatter.format(
-                                        feature.startAt,
+                                        feature.startAt
                                       )}
                                     </span>
                                   </div>

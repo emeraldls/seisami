@@ -106,6 +106,7 @@ func (lf localFuncs) updateBoardFromOperation(op types.OperationSync) error {
 }
 
 func (lf localFuncs) updateColumnFromOperation(op types.OperationSync) error {
+	fmt.Println("performing column operation")
 	var payload struct {
 		ID        string `json:"id"`
 		BoardID   string `json:"board_id"`
@@ -121,6 +122,7 @@ func (lf localFuncs) updateColumnFromOperation(op types.OperationSync) error {
 
 	switch op.OperationType {
 	case "insert", "update":
+		fmt.Println("ookay it's creating the column")
 		_, err := lf.repo.ImportColumn(payload.ID, payload.BoardID, payload.Name, payload.Position, payload.CreatedAt, payload.UpdatedAt)
 		return err
 	case "delete":
@@ -144,6 +146,8 @@ func (lf localFuncs) updateCardFromOperation(op types.OperationSync) error {
 	if err := json.Unmarshal([]byte(op.PayloadData), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal card payload: %v", err)
 	}
+
+	fmt.Println("updatin card table")
 
 	switch op.OperationType {
 	case "insert", "update":

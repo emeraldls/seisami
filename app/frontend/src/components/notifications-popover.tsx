@@ -34,8 +34,6 @@ export const NotificationsPopover = () => {
       enabled: open,
     });
 
-  console.log(data);
-
   const markAsReadMutation = useMutation({
     mutationFn: (notificationId: string) =>
       ApiClient.markNotificationAsRead(notificationId),

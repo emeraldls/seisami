@@ -164,3 +164,27 @@ type Notification struct {
 	Read    bool   `json:"read"`
 	Time    string `json:"time"`
 }
+
+type TranscribeRequest struct {
+	AudioData string `json:"audio_data" validate:"required"` // base64 encoded audio
+	Format    string `json:"format"`                         // "wav", "mp3", etc.
+}
+
+type TranscribeResponse struct {
+	Transcription string `json:"transcription"`
+	Error         string `json:"error,omitempty"`
+}
+
+type ProcessTranscriptionRequest struct {
+	Transcription string `json:"transcription" validate:"required"`
+	BoardID       string `json:"board_id" validate:"required"`
+}
+
+type ProcessTranscriptionResponse struct {
+	Intent       string                 `json:"intent"`
+	Understood   string                 `json:"understood"`
+	ActionsTaken []string               `json:"actions_taken"`
+	Result       string                 `json:"result"`
+	Data         map[string]interface{} `json:"data,omitempty"`
+	Error        string                 `json:"error,omitempty"`
+}

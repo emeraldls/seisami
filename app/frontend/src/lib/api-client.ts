@@ -155,4 +155,83 @@ export const ApiClient = {
   async getConnectedUsers(boardId: string): Promise<{ data: string[] }> {
     return apiClient.get(`/board/${boardId}/connected-users`);
   },
+
+  async transcribeAndProcessAudio(
+    audioFile: File,
+    boardId: string,
+    onEvent: (event: { type: string; data?: any; error?: string }) => void
+  ): Promise<void> {
+    const token = useDesktopAuthStore.getState().token;
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+
+    const formData = new FormData();
+    formData.append("audio", audioFile);
+    formData.append("board_id", boardId);
+
+    const response = await fetch(`${CLOUD_API_URL}/ai/transcribe-and-process`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    if (!response.body) {
+      throw new Error("No response body");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let currentEventType = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          console.log("SSE Line:", line);
+
+          if (line.startsWith("event: ")) {
+            currentEventType = line.slice(7).trim();
+          } else if (line.startsWith("data: ")) {
+            const data = line.slice(6).trim();
+
+            if (data === "[DONE]") {
+              onEvent({ type: "done" });
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              onEvent({
+                type: currentEventType || "unknown",
+                data: parsed,
+              });
+            } catch (e) {
+              console.error("Failed to parse SSE data:", data, e);
+            }
+
+            currentEventType = "";
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  },
 };

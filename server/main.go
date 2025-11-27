@@ -15,9 +15,11 @@ import (
 	"github.com/joho/godotenv"
 
 	"seisami/server/central"
+	"seisami/server/central/actions"
 	"seisami/server/centraldb"
 	"seisami/server/client"
 	"seisami/server/room_manager"
+	"seisami/server/synchub"
 	"seisami/server/types"
 )
 
@@ -187,9 +189,13 @@ func startCentralHTTPServer() (func(), error) {
 
 	queries := centraldb.New(pool)
 	authService := central.NewAuthService(queries, cfg)
-	syncService := central.NewSyncService(pool, queries)
+	syncService := central.NewSyncService(pool, queries, cfg.OpenAIAPIKey)
 	notifService := central.NewNotificationService(pool, queries)
-	router := central.NewRouter(authService, syncService, notifService)
+	action := actions.NewAction(cfg.OpenAIAPIKey, queries)
+
+	synchub.Init()
+
+	router := central.NewRouter(authService, syncService, notifService, action)
 
 	server := &http.Server{
 		Addr:    cfg.HTTPAddr,

@@ -13,6 +13,7 @@ type Config struct {
 	ResetTokenExpiration time.Duration
 	HTTPAddr             string
 	VERSION_SECURE_KEY   string
+	OpenAIAPIKey         string
 }
 
 // LoadConfigFromEnv reads the required configuration from environment variables.
@@ -55,6 +56,11 @@ func LoadConfigFromEnv() (Config, error) {
 		addr = "0.0.0.0:8080"
 	}
 
+	openAIKey := os.Getenv("OPENAI_API_KEY")
+	if openAIKey == "" {
+		return Config{}, fmt.Errorf("OPENAI_API_KEY must be set")
+	}
+
 	return Config{
 		DatabaseURL:          dbURL,
 		JWTSecret:            secret,
@@ -62,5 +68,6 @@ func LoadConfigFromEnv() (Config, error) {
 		ResetTokenExpiration: resetTTL,
 		HTTPAddr:             addr,
 		VERSION_SECURE_KEY:   versionKey,
+		OpenAIAPIKey:         openAIKey,
 	}, nil
 }

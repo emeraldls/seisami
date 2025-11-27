@@ -41,3 +41,4 @@ Aside from the items below, there are several inline TODOs scattered throughout 
 * add more tools, add full calendar support
 
 
+* When there's no column on the board & you're using cloud for processing, create the column locally doesnt work, the tool is not being called in the cloud, fix later.

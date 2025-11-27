@@ -21,6 +21,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ErrorListener } from "~/components/error-listener";
 import { TopNavbar } from "~/components/top-navbar";
 import { useCollaborationStore } from "~/stores/collab-store";
+import { ApiClient } from "~/lib/api-client";
+import { ReadAudioFile } from "../../wailsjs/go/main/App";
+import { useAIProcessing } from "~/hooks/use-ai-processing";
 
 export const AppLayout = () => {
   const { collapsed } = useSidebar();
@@ -70,6 +73,7 @@ export const AppLayout = () => {
   };
 
   const navigate = useNavigate();
+  const { handleAIEvent } = useAIProcessing();
 
   useEffect(() => {
     const unsubscribeProcessingStart = EventsOn(
@@ -223,7 +227,6 @@ export const AppLayout = () => {
     );
 
     const unsubscribeAudioBars = EventsOn("audio_bars", (data) => {
-      console.log(data);
       if (Array.isArray(data) && data.length > 0) {
         setAudioBars(data);
         addWaveformData(data);
@@ -350,6 +353,54 @@ export const AppLayout = () => {
       }
     );
 
+    const unsubscribeUseCloud = EventsOn(
+      "transcription:use_cloud",
+      async (data: string) => {
+        try {
+          const parsed = JSON.parse(data) as {
+            recording_path: string;
+            board_id: string;
+          };
+
+          console.log(parsed);
+
+          setProcessingState("transcribing");
+          setCurrentAction("Uploading to cloud...");
+
+          const resp = await ReadAudioFile(parsed.recording_path);
+          const audioBytes = Uint8Array.from(atob(resp.data.toString()), (c) =>
+            c.charCodeAt(0)
+          );
+
+          const blob = new Blob([new Uint8Array(audioBytes)], {
+            type: "audio/wav",
+          });
+
+          const audioFile = new File([blob], "recording.wav", {
+            type: "audio/wav",
+          });
+
+          await ApiClient.transcribeAndProcessAudio(
+            audioFile,
+            parsed.board_id,
+            handleAIEvent
+          );
+        } catch (error) {
+          console.error("Cloud transcription error:", error);
+          setProcessingState("idle");
+          setCurrentAction(null);
+          setAudioBars(null);
+          toast.error("Cloud Transcription Failed", {
+            description:
+              error instanceof Error
+                ? error.message
+                : "An unexpected error occurred",
+            duration: 5000,
+          });
+        }
+      }
+    );
+
     return () => {
       unsubscribeProcessingStart();
       unsubscribeToolComplete();
@@ -367,6 +418,7 @@ export const AppLayout = () => {
       unsubscribeRecordingStop();
       unsubscribeTranscriptionShort();
       unsubscribeTranscriptionError();
+      unsubscribeUseCloud();
     };
   }, [currentBoard, queryClient]);
 
