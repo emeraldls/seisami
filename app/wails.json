@@ -17,6 +17,7 @@
     "protocols": [{
       "scheme": "seisami",
       "role": "Editor"
-    }]
+    }],
+    "productVersion": "0.0.71"
   }
 }
