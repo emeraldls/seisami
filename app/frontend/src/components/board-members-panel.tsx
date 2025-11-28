@@ -47,8 +47,6 @@ export const BoardMembersPanel = () => {
     enabled: !!currentBoard && isOpen,
   });
 
-  console.log(members);
-
   const inviteMutation = useMutation({
     mutationFn: (email: string) =>
       ApiClient.inviteUserToBoard(email, currentBoard!.id),

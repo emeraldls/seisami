@@ -9,6 +9,7 @@ import {
 } from "../../wailsjs/go/main/App";
 import { EventsEmit } from "../../wailsjs/runtime/runtime";
 import { useCollaborationStore } from "./collab-store";
+import { CollabMessage, wsService } from "~/lib/websocket-service";
 
 // Helper interface for normalized board data used in components
 export interface NormalizedBoard {
@@ -117,6 +118,24 @@ export const useBoardStore = create<BoardState>()(
               updated_at: updatedAt,
             };
 
+            /*
+            msg := types.Message{
+							Action: "broadcast",
+							RoomID: roomID,
+							Data:   payload,
+							Type:   "board:data",
+						}
+            */
+
+            const msg: CollabMessage = {
+              action: "broadcast",
+              roomId: roomId,
+              data: JSON.stringify(payload),
+              type: "board:data",
+            };
+
+            wsService.send(msg);
+
             EventsEmit("board:data", JSON.stringify(payload));
 
             set((state) => ({
@@ -185,8 +204,8 @@ export const useBoardStore = create<BoardState>()(
             });
 
             // Reinitialize collaboration if authenticated
-            const { isAuthenticated } = await import("./auth-store").then(
-              (m) => m.useDesktopAuthStore.getState()
+            const { isAuthenticated } = await import("./auth-store").then((m) =>
+              m.useDesktopAuthStore.getState()
             );
             if (isAuthenticated) {
               const { reinitialize } = useCollaborationStore.getState();

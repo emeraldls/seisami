@@ -120,14 +120,13 @@ func broadcastUserListUpdate(boardId, eventType, userId string) {
 	}
 
 	jsonMsg, _ := json.Marshal(updateMsg)
-	roomManager.BroadcastToRoom(boardId, jsonMsg)
+	roomManager.BroadcastToRoom(boardId, userId, jsonMsg)
 }
 
 func handleConn(c *client.Client, manager *room_manager.RoomManager, boardId string) {
 	defer c.Close()
 	defer func() {
 		manager.LeaveRoomById(boardId, c)
-		// Broadcast user left event
 		broadcastUserListUpdate(boardId, "user_left", c.GetId())
 	}()
 
@@ -156,8 +155,8 @@ func handleConn(c *client.Client, manager *room_manager.RoomManager, boardId str
 			}
 
 			jsonMsg, _ := json.MarshalIndent(broadcastMsg, "", "  ")
-			fmt.Println(string(jsonMsg))
-			manager.BroadcastToRoom(boardId, jsonMsg)
+
+			manager.BroadcastToRoom(boardId, c.GetId(), jsonMsg)
 
 		default:
 			response := map[string]string{"error": "unknown action"}

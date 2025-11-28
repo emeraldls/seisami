@@ -79,9 +79,6 @@ func (a *App) handleMutations() {
 					_, err := a.repository.CreateOperation(types.BoardTable, boardID, payload, types.InsertOperation)
 					if err != nil {
 						fmt.Printf("unable to create board operation: %v\n", err)
-					} else {
-						// Trigger silent sync after successful operation
-						a.triggerSilentSync(types.BoardTable)
 					}
 				}
 			}(a.ctx, data)
@@ -119,21 +116,6 @@ func (a *App) handleMutations() {
 						return
 					}
 
-					// Trigger silent sync
-					a.triggerSilentSync(types.BoardTable)
-
-					roomID, _ := boardData["room_id"].(string)
-					if roomID != "" {
-						msg := types.Message{
-							Action: "broadcast",
-							RoomID: roomID,
-							Data:   payload,
-							Type:   "board:data",
-						}
-						if err := a.sendCollabCommand(msg); err != nil {
-							fmt.Printf("unable to broadcast board update: %v\n", err)
-						}
-					}
 				}
 			}(a.ctx, data)
 		}
@@ -174,19 +156,8 @@ func (a *App) handleMutations() {
 						return
 					}
 
-					// Trigger silent sync
-					a.triggerSilentSync(types.ColumnTable)
-
 				}
 			}(a.ctx, columnData)
-
-			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data, Type: "column:data"}
-
-			err = a.sendCollabCommand(msg)
-			if err != nil {
-				fmt.Printf("unable to broadcast the command: %v\n", err)
-				return
-			}
 
 		}
 	})
@@ -213,18 +184,10 @@ func (a *App) handleMutations() {
 					_, err := a.repository.CreateOperation(types.ColumnTable, column.ID, payload, types.InsertOperation)
 					if err != nil {
 						fmt.Println(err)
-					} else {
-						// Trigger silent sync
-						a.triggerSilentSync(types.ColumnTable)
 					}
 				}
 			}(a.ctx, data, columnData)
 
-			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data, Type: "column:create"}
-			if err := a.sendCollabCommand(msg); err != nil {
-				fmt.Printf("unable to broadcast the command: %v\n", err)
-				return
-			}
 		}
 	})
 
@@ -250,18 +213,10 @@ func (a *App) handleMutations() {
 					_, err := a.repository.CreateOperation(types.ColumnTable, column.ID, payload, types.DeleteOperation)
 					if err != nil {
 						fmt.Println(err)
-					} else {
-						// Trigger silent sync
-						a.triggerSilentSync(types.ColumnTable)
 					}
 				}
 			}(a.ctx, data, columnData)
 
-			msg := types.Message{Action: "broadcast", RoomID: columnData.RoomID, Data: data, Type: "column:delete"}
-			if err := a.sendCollabCommand(msg); err != nil {
-				fmt.Printf("unable to broadcast the command: %v\n", err)
-				return
-			}
 		}
 	})
 
@@ -299,20 +254,8 @@ func (a *App) handleMutations() {
 						return
 					}
 
-					// Trigger silent sync
-					a.triggerSilentSync(types.CardTable)
-
 				}
 			}(a.ctx, cardData)
-
-			msg := types.Message{Action: "broadcast", RoomID: cardData.Column.RoomID, Data: data, Type: "card:data"}
-
-			err := a.sendCollabCommand(msg)
-			if err != nil {
-				fmt.Printf("unable to broadcast the command: %v\n", err)
-				return
-			}
-
 		}
 	})
 
@@ -339,18 +282,9 @@ func (a *App) handleMutations() {
 					_, err := a.repository.CreateOperation(types.CardTable, card.Card.ID, payload, types.InsertOperation)
 					if err != nil {
 						fmt.Println(err)
-					} else {
-						// Trigger silent sync
-						a.triggerSilentSync(types.CardTable)
 					}
 				}
 			}(a.ctx, data, cardData)
-
-			msg := types.Message{Action: "broadcast", RoomID: cardData.Column.RoomID, Data: data, Type: "card:create"}
-			if err := a.sendCollabCommand(msg); err != nil {
-				fmt.Printf("unable to broadcast the command: %v\n", err)
-				return
-			}
 		}
 	})
 
@@ -377,18 +311,10 @@ func (a *App) handleMutations() {
 					_, err := a.repository.CreateOperation(types.CardTable, card.Card.ID, payload, types.DeleteOperation)
 					if err != nil {
 						fmt.Println(err)
-					} else {
-						// Trigger silent sync
-						a.triggerSilentSync(types.CardTable)
 					}
 				}
 			}(a.ctx, data, cardData)
 
-			msg := types.Message{Action: "broadcast", RoomID: cardData.RoomID, Data: data, Type: "card:delete"}
-			if err := a.sendCollabCommand(msg); err != nil {
-				fmt.Printf("unable to broadcast the command: %v\n", err)
-				return
-			}
 		}
 	})
 
@@ -426,19 +352,8 @@ func (a *App) handleMutations() {
 						return
 					}
 
-					// Trigger silent sync
-					a.triggerSilentSync(types.CardTable)
-
 				}
 			}(a.ctx, cardColumnData)
-
-			msg := types.Message{Action: "broadcast", RoomID: cardColumnData.RoomID, Data: data, Type: "card:column"}
-
-			err := a.sendCollabCommand(msg)
-			if err != nil {
-				fmt.Printf("unable to broadcast the command: %v\n", err)
-				return
-			}
 
 		}
 	})

@@ -55,7 +55,11 @@ import {
 } from "~/components/ui/dialog";
 import { EventsEmit, EventsOn } from "../../wailsjs/runtime/runtime";
 import { useCollaborationStore } from "~/stores/collab-store";
-import { wsService, type CollabResponse } from "~/lib/websocket-service";
+import {
+  CollabMessage,
+  wsService,
+  type CollabResponse,
+} from "~/lib/websocket-service";
 import type {
   BoardEventData,
   ColumnEventData,
@@ -412,6 +416,15 @@ export default function KanbanView() {
               };
 
               const data = JSON.stringify(payload);
+
+              const msg: CollabMessage = {
+                action: "broadcast",
+                roomId: roomId,
+                data: JSON.stringify(payload),
+                type: "card:column",
+              };
+
+              wsService.send(msg);
               EventsEmit("card:column", data);
             }
           } catch (err) {
@@ -463,6 +476,14 @@ export default function KanbanView() {
           },
         };
 
+        const msg: CollabMessage = {
+          action: "broadcast",
+          roomId: roomId,
+          data: JSON.stringify(payload),
+          type: "card:create",
+        };
+
+        wsService.send(msg);
         EventsEmit("card:create", JSON.stringify(payload));
       }
 
@@ -495,6 +516,14 @@ export default function KanbanView() {
         updated_at: updatedAt,
       };
 
+      const msg: CollabMessage = {
+        action: "broadcast",
+        roomId: roomId,
+        data: JSON.stringify(payload),
+        type: "column:create",
+      };
+
+      wsService.send(msg);
       EventsEmit("column:create", JSON.stringify(payload));
 
       fetchBoard();
@@ -530,6 +559,14 @@ export default function KanbanView() {
 
       const data = JSON.stringify(payload);
 
+      const msg: CollabMessage = {
+        action: "broadcast",
+        roomId: roomId,
+        data: JSON.stringify(payload),
+        type: "column:data",
+      };
+
+      wsService.send(msg);
       EventsEmit("column:data", data);
     } catch (err) {
       console.error("Failed to update column", err);
@@ -550,6 +587,14 @@ export default function KanbanView() {
         position: column?.position ?? 0,
       };
 
+      const msg: CollabMessage = {
+        action: "broadcast",
+        roomId: roomId,
+        data: JSON.stringify(payload),
+        type: "column:delete",
+      };
+
+      wsService.send(msg);
       EventsEmit("column:delete", JSON.stringify(payload));
 
       fetchBoard();
@@ -592,6 +637,14 @@ export default function KanbanView() {
         },
       };
 
+      const msg: CollabMessage = {
+        action: "broadcast",
+        roomId: roomId,
+        data: JSON.stringify(payload),
+        type: "card:delete",
+      };
+
+      wsService.send(msg);
       EventsEmit("card:delete", JSON.stringify(payload));
 
       fetchBoard();
@@ -651,6 +704,15 @@ export default function KanbanView() {
 
         const data = JSON.stringify(payload);
 
+        const msg: CollabMessage = {
+          action: "broadcast",
+          roomId: roomId,
+          data: JSON.stringify(payload),
+          type: "card:data",
+        };
+
+        wsService.send(msg);
+
         EventsEmit("card:data", data);
       }
 
@@ -701,6 +763,15 @@ export default function KanbanView() {
         };
 
         const data = JSON.stringify(payload);
+
+        const msg: CollabMessage = {
+          action: "broadcast",
+          roomId: roomId,
+          data: JSON.stringify(payload),
+          type: "card:data",
+        };
+
+        wsService.send(msg);
 
         EventsEmit("card:data", data);
       }

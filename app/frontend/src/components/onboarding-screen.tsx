@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import {
@@ -19,6 +20,7 @@ import {
   CheckAccessibilityPermission,
   RequestAccessibilityPermission,
   OpenAccessibilitySettings,
+  RestartApp,
 } from "../../wailsjs/go/main/App";
 
 type Step = "permissions" | "board";
@@ -61,7 +63,13 @@ export function OnboardingScreen() {
           CheckAccessibilityPermission(),
         ]);
         setMicGranted(mic === 1);
-        setAccessibilityGranted(accessibility === 1);
+        if (accessibility === 1 && !accessibilityGranted) {
+          setAccessibilityGranted(true);
+          toast.info("Accessibility granted. Restarting app...");
+          // await RestartApp();
+        } else {
+          setAccessibilityGranted(accessibility === 1);
+        }
       } catch (error) {
         console.error("Failed to check permissions", error);
       }
@@ -92,12 +100,10 @@ export function OnboardingScreen() {
         if (immediateCheck === 1) {
           setAccessibilityGranted(true);
           setRequestingPermissions(false);
+          toast.info("Accessibility granted. Restarting app...");
+          // await RestartApp();
           return;
         }
-
-        // If not granted immediately, the dialog was shown
-        // User needs to go to Settings manually
-        // The interval polling will detect when they grant it
       }
     } catch (error) {
       console.error("Failed to request permissions", error);

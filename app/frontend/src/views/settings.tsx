@@ -13,6 +13,7 @@ import {
   CheckAccessibilityPermission,
   RequestAccessibilityPermission,
   OpenAccessibilitySettings,
+  RestartApp,
 } from "../../wailsjs/go/main/App";
 import { frontend } from "../../wailsjs/go/models";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -132,6 +133,8 @@ const Settings = () => {
           const status = await CheckAccessibilityPermission();
           if (status === 1) {
             setAccessibilityGranted(true);
+            toast.info("Accessibility granted. Restarting app...");
+            await RestartApp();
             return true;
           }
           setAccessibilityGranted(false);

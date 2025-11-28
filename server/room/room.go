@@ -62,7 +62,7 @@ func (r *Room) LeaveRoom(client *client.Client) error {
 
 // Broadcast sends a message to all clients in the room.
 // You can adapt this based on your WebSocket or message system.
-func (r *Room) Broadcast(message []byte) {
+func (r *Room) Broadcast(message []byte, senderId string) {
 
 	fmt.Println("----- The message is -------: ", string(message))
 
@@ -70,7 +70,9 @@ func (r *Room) Broadcast(message []byte) {
 	defer r.mu.RUnlock()
 
 	for _, client := range r.clients {
-		client.Send(message)
+		if client.GetId() != senderId {
+			client.Send(message)
+		}
 	}
 }
 

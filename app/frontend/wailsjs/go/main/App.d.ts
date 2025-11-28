@@ -15,8 +15,6 @@ export function CreateBoard(arg1:string):Promise<types.ExportedBoard>;
 
 export function CreateCard(arg1:string,arg2:string,arg3:string):Promise<types.ExportedCard>;
 
-export function CreateCollaborationRoom():Promise<void>;
-
 export function CreateColumn(arg1:string,arg2:string):Promise<types.ExportedColumn>;
 
 export function DeleteBoard(arg1:string):Promise<void>;
@@ -34,8 +32,6 @@ export function GetCard(arg1:string):Promise<types.ExportedCard>;
 export function GetCloudAPIURL():Promise<string>;
 
 export function GetCollabServerAddress():Promise<string>;
-
-export function GetCollaborationRoomId():Promise<string>;
 
 export function GetColumn(arg1:string):Promise<types.ExportedColumn>;
 
@@ -59,10 +55,6 @@ export function ImportNewBoard(arg1:string):Promise<void>;
 
 export function InstallUpdate(arg1:types.AppVersion):Promise<void>;
 
-export function JoinCollaborationRoom(arg1:string):Promise<void>;
-
-export function LeaveCollaborationRoom(arg1:string):Promise<string>;
-
 export function ListCardsByColumn(arg1:string):Promise<Array<types.ExportedCard>>;
 
 export function ListColumnsByBoard(arg1:string):Promise<Array<types.ExportedColumn>>;
@@ -80,6 +72,8 @@ export function ReprocessTranscription(arg1:string,arg2:string,arg3:string):Prom
 export function RequestAccessibilityPermission():Promise<void>;
 
 export function RequestMicrophonePermission():Promise<boolean>;
+
+export function RestartApp():Promise<void>;
 
 export function SaveSettings(arg1:string,arg2:any,arg3:any,arg4:any):Promise<query.Setting>;
 

@@ -39,6 +39,7 @@ Aside from the items below, there are several inline TODOs scattered throughout 
 * Fix, recording & syncing works when no board is selected.
 * Fix performance issue when large number of items are present in a board. (fixed ✅)
 * add more tools, add full calendar support
+* Iv'e a duplicate for websocket, it's in frontend & in app backend, which is unnecessary, it's related to creating operation, the frontend emit the event to backend, then backend writes to websocket, which is redundant, should just write to websocket directly from frontend. (fixed ✅)
 
 
 * When there's no column on the board & you're using cloud for processing, create the column locally doesnt work, the tool is not being called in the cloud, fix later.

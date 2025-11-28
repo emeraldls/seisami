@@ -11,7 +11,6 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,13 +24,11 @@ import (
 
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/emeraldls/portaudio"
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
-	"github.com/gorilla/websocket"
 	"github.com/sashabaranov/go-openai"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -54,24 +51,19 @@ TODO: When a user switch a board, kill any active connections
 
 // App struct
 type App struct {
-	ctx              context.Context
-	loginToken       string
-	cloudApiUrl      string
-	isRecording      bool
-	stopChan         chan bool
-	recordingPath    string
-	lastBarEmitTime  time.Time
-	repository       repo.Repository
-	action           *actions.Action
-	currentBoardId   string
-	collabMu         sync.Mutex
-	collabConn       *websocket.Conn
-	collabServerAddr string
-	collabRoomId     string
-	collabCloseChan  chan bool
-	cloud            cloud.Cloud
-	syncEngine       *sync_engine.SyncEngine
-	syncWS           *cloud.SyncWebSocket
+	ctx             context.Context
+	loginToken      string
+	cloudApiUrl     string
+	isRecording     bool
+	stopChan        chan bool
+	recordingPath   string
+	lastBarEmitTime time.Time
+	repository      repo.Repository
+	action          *actions.Action
+	currentBoardId  string
+	cloud           cloud.Cloud
+	syncEngine      *sync_engine.SyncEngine
+	syncWS          *cloud.SyncWebSocket
 }
 
 func dbPath() string {
@@ -96,13 +88,11 @@ func NewApp() *App {
 		log.Fatalf("unable to create tables: %v\n", err)
 	}
 	repo := repo.NewRepo(db, ctx)
-	addr := getCollabServerAddr()
 
 	return &App{
-		stopChan:         make(chan bool),
-		repository:       repo,
-		collabServerAddr: addr,
-		cloudApiUrl:      getCloudApiUrl(),
+		stopChan:    make(chan bool),
+		repository:  repo,
+		cloudApiUrl: getCloudApiUrl(),
 	}
 }
 
@@ -571,10 +561,6 @@ func (a *App) ClearLoginToken() {
 		a.syncWS.Disconnect()
 	}
 
-	a.collabMu.Lock()
-	a.resetCollabConnectionLocked()
-	a.collabRoomId = ""
-	a.collabMu.Unlock()
 }
 
 func (a *App) ImportNewBoard(boardID string) error {
@@ -592,18 +578,6 @@ func (a *App) SetCurrentBoardId(boardId string) {
 
 func (a *App) GetCurrentBoardId() string {
 	return a.currentBoardId
-}
-
-func (a *App) triggerSilentSync(tableName types.TableName) {
-	if !a.isAuthenticated() || a.syncEngine == nil {
-		return
-	}
-
-	go func() {
-		if err := a.syncEngine.SyncData(tableName, true); err != nil {
-			fmt.Printf("silent sync error for %s: %v\n", tableName.String(), err)
-		}
-	}()
 }
 
 func (a *App) appVersionCheck() {
@@ -784,204 +758,19 @@ func (a *App) downloadAndVerify(url, expectedHash, dest string) error {
 	return nil
 }
 
-func (a *App) ensureCollabConnectionLocked() error {
-	if a.collabConn != nil {
-		return nil
-	}
-
-	if !a.isAuthenticated() {
-		return nil
-	}
-
-	addr := getCollabServerAddr()
-
-	dev := os.Getenv("DEV")
-	scheme := "wss"
-	if dev == "true" {
-		scheme = "ws"
-	}
-
-	wsURL := url.URL{Scheme: scheme, Host: addr, Path: "/ws"}
-	q := wsURL.Query()
-	q.Set("token", a.GetLoginToken())
-	q.Set("board_id", a.currentBoardId)
-	wsURL.RawQuery = q.Encode()
-
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL.String(), nil)
+func (a *App) RestartApp() {
+	executable, err := os.Executable()
 	if err != nil {
-		fmt.Println(err)
-		return fmt.Errorf("unable to connect to collaboration server at %s: %w", wsURL.String(), err)
-	}
-
-	a.collabConn = conn
-	a.collabCloseChan = make(chan bool)
-
-	if a.ctx != nil {
-		runtime.EventsEmit(a.ctx, "collab:connected", map[string]string{"address": addr})
-	}
-
-	go a.handleCollabMessages()
-
-	return nil
-}
-
-func (a *App) resetCollabConnectionLocked() {
-	if a.collabConn != nil {
-		_ = a.collabConn.Close()
-	}
-	if a.collabCloseChan != nil {
-		close(a.collabCloseChan)
-	}
-	a.collabConn = nil
-	a.collabCloseChan = nil
-}
-
-func (a *App) sendCollabCommand(msg types.Message) error {
-	fmt.Println("can send collab command")
-
-	a.collabMu.Lock()
-	defer a.collabMu.Unlock()
-
-	if !a.isAuthenticated() {
-		return fmt.Errorf("user not authenticated")
-	}
-
-	if err := a.ensureCollabConnectionLocked(); err != nil {
-		return err
-	}
-
-	payload, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("unable to marshal collaboration message: %w", err)
-	}
-
-	err = a.collabConn.WriteMessage(websocket.TextMessage, payload)
-	if err != nil {
-		a.resetCollabConnectionLocked()
-		return fmt.Errorf("unable to send collaboration message: %w", err)
-	}
-
-	return nil
-}
-
-func (a *App) handleCollabMessages() {
-	if a.collabConn == nil {
+		fmt.Printf("Error getting executable path: %v\n", err)
 		return
 	}
 
-	for {
-		select {
-		case <-a.collabCloseChan:
-			return
-		default:
-		}
+	fmt.Printf("Restarting app: %s\n", executable)
 
-		_, message, err := a.collabConn.ReadMessage()
-		if err != nil {
-			fmt.Printf("Error reading from WebSocket: %v\n", err)
-			a.collabMu.Lock()
-			a.resetCollabConnectionLocked()
-			a.collabMu.Unlock()
-			return
-		}
+	cmd := exec.Command(executable)
+	cmd.Start()
 
-		var response map[string]interface{}
-		if err := json.Unmarshal(message, &response); err != nil {
-			fmt.Printf("Error unmarshalling WebSocket message: %v\n", err)
-			continue
-		}
-
-		// Update internal room ID state from server responses
-		if status, ok := response["status"].(string); ok {
-			switch status {
-			case "created", "joined":
-				if roomId, ok := response["roomId"].(string); ok {
-					a.collabMu.Lock()
-					a.collabRoomId = roomId
-					a.collabMu.Unlock()
-				}
-			case "left":
-				if roomId, ok := response["roomId"].(string); ok {
-					a.collabMu.Lock()
-					if a.collabRoomId == roomId {
-						a.collabRoomId = ""
-					}
-					a.collabMu.Unlock()
-				}
-			}
-		}
-
-		// Messages are handled directly by the frontend via WebSocket
-		// No need to re-emit as Wails events - the frontend listens directly
-	}
-}
-
-func (a *App) CreateCollaborationRoom() error {
-	err := a.sendCollabCommandAsync(types.Message{Action: "create"})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (a *App) sendCollabCommandAsync(msg types.Message) error {
-	a.collabMu.Lock()
-	defer a.collabMu.Unlock()
-
-	if !a.isAuthenticated() {
-		return fmt.Errorf("user not authenticated")
-	}
-
-	if err := a.ensureCollabConnectionLocked(); err != nil {
-		return err
-	}
-
-	payload, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("unable to marshal collaboration message: %w", err)
-	}
-
-	err = a.collabConn.WriteMessage(websocket.TextMessage, payload)
-	if err != nil {
-		a.resetCollabConnectionLocked()
-		return fmt.Errorf("unable to send collaboration message: %w", err)
-	}
-
-	return nil
-}
-
-func (a *App) JoinCollaborationRoom(roomId string) error {
-	if strings.TrimSpace(roomId) == "" {
-		return fmt.Errorf("room id is required")
-	}
-
-	err := a.sendCollabCommandAsync(types.Message{Action: "join", RoomID: roomId})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (a *App) LeaveCollaborationRoom(roomId string) (string, error) {
-	if strings.TrimSpace(roomId) == "" {
-		return "", fmt.Errorf("room id is required")
-	}
-
-	err := a.sendCollabCommandAsync(types.Message{Action: "leave", RoomID: roomId})
-	if err != nil {
-		return "", err
-	}
-
-	// The response will come async and be handled by handleCollabMessages
-	return "", nil
-}
-
-func (a *App) GetCollaborationRoomId() string {
-	a.collabMu.Lock()
-	defer a.collabMu.Unlock()
-	return a.collabRoomId
+	os.Exit(0)
 }
 
 func (a *App) handleHotkeyPress() {

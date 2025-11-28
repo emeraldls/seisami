@@ -3,6 +3,7 @@
  * Handles connection, message sending/receiving, and reconnection logic
  */
 
+import { useDesktopAuthStore } from "~/stores/auth-store";
 import { WEBSOCKET_URL } from "./constants";
 
 export type CollabMessage =
@@ -10,6 +11,7 @@ export type CollabMessage =
       action: "create" | "join" | "leave" | "broadcast";
       roomId?: string;
       data?: string;
+      type?: string;
     }
   | Record<string, unknown>;
 
@@ -145,6 +147,11 @@ class WebSocketService {
    * Send a message to the server
    */
   send(message: CollabMessage): void {
+    if (!this.authToken) {
+      console.error("Cannot send message: Auth token is not set");
+      return;
+    }
+
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.warn("WebSocket is not connected. Attempting to connect...");
       this.connect()

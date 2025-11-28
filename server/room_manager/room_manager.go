@@ -75,7 +75,7 @@ func (m *RoomManager) JoinRoomById(roomId string, c *client.Client) error {
 // JoinOrCreateRoom joins an existing room or creates it if it doesn't exist
 func (m *RoomManager) JoinOrCreateRoom(roomId string, c *client.Client) error {
 	r := m.GetOrCreateRoom(roomId)
-	
+
 	err := r.JoinRoom(c)
 	if err == nil {
 		c.UpdateState(client.InRoom)
@@ -96,12 +96,12 @@ func (m *RoomManager) LeaveRoomById(roomId string, c *client.Client) error {
 	return err
 }
 
-func (m *RoomManager) BroadcastToRoom(roomId string, msg []byte) error {
+func (m *RoomManager) BroadcastToRoom(roomId, senderId string, msg []byte) error {
 	room, err := m.GetRoom(roomId)
 	if err != nil {
 		return err
 	}
 
-	room.Broadcast(msg)
+	room.Broadcast(msg, senderId)
 	return nil
 }

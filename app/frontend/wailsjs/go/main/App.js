@@ -22,10 +22,6 @@ export function CreateCard(arg1, arg2, arg3) {
   return window['go']['main']['App']['CreateCard'](arg1, arg2, arg3);
 }
 
-export function CreateCollaborationRoom() {
-  return window['go']['main']['App']['CreateCollaborationRoom']();
-}
-
 export function CreateColumn(arg1, arg2) {
   return window['go']['main']['App']['CreateColumn'](arg1, arg2);
 }
@@ -60,10 +56,6 @@ export function GetCloudAPIURL() {
 
 export function GetCollabServerAddress() {
   return window['go']['main']['App']['GetCollabServerAddress']();
-}
-
-export function GetCollaborationRoomId() {
-  return window['go']['main']['App']['GetCollaborationRoomId']();
 }
 
 export function GetColumn(arg1) {
@@ -110,14 +102,6 @@ export function InstallUpdate(arg1) {
   return window['go']['main']['App']['InstallUpdate'](arg1);
 }
 
-export function JoinCollaborationRoom(arg1) {
-  return window['go']['main']['App']['JoinCollaborationRoom'](arg1);
-}
-
-export function LeaveCollaborationRoom(arg1) {
-  return window['go']['main']['App']['LeaveCollaborationRoom'](arg1);
-}
-
 export function ListCardsByColumn(arg1) {
   return window['go']['main']['App']['ListCardsByColumn'](arg1);
 }
@@ -152,6 +136,10 @@ export function RequestAccessibilityPermission() {
 
 export function RequestMicrophonePermission() {
   return window['go']['main']['App']['RequestMicrophonePermission']();
+}
+
+export function RestartApp() {
+  return window['go']['main']['App']['RestartApp']();
 }
 
 export function SaveSettings(arg1, arg2, arg3, arg4) {
